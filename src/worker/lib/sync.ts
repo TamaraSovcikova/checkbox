@@ -1,0 +1,387 @@
+// Calendar sync orchestrator.
+// Connects D1 calendar_accounts + calendar_events_cache to the Google Calendar API.
+
+import type { Bindings } from "../db";
+import { uuid } from "../db";
+import {
+  decryptToken,
+  encryptToken,
+  exchangeCode,
+  getGoogleEmail,
+  getPrimaryCalendarId,
+  listEvents,
+  refreshAccessToken,
+  createEvent,
+  updateEvent,
+  deleteEvent,
+  watchCalendar,
+  taskToGCalEvent,
+  TASK_ID_PROP,
+} from "./gcal";
+
+export type CalendarAccount = {
+  id: string;
+  user_id: string;
+  google_email: string;
+  refresh_token_enc: string;
+  access_token: string | null;
+  token_expiry: string | null;
+  primary_calendar_id: string | null;
+  sync_token: string | null;
+  watch_channel_id: string | null;
+  watch_expiry: string | null;
+};
+
+// ── Account helpers ────────────────────────────────────────────────────────────
+
+export async function getCalendarAccount(
+  env: Bindings,
+  userId: string
+): Promise<CalendarAccount | null> {
+  return env.DB.prepare(
+    "SELECT * FROM calendar_accounts WHERE user_id = ? LIMIT 1"
+  )
+    .bind(userId)
+    .first<CalendarAccount>();
+}
+
+export async function getValidAccessToken(
+  env: Bindings,
+  account: CalendarAccount
+): Promise<string> {
+  if (account.access_token && account.token_expiry) {
+    const expiry = new Date(account.token_expiry).getTime();
+    if (Date.now() < expiry - 60_000) return account.access_token;
+  }
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
+    throw new Error("Google credentials not configured");
+  }
+  if (!env.CALENDAR_ENCRYPTION_KEY) {
+    throw new Error("CALENDAR_ENCRYPTION_KEY not set");
+  }
+  const refreshToken = await decryptToken(
+    env.CALENDAR_ENCRYPTION_KEY,
+    account.refresh_token_enc
+  );
+  const tokens = await refreshAccessToken(
+    env.GOOGLE_CLIENT_ID,
+    env.GOOGLE_CLIENT_SECRET,
+    refreshToken
+  );
+  const expiry = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+  await env.DB.prepare(
+    "UPDATE calendar_accounts SET access_token = ?, token_expiry = ? WHERE id = ?"
+  )
+    .bind(tokens.access_token, expiry, account.id)
+    .run();
+  return tokens.access_token;
+}
+
+// ── OAuth connect (called from /api/calendar/callback) ────────────────────────
+
+export async function connectCalendar(
+  env: Bindings,
+  userId: string,
+  code: string,
+  redirectUri: string
+): Promise<void> {
+  if (
+    !env.GOOGLE_CLIENT_ID ||
+    !env.GOOGLE_CLIENT_SECRET ||
+    !env.CALENDAR_ENCRYPTION_KEY
+  ) {
+    throw new Error("Google Calendar not configured");
+  }
+  const tokens = await exchangeCode(
+    env.GOOGLE_CLIENT_ID,
+    env.GOOGLE_CLIENT_SECRET,
+    redirectUri,
+    code
+  );
+  const [email, primaryCalId] = await Promise.all([
+    getGoogleEmail(tokens.access_token),
+    getPrimaryCalendarId(tokens.access_token),
+  ]);
+  const encRefresh = await encryptToken(
+    env.CALENDAR_ENCRYPTION_KEY,
+    tokens.refresh_token
+  );
+  const tokenExpiry = new Date(
+    Date.now() + tokens.expires_in * 1000
+  ).toISOString();
+
+  // Upsert — one Google account per user for now.
+  const existing = await getCalendarAccount(env, userId);
+  if (existing) {
+    await env.DB.prepare(
+      `UPDATE calendar_accounts SET
+         google_email = ?, refresh_token_enc = ?, access_token = ?,
+         token_expiry = ?, primary_calendar_id = ?, sync_token = NULL
+       WHERE id = ?`
+    )
+      .bind(
+        email,
+        encRefresh,
+        tokens.access_token,
+        tokenExpiry,
+        primaryCalId,
+        existing.id
+      )
+      .run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO calendar_accounts
+         (id, user_id, google_email, refresh_token_enc, access_token, token_expiry, primary_calendar_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+      .bind(
+        uuid(),
+        userId,
+        email,
+        encRefresh,
+        tokens.access_token,
+        tokenExpiry,
+        primaryCalId
+      )
+      .run();
+  }
+}
+
+// ── Incremental pull from Google Calendar into local cache ────────────────────
+
+export async function syncCalendar(
+  env: Bindings,
+  userId: string
+): Promise<void> {
+  const account = await getCalendarAccount(env, userId);
+  if (!account) return;
+
+  const accessToken = await getValidAccessToken(env, account);
+  const calendarId = account.primary_calendar_id ?? "primary";
+  const syncToken = account.sync_token ?? undefined;
+
+  // No sync token → bounded full sync (last 30 days + next 90 days).
+  const timeMin = syncToken
+    ? undefined
+    : new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const timeMax = syncToken
+    ? undefined
+    : new Date(Date.now() + 90 * 86_400_000).toISOString();
+
+  let pageToken: string | undefined;
+  let nextSyncToken: string | undefined;
+
+  do {
+    let result;
+    try {
+      result = await listEvents(accessToken, calendarId, {
+        syncToken,
+        timeMin,
+        timeMax,
+        pageToken,
+      });
+    } catch (e) {
+      if ((e as Error).message === "SYNC_TOKEN_INVALID") {
+        await env.DB.prepare(
+          "UPDATE calendar_accounts SET sync_token = NULL WHERE id = ?"
+        )
+          .bind(account.id)
+          .run();
+        result = await listEvents(accessToken, calendarId, {
+          timeMin,
+          timeMax,
+        });
+      } else {
+        throw e;
+      }
+    }
+
+    nextSyncToken = result.nextSyncToken;
+    pageToken = result.nextPageToken;
+
+    const stmts = (result.items ?? []).map((ev) => {
+      if (ev.status === "cancelled") {
+        return env.DB.prepare(
+          "DELETE FROM calendar_events_cache WHERE gcal_event_id = ? AND calendar_id = ?"
+        ).bind(ev.id, calendarId);
+      }
+      const allDay = !ev.start.dateTime;
+      // Normalise to UTC ISO so date range queries work correctly.
+      const start = ev.start.dateTime
+        ? new Date(ev.start.dateTime).toISOString()
+        : (ev.start.date ?? "");
+      const end = ev.end?.dateTime
+        ? new Date(ev.end.dateTime).toISOString()
+        : (ev.end?.date ?? "");
+      const taskId = ev.extendedProperties?.private?.[TASK_ID_PROP] ?? null;
+      return env.DB.prepare(
+        `INSERT INTO calendar_events_cache
+           (id, user_id, gcal_event_id, calendar_id, title, start, end, all_day, updated, is_checkbox_owned, task_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(gcal_event_id, calendar_id) DO UPDATE SET
+           title = excluded.title, start = excluded.start, end = excluded.end,
+           all_day = excluded.all_day, updated = excluded.updated,
+           is_checkbox_owned = excluded.is_checkbox_owned, task_id = excluded.task_id`
+      ).bind(
+        uuid(),
+        userId,
+        ev.id,
+        calendarId,
+        ev.summary ?? null,
+        start,
+        end,
+        allDay ? 1 : 0,
+        ev.updated ?? null,
+        taskId ? 1 : 0,
+        taskId
+      );
+    });
+
+    if (stmts.length > 0) await env.DB.batch(stmts);
+  } while (pageToken);
+
+  if (nextSyncToken) {
+    await env.DB.prepare(
+      "UPDATE calendar_accounts SET sync_token = ? WHERE id = ?"
+    )
+      .bind(nextSyncToken, account.id)
+      .run();
+  }
+}
+
+// ── Push a Checkbox task to Google Calendar ───────────────────────────────────
+
+type TaskRow = {
+  id: string;
+  title: string;
+  due_date: string | null;
+  due_time: string | null;
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  gcal_event_id: string | null;
+  gcal_calendar_id: string | null;
+  status: string;
+};
+
+export async function pushTaskToGcal(
+  env: Bindings,
+  taskId: string,
+  userId: string
+): Promise<void> {
+  const account = await getCalendarAccount(env, userId);
+  if (!account) return;
+
+  const task = await env.DB.prepare(
+    `SELECT id, title, due_date, due_time, scheduled_start, scheduled_end,
+            gcal_event_id, gcal_calendar_id, status
+     FROM tasks WHERE id = ? AND user_id = ?`
+  )
+    .bind(taskId, userId)
+    .first<TaskRow>();
+
+  if (!task) return;
+  if (task.status === "done") return;
+  if (!task.scheduled_start && !task.due_date) return;
+
+  const accessToken = await getValidAccessToken(env, account);
+  const calendarId = account.primary_calendar_id ?? "primary";
+
+  // Build a minimal Task-compatible object for the converter.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const taskLike = task as any;
+  const eventBody = taskToGCalEvent(taskLike);
+
+  if (task.gcal_event_id) {
+    await updateEvent(
+      accessToken,
+      task.gcal_calendar_id ?? calendarId,
+      task.gcal_event_id,
+      eventBody
+    );
+  } else {
+    const ev = await createEvent(accessToken, calendarId, eventBody);
+    const start = ev.start.dateTime
+      ? new Date(ev.start.dateTime).toISOString()
+      : (ev.start.date ?? "");
+    const end = ev.end?.dateTime
+      ? new Date(ev.end.dateTime).toISOString()
+      : (ev.end?.date ?? "");
+    await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE tasks SET gcal_event_id = ?, gcal_calendar_id = ? WHERE id = ?"
+      ).bind(ev.id, calendarId, task.id),
+      env.DB.prepare(
+        `INSERT INTO calendar_events_cache
+           (id, user_id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+         ON CONFLICT(gcal_event_id, calendar_id) DO UPDATE SET
+           title = excluded.title, start = excluded.start, end = excluded.end`
+      ).bind(
+        uuid(),
+        userId,
+        ev.id,
+        calendarId,
+        task.title,
+        start,
+        end,
+        ev.start.date ? 1 : 0,
+        task.id
+      ),
+    ]);
+  }
+}
+
+// ── Delete a GCal event when a task is removed or unscheduled ─────────────────
+
+export async function deleteTaskGcalEvent(
+  env: Bindings,
+  gcalEventId: string,
+  gcalCalendarId: string | null,
+  userId: string
+): Promise<void> {
+  const account = await getCalendarAccount(env, userId);
+  if (!account) return;
+  const accessToken = await getValidAccessToken(env, account);
+  const calId = gcalCalendarId ?? account.primary_calendar_id ?? "primary";
+  await deleteEvent(accessToken, calId, gcalEventId);
+  await env.DB.prepare(
+    "DELETE FROM calendar_events_cache WHERE gcal_event_id = ? AND calendar_id = ?"
+  )
+    .bind(gcalEventId, calId)
+    .run();
+}
+
+// ── Renew push notification watch channel (runs from cron) ────────────────────
+
+export async function renewWatchChannel(
+  env: Bindings,
+  userId: string
+): Promise<void> {
+  const account = await getCalendarAccount(env, userId);
+  if (!account || !env.WORKER_URL) return;
+
+  if (account.watch_expiry) {
+    const expiry = new Date(account.watch_expiry).getTime();
+    if (Date.now() < expiry - 86_400_000) return; // still good for > 24 h
+  }
+
+  const accessToken = await getValidAccessToken(env, account);
+  const calendarId = account.primary_calendar_id ?? "primary";
+  const channelId = uuid();
+
+  try {
+    const ch = await watchCalendar(
+      accessToken,
+      calendarId,
+      channelId,
+      `${env.WORKER_URL}/api/calendar/webhook`
+    );
+    await env.DB.prepare(
+      "UPDATE calendar_accounts SET watch_channel_id = ?, watch_expiry = ? WHERE id = ?"
+    )
+      .bind(channelId, new Date(Number(ch.expiration)).toISOString(), account.id)
+      .run();
+  } catch (e) {
+    console.error("renewWatchChannel:", e);
+  }
+}

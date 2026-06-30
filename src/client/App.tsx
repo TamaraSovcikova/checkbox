@@ -12,6 +12,7 @@ import { Sidebar } from "./components/Sidebar";
 import { TaskDrawer } from "./components/TaskDrawer";
 import { TaskUIContext } from "./lib/ui-context";
 import { AreaPage, LabelPage, ProjectPage, ViewPage } from "./pages";
+import CalendarPage from "./CalendarPage";
 
 const qc = new QueryClient({
   defaultOptions: { queries: { staleTime: 10_000, refetchOnWindowFocus: false } },
@@ -47,6 +48,7 @@ export default function App() {
             <Route path="area/:id" element={<AreaPage />} />
             <Route path="project/:id" element={<ProjectPage />} />
             <Route path="label/:name" element={<LabelPage />} />
+            <Route path="calendar" element={<CalendarPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

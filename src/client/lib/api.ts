@@ -1,4 +1,11 @@
-import type { Area, Label, Project, Task } from "../../shared/types";
+import type {
+  Area,
+  CalendarEvent,
+  CalendarStatus,
+  Label,
+  Project,
+  Task,
+} from "../../shared/types";
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -65,4 +72,15 @@ export const api = {
 
   // labels
   listLabels: () => http<Label[]>("/api/labels"),
+
+  // calendar
+  calendarStatus: () => http<CalendarStatus>("/api/calendar/status"),
+  calendarEvents: (start: string, end: string) =>
+    http<CalendarEvent[]>(
+      `/api/calendar/events?${new URLSearchParams({ start, end })}`
+    ),
+  calendarSync: () =>
+    http<{ ok: boolean }>("/api/calendar/sync", { method: "POST" }),
+  calendarDisconnect: () =>
+    http("/api/calendar/disconnect", { method: "DELETE" }),
 };

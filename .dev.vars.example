@@ -1,0 +1,7 @@
+# Copy to .dev.vars (git-ignored) and fill in real values for local calendar testing.
+# These are wrangler secrets in prod (wrangler secret put <KEY>).
+
+GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-...
+# 32-byte random hex: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+CALENDAR_ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000

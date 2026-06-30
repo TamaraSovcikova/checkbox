@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { type Bindings, getUserId, now, uuid } from "../db";
 import { hydrateTasks } from "./_hydrate";
+import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 
 export const tasks = new Hono<{ Bindings: Bindings }>();
 
@@ -83,6 +84,12 @@ tasks.post("/", async (c) => {
     .bind(id)
     .first();
   const [task] = await hydrateTasks(c.env.DB, [row as Record<string, unknown>]);
+  // Push to GCal if the task has a time-block or due date.
+  if (b.scheduled_start || b.due_date) {
+    c.executionCtx?.waitUntil(
+      pushTaskToGcal(c.env, id, userId).catch(console.error)
+    );
+  }
   return c.json(task, 201);
 });
 
@@ -109,6 +116,19 @@ tasks.patch("/:id", async (c) => {
     .bind(id)
     .first();
   const [task] = await hydrateTasks(c.env.DB, [row as Record<string, unknown>]);
+  // Push to GCal if any scheduling/title field changed.
+  const GCAL_FIELDS = [
+    "scheduled_start",
+    "scheduled_end",
+    "due_date",
+    "due_time",
+    "title",
+  ];
+  if (fields.some((f) => GCAL_FIELDS.includes(f))) {
+    c.executionCtx?.waitUntil(
+      pushTaskToGcal(c.env, id, userId).catch(console.error)
+    );
+  }
   return c.json(task);
 });
 
@@ -162,9 +182,26 @@ tasks.post("/reorder", async (c) => {
 
 tasks.delete("/:id", async (c) => {
   const userId = await getUserId(c);
+  const id = c.req.param("id");
+  // Capture GCal linkage before deletion so we can clean up the event.
+  const linked = await c.env.DB.prepare(
+    "SELECT gcal_event_id, gcal_calendar_id FROM tasks WHERE id = ? AND user_id = ?"
+  )
+    .bind(id, userId)
+    .first<{ gcal_event_id: string | null; gcal_calendar_id: string | null }>();
   await c.env.DB.prepare("DELETE FROM tasks WHERE id = ? AND user_id = ?")
-    .bind(c.req.param("id"), userId)
+    .bind(id, userId)
     .run();
+  if (linked?.gcal_event_id) {
+    c.executionCtx?.waitUntil(
+      deleteTaskGcalEvent(
+        c.env,
+        linked.gcal_event_id,
+        linked.gcal_calendar_id,
+        userId
+      ).catch(console.error)
+    );
+  }
   return c.json({ ok: true });
 });
 

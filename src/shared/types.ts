@@ -74,6 +74,25 @@ export interface SavedFilter {
   position: number;
 }
 
+// Google Calendar event (from local cache).
+export interface CalendarEvent {
+  id: string;
+  gcal_event_id: string;
+  calendar_id: string;
+  title: string | null;
+  start: string; // UTC ISO or YYYY-MM-DD for all-day
+  end: string;
+  all_day: boolean;
+  is_checkbox_owned: boolean;
+  task_id: string | null;
+}
+
+export interface CalendarStatus {
+  connected: boolean;
+  google_email: string | null;
+  primary_calendar_id: string | null;
+}
+
 // Payload from the NLP capture bar.
 export interface CaptureParse {
   title: string;

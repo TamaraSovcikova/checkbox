@@ -7,7 +7,8 @@ import { cx } from "./ui";
 
 const SMART = [
   { to: "/today", label: "Today", icon: "☀" },
-  { to: "/upcoming", label: "Upcoming", icon: "📅" },
+  { to: "/calendar", label: "Calendar", icon: "📅" },
+  { to: "/upcoming", label: "Upcoming", icon: "→" },
   { to: "/overdue", label: "Overdue", icon: "⚠" },
   { to: "/backlog", label: "Backlog", icon: "📥" },
   { to: "/logbook", label: "Logbook", icon: "✓" },

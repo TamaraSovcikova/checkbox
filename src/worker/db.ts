@@ -4,6 +4,12 @@ export type Bindings = {
   DB: D1Database;
   SESSIONS: KVNamespace;
   ASSETS: Fetcher;
+  // Calendar integration — set via wrangler secret in prod, .dev.vars locally.
+  GOOGLE_CLIENT_ID: string | undefined;
+  GOOGLE_CLIENT_SECRET: string | undefined;
+  CALENDAR_ENCRYPTION_KEY: string | undefined; // 64-char hex (32 bytes)
+  // Base URL of the Worker (http://localhost:8787 locally, https://... in prod).
+  WORKER_URL: string;
 };
 
 export type AppContext = Context<{ Bindings: Bindings }>;
