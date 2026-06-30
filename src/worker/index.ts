@@ -1,24 +1,24 @@
 import { Hono } from "hono";
-
-type Bindings = {
-  DB: D1Database;
-  SESSIONS: KVNamespace;
-  ASSETS: Fetcher;
-};
+import type { Bindings } from "./db";
+import { areas } from "./routes/areas";
+import { projects } from "./routes/projects";
+import { tasks } from "./routes/tasks";
+import { labels } from "./routes/labels";
+import { views } from "./routes/views";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
 // --- API routes -----------------------------------------------------------
 app.get("/api/health", (c) =>
-  c.json({
-    ok: true,
-    app: "checkbox",
-    phase: 0,
-    ts: new Date().toISOString(),
-  })
+  c.json({ ok: true, app: "checkbox", phase: 1, ts: new Date().toISOString() })
 );
 
-// Phase 1+ mounts /api/areas, /api/projects, /api/tasks, /api/views/* here.
+app.route("/api/areas", areas);
+app.route("/api/projects", projects);
+app.route("/api/tasks", tasks);
+app.route("/api/labels", labels);
+app.route("/api/views", views);
+
 // Phase 2+ mounts /api/calendar/*. Phase 3 mounts /mcp.
 
 // --- Static SPA fallback --------------------------------------------------
