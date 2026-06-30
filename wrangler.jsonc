@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "checkbox",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "observability": { "enabled": true },
+  // Created later via: wrangler d1 create checkbox  (then paste database_id here)
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "checkbox",
+      "database_id": "PLACEHOLDER_RUN_wrangler_d1_create",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Created later via: wrangler kv namespace create SESSIONS  (then paste id here)
+  "kv_namespaces": [
+    { "binding": "SESSIONS", "id": "PLACEHOLDER_RUN_wrangler_kv_create" }
+  ],
+  // 15-min tick = recurrence + calendar-sync renewal; 06:00 = morning brief
+  "triggers": { "crons": ["*/15 * * * *", "0 6 * * *"] }
+}
