@@ -8,6 +8,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
+      strategies: "injectManifest",
+      srcDir: "src/client",
+      filename: "sw.ts",
       registerType: "autoUpdate",
       manifest: {
         name: "Checkbox",
@@ -21,6 +24,12 @@ export default defineConfig({
         shortcuts: [
           { name: "Quick Add", short_name: "Add", url: "/?quickadd=1" },
         ],
+      },
+      injectManifest: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+      },
+      devOptions: {
+        enabled: false,
       },
     }),
   ],

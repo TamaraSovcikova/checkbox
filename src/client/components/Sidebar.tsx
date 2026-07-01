@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { useAreas, useLabels, useProjects } from "../lib/queries";
+import { useAreas, useLabels, useProjects, useOnlineStatus } from "../lib/queries";
 import { api } from "../lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { cx } from "./ui";
@@ -12,6 +12,7 @@ const SMART = [
   { to: "/overdue", label: "Overdue", icon: "⚠" },
   { to: "/backlog", label: "Backlog", icon: "📥" },
   { to: "/logbook", label: "Logbook", icon: "✓" },
+  { to: "/settings", label: "Settings", icon: "⚙" },
 ];
 
 function Item({
@@ -78,6 +79,7 @@ export function Sidebar() {
   const { data: areas = [] } = useAreas();
   const { data: labels = [] } = useLabels();
   const qc = useQueryClient();
+  const { online, pending } = useOnlineStatus();
 
   async function addArea() {
     const name = prompt("New area name");
@@ -91,6 +93,14 @@ export function Sidebar() {
       <div className="mb-3 flex items-center gap-2 px-1">
         <span className="text-lg">☑</span>
         <span className="font-semibold tracking-tight">Checkbox</span>
+        {!online && (
+          <span
+            title={`Offline${pending > 0 ? ` · ${pending} queued` : ""}`}
+            className="ml-auto rounded bg-amber-900/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
+          >
+            {pending > 0 ? `offline · ${pending}` : "offline"}
+          </span>
+        )}
       </div>
 
       <nav className="space-y-0.5">

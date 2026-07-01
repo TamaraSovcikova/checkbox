@@ -13,6 +13,11 @@ export type Bindings = {
   // MCP server bearer token — set via wrangler secret (prod) or .dev.vars (local).
   // If unset, the MCP endpoint is open (local dev only — never deploy without it).
   MCP_AUTH_TOKEN: string | undefined;
+  // Web Push (VAPID) — generate with: node scripts/gen-vapid.mjs
+  VAPID_PUBLIC_KEY: string | undefined;
+  VAPID_PRIVATE_KEY_JWK: string | undefined;
+  // Resend email digest — get from resend.com
+  RESEND_API_KEY: string | undefined;
 };
 
 export type AppContext = Context<{ Bindings: Bindings }>;

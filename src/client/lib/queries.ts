@@ -3,9 +3,14 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { api } from "./api";
 import type { Task } from "../../shared/types";
+import {
+  getOfflineQueueLength,
+  replayOfflineQueue,
+} from "./offline";
 
 export const useAreas = () =>
   useQuery({ queryKey: ["areas"], queryFn: api.listAreas });
@@ -69,6 +74,81 @@ export function useDeleteTask() {
     mutationFn: (id: string) => api.deleteTask(id),
     onSuccess: invalidate,
   });
+}
+
+// ── Triage ────────────────────────────────────────────────────────────────────
+
+export const useTriageSuggestions = () =>
+  useQuery({ queryKey: ["triage"], queryFn: api.triageList, staleTime: 30_000 });
+
+export function useTriageGenerate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.triageGenerate,
+    onSuccess: (data) => qc.setQueryData(["triage"], data),
+  });
+}
+
+export function useTriageAccept() {
+  const qc = useQueryClient();
+  const invalidate = useTaskInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => api.triageAccept(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["triage"] });
+      invalidate();
+    },
+  });
+}
+
+export function useTriageReject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.triageReject(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["triage"] }),
+  });
+}
+
+// ── Push ──────────────────────────────────────────────────────────────────────
+
+export const usePushStatus = () =>
+  useQuery({
+    queryKey: ["push", "status"],
+    queryFn: api.pushStatus,
+    staleTime: 60_000,
+  });
+
+// ── Offline ───────────────────────────────────────────────────────────────────
+
+export function useOnlineStatus() {
+  const [online, setOnline] = useState(navigator.onLine);
+  const [pending, setPending] = useState(0);
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    getOfflineQueueLength().then(setPending);
+
+    const onOnline = () => {
+      setOnline(true);
+      replayOfflineQueue(() => {
+        qc.invalidateQueries({ queryKey: ["view"] });
+        qc.invalidateQueries({ queryKey: ["tasks"] });
+      }).then(getOfflineQueueLength).then(setPending);
+    };
+    const onOffline = () => {
+      setOnline(false);
+      getOfflineQueueLength().then(setPending);
+    };
+
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, [qc]);
+
+  return { online, pending };
 }
 
 // ── Calendar ──────────────────────────────────────────────────────────────────

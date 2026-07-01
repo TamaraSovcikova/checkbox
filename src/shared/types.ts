@@ -93,6 +93,19 @@ export interface CalendarStatus {
   primary_calendar_id: string | null;
 }
 
+export interface TriageSuggestion {
+  id: string;
+  task_id: string;
+  task_title: string;
+  suggested_area_id: string | null;
+  suggested_project_id: string | null;
+  area_name: string | null;
+  project_name: string | null;
+  confidence: number;
+  reason: string;
+  status: "pending" | "accepted" | "rejected";
+}
+
 // Payload from the NLP capture bar.
 export interface CaptureParse {
   title: string;

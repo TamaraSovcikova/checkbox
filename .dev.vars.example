@@ -10,3 +10,10 @@ CALENDAR_ENCRYPTION_KEY=00000000000000000000000000000000000000000000000000000000
 # MCP server bearer token — used in Claude's MCP server config.
 # Generate: node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
 MCP_AUTH_TOKEN=change-me-to-a-random-secret
+
+# Web Push (VAPID) — generate both with: node scripts/gen-vapid.mjs
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY_JWK=
+
+# Resend email digest — get API key from resend.com
+RESEND_API_KEY=re_...

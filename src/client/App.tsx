@@ -11,7 +11,7 @@ import type { Task } from "../shared/types";
 import { Sidebar } from "./components/Sidebar";
 import { TaskDrawer } from "./components/TaskDrawer";
 import { TaskUIContext } from "./lib/ui-context";
-import { AreaPage, LabelPage, ProjectPage, ViewPage } from "./pages";
+import { AreaPage, LabelPage, ProjectPage, ViewPage, SettingsPage } from "./pages";
 import CalendarPage from "./CalendarPage";
 
 const qc = new QueryClient({
@@ -49,6 +49,7 @@ export default function App() {
             <Route path="project/:id" element={<ProjectPage />} />
             <Route path="label/:name" element={<LabelPage />} />
             <Route path="calendar" element={<CalendarPage />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

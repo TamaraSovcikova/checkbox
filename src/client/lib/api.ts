@@ -5,7 +5,9 @@ import type {
   Label,
   Project,
   Task,
+  TriageSuggestion,
 } from "../../shared/types";
+import { enqueueOffline } from "./offline";
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -14,6 +16,27 @@ async function http<T>(url: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.status === 204 ? (undefined as T) : res.json<T>();
+}
+
+// Mutations that fail because we're offline are queued for later replay.
+async function httpMutate<T>(
+  method: string,
+  url: string,
+  body?: unknown
+): Promise<T> {
+  const init: RequestInit = {
+    method,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  };
+  try {
+    return await http<T>(url, init);
+  } catch (e) {
+    if (!navigator.onLine) {
+      await enqueueOffline(method, url, body);
+      return undefined as T;
+    }
+    throw e;
+  }
 }
 
 export const api = {
@@ -45,33 +68,49 @@ export const api = {
   view: (name: string) => http<Task[]>(`/api/views/${name}`),
   getTask: (id: string) => http<Task>(`/api/tasks/${id}`),
   createTask: (b: Record<string, unknown>) =>
-    http<Task>("/api/tasks", { method: "POST", body: JSON.stringify(b) }),
+    httpMutate<Task>("POST", "/api/tasks", b),
   updateTask: (id: string, b: Record<string, unknown>) =>
-    http<Task>(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(b) }),
+    httpMutate<Task>("PATCH", `/api/tasks/${id}`, b),
   completeTask: (id: string, done = true) =>
-    http(`/api/tasks/${id}/complete?done=${done ? 1 : 0}`, { method: "POST" }),
+    httpMutate("POST", `/api/tasks/${id}/complete?done=${done ? 1 : 0}`),
   rescheduleTask: (id: string, due_date: string | null, due_time?: string | null) =>
-    http(`/api/tasks/${id}/reschedule`, {
-      method: "POST",
-      body: JSON.stringify({ due_date, due_time }),
-    }),
+    httpMutate("POST", `/api/tasks/${id}/reschedule`, { due_date, due_time }),
   reorderTasks: (
     items: { id: string; position: number; board_column?: string; status?: string }[]
-  ) => http("/api/tasks/reorder", { method: "POST", body: JSON.stringify(items) }),
-  deleteTask: (id: string) => http(`/api/tasks/${id}`, { method: "DELETE" }),
+  ) => httpMutate("POST", "/api/tasks/reorder", items),
+  deleteTask: (id: string) =>
+    httpMutate("DELETE", `/api/tasks/${id}`),
   addSubtask: (taskId: string, title: string) =>
-    http(`/api/tasks/${taskId}/subtasks`, {
-      method: "POST",
-      body: JSON.stringify({ title }),
-    }),
+    httpMutate("POST", `/api/tasks/${taskId}/subtasks`, { title }),
   updateSubtask: (taskId: string, subId: string, b: { done?: boolean; title?: string }) =>
-    http(`/api/tasks/${taskId}/subtasks/${subId}`, {
-      method: "PATCH",
-      body: JSON.stringify(b),
-    }),
+    httpMutate("PATCH", `/api/tasks/${taskId}/subtasks/${subId}`, b),
 
   // labels
   listLabels: () => http<Label[]>("/api/labels"),
+
+  // triage
+  triageGenerate: () =>
+    http<TriageSuggestion[]>("/api/triage/generate", { method: "POST" }),
+  triageList: () => http<TriageSuggestion[]>("/api/triage"),
+  triageAccept: (id: string) =>
+    http(`/api/triage/${id}/accept`, { method: "POST" }),
+  triageReject: (id: string) =>
+    http(`/api/triage/${id}/reject`, { method: "POST" }),
+
+  // push notifications
+  pushVapidKey: () => http<{ key: string }>("/api/push/vapid-public-key"),
+  pushStatus: () =>
+    http<{ configured: boolean; subscriptions: number }>("/api/push/status"),
+  pushSubscribe: (sub: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    http<{ ok: boolean }>("/api/push/subscribe", {
+      method: "POST",
+      body: JSON.stringify(sub),
+    }),
+  pushUnsubscribe: (endpoint: string) =>
+    http<{ ok: boolean }>("/api/push/subscribe", {
+      method: "DELETE",
+      body: JSON.stringify({ endpoint }),
+    }),
 
   // calendar
   calendarStatus: () => http<CalendarStatus>("/api/calendar/status"),
