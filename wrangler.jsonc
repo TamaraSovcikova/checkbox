@@ -15,19 +15,19 @@
     {
       "binding": "DB",
       "database_name": "checkbox",
-      "database_id": "PLACEHOLDER_RUN_wrangler_d1_create",
+      "database_id": "9fd24f30-4050-49b3-8728-ba8a69b83c07",
       "migrations_dir": "migrations"
     }
   ],
   // Created later via: wrangler kv namespace create SESSIONS  (then paste id here)
   "kv_namespaces": [
-    { "binding": "SESSIONS", "id": "PLACEHOLDER_RUN_wrangler_kv_create" }
+    { "binding": "SESSIONS", "id": "9297e85a77544ebfb68bc57963df97a7" }
   ],
   // 15-min tick = calendar sync + watch renewal; 06:00 = morning brief (Phase 4)
   "triggers": { "crons": ["*/15 * * * *", "0 6 * * *"] },
   // Local dev base URL — override with the real workers.dev URL after deploy.
   "vars": {
-    "WORKER_URL": "http://localhost:8787"
+    "WORKER_URL": "https://checkbox.tamara-sovcik.workers.dev"
   }
   // Secrets (set via `wrangler secret put` for prod; put in .dev.vars for local):
   //   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, CALENDAR_ENCRYPTION_KEY
