@@ -1,7 +1,12 @@
-# Copy to .dev.vars (git-ignored) and fill in real values for local calendar testing.
+# Copy to .dev.vars (git-ignored) and fill in real values for local development.
 # These are wrangler secrets in prod (wrangler secret put <KEY>).
 
+# Google Calendar (get from Google Cloud Console > Credentials > OAuth 2.0 Client ID)
 GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-...
 # 32-byte random hex: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 CALENDAR_ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
+
+# MCP server bearer token — used in Claude's MCP server config.
+# Generate: node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
+MCP_AUTH_TOKEN=change-me-to-a-random-secret

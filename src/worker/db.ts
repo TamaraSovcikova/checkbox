@@ -10,6 +10,9 @@ export type Bindings = {
   CALENDAR_ENCRYPTION_KEY: string | undefined; // 64-char hex (32 bytes)
   // Base URL of the Worker (http://localhost:8787 locally, https://... in prod).
   WORKER_URL: string;
+  // MCP server bearer token — set via wrangler secret (prod) or .dev.vars (local).
+  // If unset, the MCP endpoint is open (local dev only — never deploy without it).
+  MCP_AUTH_TOKEN: string | undefined;
 };
 
 export type AppContext = Context<{ Bindings: Bindings }>;

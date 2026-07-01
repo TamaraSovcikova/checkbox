@@ -6,6 +6,7 @@ import { tasks } from "./routes/tasks";
 import { labels } from "./routes/labels";
 import { views } from "./routes/views";
 import { calendar } from "./routes/calendar";
+import { mcp } from "./routes/mcp";
 import { syncCalendar, renewWatchChannel } from "./lib/sync";
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -21,6 +22,7 @@ app.route("/api/tasks", tasks);
 app.route("/api/labels", labels);
 app.route("/api/views", views);
 app.route("/api/calendar", calendar);
+app.route("/mcp", mcp);
 
 // --- Static SPA fallback --------------------------------------------------
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
