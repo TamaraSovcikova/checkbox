@@ -6,7 +6,7 @@ import {
 import { useEffect, useState } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { api } from "./api";
-import type { Task } from "../../shared/types";
+import type { Task, UserPrefs } from "../../shared/types";
 import {
   getOfflineQueueLength,
   replayOfflineQueue,
@@ -149,6 +149,48 @@ export function useOnlineStatus() {
   }, [qc]);
 
   return { online, pending };
+}
+
+// ── View preferences (hide/show + order) ──────────────────────────────────────
+
+const EMPTY_PREFS: UserPrefs = { hiddenViews: [], viewOrder: [] };
+
+export function useViewPrefs() {
+  const qc = useQueryClient();
+  const { data: prefs = EMPTY_PREFS } = useQuery({
+    queryKey: ["prefs"],
+    queryFn: api.getPrefs,
+    staleTime: 60_000,
+  });
+
+  const save = useMutation({
+    mutationFn: (p: UserPrefs) => api.savePrefs(p),
+    // Optimistic: update the cache immediately so the sidebar reacts at once.
+    onMutate: async (p) => {
+      await qc.cancelQueries({ queryKey: ["prefs"] });
+      const prev = qc.getQueryData<UserPrefs>(["prefs"]);
+      qc.setQueryData(["prefs"], p);
+      return { prev };
+    },
+    onError: (_e, _p, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["prefs"], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["prefs"] }),
+  });
+
+  const hide = (viewKey: string) => {
+    if (prefs.hiddenViews.includes(viewKey)) return;
+    save.mutate({ ...prefs, hiddenViews: [...prefs.hiddenViews, viewKey] });
+  };
+  const show = (viewKey: string) => {
+    save.mutate({
+      ...prefs,
+      hiddenViews: prefs.hiddenViews.filter((v) => v !== viewKey),
+    });
+  };
+  const isHidden = (viewKey: string) => prefs.hiddenViews.includes(viewKey);
+
+  return { prefs, hide, show, isHidden };
 }
 
 // ── Calendar ──────────────────────────────────────────────────────────────────

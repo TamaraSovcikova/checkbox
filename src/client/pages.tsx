@@ -16,17 +16,25 @@ import { useTaskUI } from "./lib/ui-context";
 import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
 import { TaskRow } from "./components/TaskRow";
+import { ViewToolbar, ToolbarButton } from "./components/ViewToolbar";
+import { useViewPrefs } from "./lib/queries";
 import { Button, cx } from "./components/ui";
 import { api } from "./lib/api";
 import { useQueryClient } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 
-function Header({ title, sub }: { title: string; sub?: string }) {
-  return (
-    <div className="mb-4">
-      <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-      {sub && <p className="text-sm text-slate-500">{sub}</p>}
-    </div>
-  );
+function Header({
+  title,
+  sub,
+  icon,
+  actions,
+}: {
+  title: string;
+  sub?: string;
+  icon?: string;
+  actions?: ReactNode;
+}) {
+  return <ViewToolbar title={title} sub={sub} icon={icon} actions={actions} />;
 }
 
 function TaskList({ tasks, empty }: { tasks: Task[]; empty: string }) {
@@ -42,20 +50,33 @@ function TaskList({ tasks, empty }: { tasks: Task[]; empty: string }) {
   );
 }
 
-const VIEW_META: Record<string, { title: string; sub: string; empty: string }> = {
-  today: { title: "Today", sub: "Due, scheduled, or overdue", empty: "Nothing due today." },
-  upcoming: { title: "Upcoming", sub: "Coming up", empty: "Nothing upcoming." },
-  overdue: { title: "Overdue", sub: "Past due", empty: "Nothing overdue. Nice." },
-  backlog: { title: "Backlog", sub: "Unassigned - triage later", empty: "Backlog is empty." },
-  logbook: { title: "Logbook", sub: "Completed", empty: "No completed tasks yet." },
+const VIEW_META: Record<
+  string,
+  { title: string; sub: string; empty: string; icon: string }
+> = {
+  today: { title: "Today", sub: "Due, scheduled, or overdue", empty: "Nothing due today.", icon: "☀" },
+  upcoming: { title: "Upcoming", sub: "Coming up", empty: "Nothing upcoming.", icon: "→" },
+  overdue: { title: "Overdue", sub: "Past due", empty: "Nothing overdue. Nice.", icon: "⚠" },
+  backlog: { title: "Backlog", sub: "Unassigned - triage later", empty: "Backlog is empty.", icon: "📥" },
+  logbook: { title: "Logbook", sub: "Completed", empty: "No completed tasks yet.", icon: "✓" },
 };
 
 export function ViewPage({ name }: { name: string }) {
   const { data: tasks = [] } = useView(name);
   const meta = VIEW_META[name];
+  const { hide } = useViewPrefs();
   return (
     <div>
-      <Header title={meta.title} sub={meta.sub} />
+      <Header
+        title={meta.title}
+        sub={meta.sub}
+        icon={meta.icon}
+        actions={
+          <ToolbarButton title="Hide this view" onClick={() => hide(`/${name}`)}>
+            ⊘
+          </ToolbarButton>
+        }
+      />
       {name !== "logbook" && (
         <div className="mb-4 max-w-2xl">
           <QuickCapture />
@@ -318,8 +339,32 @@ export function SettingsPage() {
   const { data: pushStatus, refetch: refetchPush } = usePushStatus();
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [mcpToken, setMcpToken] = useState<string | null>(null);
+  const [tokenBusy, setTokenBusy] = useState(false);
 
   const swReady = "serviceWorker" in navigator;
+
+  async function revealToken() {
+    setTokenBusy(true);
+    try {
+      const { token } = await api.mcpToken();
+      setMcpToken(token);
+    } finally {
+      setTokenBusy(false);
+    }
+  }
+
+  async function rotateToken() {
+    if (!confirm("Rotate your MCP token? The old one stops working immediately."))
+      return;
+    setTokenBusy(true);
+    try {
+      const { token } = await api.mcpTokenRotate();
+      setMcpToken(token);
+    } finally {
+      setTokenBusy(false);
+    }
+  }
 
   async function enablePush() {
     if (!swReady) return;
@@ -415,20 +460,39 @@ export function SettingsPage() {
 
       <Section title="MCP server">
         <p className="mb-2 text-sm text-slate-300">
-          Add Checkbox to Claude&apos;s MCP settings to use it from chat.
+          Add Checkbox to Claude&apos;s MCP settings to use it from chat. This token
+          is yours alone — it identifies your account.
         </p>
         <div className="space-y-2 text-xs">
           <div>
             <span className="text-slate-500">URL</span>
             <code className="ml-2 rounded bg-slate-800 px-2 py-0.5 text-slate-200">
-              https://checkbox.tamara-sovcik.workers.dev/mcp
+              {location.origin}/mcp
             </code>
           </div>
-          <div>
-            <span className="text-slate-500">Header</span>
-            <code className="ml-2 rounded bg-slate-800 px-2 py-0.5 text-slate-200">
-              Authorization: Bearer &lt;MCP_AUTH_TOKEN&gt;
-            </code>
+          <div className="flex items-center gap-2">
+            <span className="text-slate-500">Token</span>
+            {mcpToken ? (
+              <code className="rounded bg-slate-800 px-2 py-0.5 text-slate-200 break-all">
+                {mcpToken}
+              </code>
+            ) : (
+              <button
+                onClick={revealToken}
+                className="rounded bg-slate-800 px-2 py-0.5 text-indigo-300 hover:bg-slate-700"
+              >
+                {tokenBusy ? "…" : "Reveal my token"}
+              </button>
+            )}
+            {mcpToken && (
+              <button
+                onClick={rotateToken}
+                className="rounded px-2 py-0.5 text-slate-500 hover:text-slate-200"
+                title="Rotate — invalidates the old token"
+              >
+                {tokenBusy ? "…" : "rotate"}
+              </button>
+            )}
           </div>
         </div>
         <p className="mt-3 text-xs text-slate-600">

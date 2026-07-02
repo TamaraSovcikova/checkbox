@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import type { Bindings } from "./db";
+import { auth } from "./routes/auth";
+import { prefs } from "./routes/prefs";
 import { areas } from "./routes/areas";
 import { projects } from "./routes/projects";
 import { tasks } from "./routes/tasks";
@@ -16,9 +18,11 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 // --- API routes -----------------------------------------------------------
 app.get("/api/health", (c) =>
-  c.json({ ok: true, app: "checkbox", phase: 4, ts: new Date().toISOString() })
+  c.json({ ok: true, app: "checkbox", phase: 5, ts: new Date().toISOString() })
 );
 
+app.route("/api/auth", auth);
+app.route("/api/prefs", prefs);
 app.route("/api/areas", areas);
 app.route("/api/projects", projects);
 app.route("/api/tasks", tasks);

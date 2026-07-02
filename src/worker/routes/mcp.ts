@@ -4,16 +4,35 @@
 
 import { Hono } from "hono";
 import type { Bindings } from "../db";
-import { getUserId, uuid, now } from "../db";
+import { resolveBearerUser, uuid, now } from "../db";
 import { hydrateTasks } from "./_hydrate";
 
 export const mcp = new Hono<{ Bindings: Bindings }>();
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 
-function checkAuth(env: Bindings, header: string | undefined): boolean {
-  if (!env.MCP_AUTH_TOKEN) return true; // unconfigured = open (local dev only)
-  return header === `Bearer ${env.MCP_AUTH_TOKEN}`;
+// Resolve the MCP caller to a user_id via their bearer token (per-user tokens in
+// mcp_tokens, or the legacy MCP_AUTH_TOKEN -> owner). Returns null when the token
+// is missing/unknown. Dev-open fallback: if nothing is configured at all (no
+// MCP_AUTH_TOKEN and no per-user tokens), map to the owner for local development.
+async function mcpUser(
+  env: Bindings,
+  header: string | undefined
+): Promise<string | null> {
+  const uid = await resolveBearerUser(env, header);
+  if (uid) return uid;
+  if (!env.MCP_AUTH_TOKEN) {
+    const anyToken = await env.DB.prepare(
+      "SELECT 1 FROM mcp_tokens LIMIT 1"
+    ).first();
+    if (!anyToken) {
+      const owner = await env.DB.prepare(
+        "SELECT id FROM users ORDER BY created_at LIMIT 1"
+      ).first<{ id: string }>();
+      return owner?.id ?? null;
+    }
+  }
+  return null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -681,7 +700,8 @@ async function handleTool(
 // ── Route: POST /mcp ──────────────────────────────────────────────────────────
 
 mcp.post("/", async (c) => {
-  if (!checkAuth(c.env, c.req.header("Authorization"))) {
+  const userId = await mcpUser(c.env, c.req.header("Authorization"));
+  if (!userId) {
     return c.json(err(null, -32000, "Unauthorized"), 401);
   }
 
@@ -715,7 +735,6 @@ mcp.post("/", async (c) => {
     const toolName = params.name as string;
     const toolArgs = (params.arguments ?? {}) as Record<string, unknown>;
     try {
-      const userId = await getUserId(c);
       const result = await handleTool(toolName, toolArgs, c.env, userId);
       return c.json(ok(id, result));
     } catch (e) {

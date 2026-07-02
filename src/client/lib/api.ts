@@ -6,16 +6,37 @@ import type {
   Project,
   Task,
   TriageSuggestion,
+  UserPrefs,
 } from "../../shared/types";
 import { enqueueOffline } from "./offline";
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { "content-type": "application/json" },
+    credentials: "include",
     ...init,
   });
+  // Session expired or missing mid-use — bounce to Google login. The auth
+  // endpoints themselves are exempt so the AuthGate can probe /me quietly.
+  if (res.status === 401 && !url.startsWith("/api/auth/")) {
+    window.location.href = "/api/auth/google";
+    throw new Error("401 — redirecting to login");
+  }
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.status === 204 ? (undefined as T) : res.json<T>();
+}
+
+export type Me = {
+  userId: string;
+  email: string;
+  name: string | null;
+  avatar: string | null;
+};
+
+// Probe the session without triggering the redirect. Returns null when logged out.
+export async function fetchMe(): Promise<Me | null> {
+  const res = await fetch("/api/auth/me", { credentials: "include" });
+  return res.ok ? res.json<Me>() : null;
 }
 
 // Mutations that fail because we're offline are queued for later replay.
@@ -111,6 +132,18 @@ export const api = {
       method: "DELETE",
       body: JSON.stringify({ endpoint }),
     }),
+
+  // auth
+  me: () => fetchMe(),
+  logout: () => http("/api/auth/logout", { method: "POST" }),
+
+  // prefs (view visibility/order) + MCP token
+  getPrefs: () => http<UserPrefs>("/api/prefs"),
+  savePrefs: (p: UserPrefs) =>
+    http<UserPrefs>("/api/prefs", { method: "PUT", body: JSON.stringify(p) }),
+  mcpToken: () => http<{ token: string }>("/api/prefs/mcp-token"),
+  mcpTokenRotate: () =>
+    http<{ token: string }>("/api/prefs/mcp-token", { method: "POST" }),
 
   // calendar
   calendarStatus: () => http<CalendarStatus>("/api/calendar/status"),

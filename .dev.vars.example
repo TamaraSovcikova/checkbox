@@ -17,3 +17,7 @@ VAPID_PRIVATE_KEY_JWK=
 
 # Resend email digest — get API key from resend.com
 RESEND_API_KEY=re_...
+
+# Local dev only: skip Google login and act as the first user row.
+# NEVER set this in production (it would make the app public).
+DEV_AUTH_BYPASS=1

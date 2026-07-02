@@ -10,7 +10,8 @@
     "preview": "wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc -b --noEmit",
-    "test": "vitest",
+    "test": "NODE_OPTIONS=--experimental-sqlite vitest run",
+    "test:watch": "NODE_OPTIONS=--experimental-sqlite vitest",
     "migrate:local": "wrangler d1 migrations apply checkbox --local",
     "migrate:remote": "wrangler d1 migrations apply checkbox --remote",
     "cf-typegen": "wrangler types"

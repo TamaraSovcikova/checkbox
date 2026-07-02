@@ -1,3 +1,4 @@
+import { useDraggable } from "@dnd-kit/core";
 import type { Task } from "../../shared/types";
 import { useCompleteTask } from "../lib/queries";
 import { cx } from "./ui";
@@ -18,9 +19,28 @@ export function TaskRow({
 }) {
   const complete = useCompleteTask();
   const done = task.status === "done";
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: task.id,
+    data: { type: "task", task },
+  });
 
   return (
-    <div className="group flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-slate-800/50">
+    <div
+      className={cx(
+        "group flex items-start gap-1 rounded-md px-2 py-1.5 hover:bg-slate-800/50",
+        isDragging && "opacity-40"
+      )}
+    >
+      <button
+        ref={setNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label="drag task"
+        title="Drag to an area, project, or view"
+        className="mt-0.5 hidden w-4 shrink-0 cursor-grab text-center text-slate-600 hover:text-slate-300 group-hover:block"
+      >
+        ⠿
+      </button>
       <button
         aria-label="complete"
         onClick={() => complete.mutate({ id: task.id, done: !done })}

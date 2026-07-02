@@ -106,6 +106,12 @@ export interface TriageSuggestion {
   status: "pending" | "accepted" | "rejected";
 }
 
+// Per-user view preferences (stored as JSON on the users row).
+export interface UserPrefs {
+  hiddenViews: string[]; // view keys the user has hidden from the sidebar
+  viewOrder: string[]; // optional custom ordering of view keys
+}
+
 // Payload from the NLP capture bar.
 export interface CaptureParse {
   title: string;

@@ -32,6 +32,14 @@ projects.post("/", async (c) => {
     board_columns?: string[];
   }>();
   if (!body.name?.trim()) return c.json({ error: "name required" }, 400);
+  if (body.area_id) {
+    const a = await c.env.DB.prepare(
+      "SELECT 1 FROM areas WHERE id = ? AND user_id = ?"
+    )
+      .bind(body.area_id, userId)
+      .first();
+    if (!a) return c.json({ error: "area_id not found" }, 400);
+  }
   const id = uuid();
   await c.env.DB.prepare(
     `INSERT INTO projects (id, user_id, area_id, name, description, goal, due_date, board_columns)
@@ -60,6 +68,14 @@ projects.patch("/:id", async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
   if ("board_columns" in body && Array.isArray(body.board_columns))
     body.board_columns = JSON.stringify(body.board_columns);
+  if (body.area_id) {
+    const a = await c.env.DB.prepare(
+      "SELECT 1 FROM areas WHERE id = ? AND user_id = ?"
+    )
+      .bind(body.area_id, userId)
+      .first();
+    if (!a) return c.json({ error: "area_id not found" }, 400);
+  }
   const allowed = [
     "name",
     "area_id",

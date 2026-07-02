@@ -22,6 +22,43 @@ const WRITABLE = [
   "position",
 ];
 
+// Does this task belong to this user? Used to gate subtask + label mutations.
+async function ownsTask(
+  db: D1Database,
+  userId: string,
+  taskId: string
+): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 FROM tasks WHERE id = ? AND user_id = ?")
+    .bind(taskId, userId)
+    .first();
+  return !!row;
+}
+
+// Reject writes that point area_id/project_id at rows the user doesn't own.
+// Returns an error string, or null when the refs are clean.
+async function badRefs(
+  db: D1Database,
+  userId: string,
+  b: Record<string, unknown>
+): Promise<string | null> {
+  if (b.area_id) {
+    const a = await db
+      .prepare("SELECT 1 FROM areas WHERE id = ? AND user_id = ?")
+      .bind(b.area_id, userId)
+      .first();
+    if (!a) return "area_id not found";
+  }
+  if (b.project_id) {
+    const p = await db
+      .prepare("SELECT 1 FROM projects WHERE id = ? AND user_id = ?")
+      .bind(b.project_id, userId)
+      .first();
+    if (!p) return "project_id not found";
+  }
+  return null;
+}
+
 // LIST with filters: ?project_id= &area_id= &status= &backlog=1
 tasks.get("/", async (c) => {
   const userId = await getUserId(c);
@@ -67,6 +104,8 @@ tasks.post("/", async (c) => {
   const b = await c.req.json<Record<string, unknown>>();
   if (!(b.title as string)?.trim())
     return c.json({ error: "title required" }, 400);
+  const refErr = await badRefs(c.env.DB, userId, b);
+  if (refErr) return c.json({ error: refErr }, 400);
   const id = uuid();
   const cols = ["id", "user_id", ...WRITABLE.filter((f) => f in b)];
   const vals = [id, userId, ...WRITABLE.filter((f) => f in b).map((f) => b[f])];
@@ -96,7 +135,12 @@ tasks.post("/", async (c) => {
 tasks.patch("/:id", async (c) => {
   const userId = await getUserId(c);
   const id = c.req.param("id");
+  // Ownership gate: everything below (fields, labels) requires owning the task.
+  if (!(await ownsTask(c.env.DB, userId, id)))
+    return c.json({ error: "not found" }, 404);
   const b = await c.req.json<Record<string, unknown>>();
+  const refErr = await badRefs(c.env.DB, userId, b);
+  if (refErr) return c.json({ error: refErr }, 400);
   const fields = WRITABLE.filter((f) => f in b);
   if (fields.length) {
     const set = fields.map((f) => `${f} = ?`).join(", ");
@@ -112,8 +156,10 @@ tasks.patch("/:id", async (c) => {
       .run();
     await attachLabelNames(c.env.DB, userId, id, b.labelNames as string[]);
   }
-  const row = await c.env.DB.prepare("SELECT * FROM tasks WHERE id = ?")
-    .bind(id)
+  const row = await c.env.DB.prepare(
+    "SELECT * FROM tasks WHERE id = ? AND user_id = ?"
+  )
+    .bind(id, userId)
     .first();
   const [task] = await hydrateTasks(c.env.DB, [row as Record<string, unknown>]);
   // Push to GCal if any scheduling/title field changed.
@@ -206,8 +252,12 @@ tasks.delete("/:id", async (c) => {
 });
 
 // --- subtasks ---
+// Every subtask mutation first verifies the parent task belongs to the user.
 tasks.post("/:id/subtasks", async (c) => {
+  const userId = await getUserId(c);
   const taskId = c.req.param("id");
+  if (!(await ownsTask(c.env.DB, userId, taskId)))
+    return c.json({ error: "not found" }, 404);
   const b = await c.req.json<{ title: string }>();
   const id = uuid();
   await c.env.DB.prepare(
@@ -219,6 +269,10 @@ tasks.post("/:id/subtasks", async (c) => {
 });
 
 tasks.patch("/:id/subtasks/:subId", async (c) => {
+  const userId = await getUserId(c);
+  const taskId = c.req.param("id");
+  if (!(await ownsTask(c.env.DB, userId, taskId)))
+    return c.json({ error: "not found" }, 404);
   const b = await c.req.json<{ title?: string; done?: boolean }>();
   const sets: string[] = [];
   const binds: unknown[] = [];
@@ -231,8 +285,10 @@ tasks.patch("/:id/subtasks/:subId", async (c) => {
     binds.push(b.done ? 1 : 0);
   }
   if (sets.length) {
-    binds.push(c.req.param("subId"));
-    await c.env.DB.prepare(`UPDATE subtasks SET ${sets.join(", ")} WHERE id = ?`)
+    binds.push(c.req.param("subId"), taskId);
+    await c.env.DB.prepare(
+      `UPDATE subtasks SET ${sets.join(", ")} WHERE id = ? AND task_id = ?`
+    )
       .bind(...binds)
       .run();
   }
@@ -240,8 +296,12 @@ tasks.patch("/:id/subtasks/:subId", async (c) => {
 });
 
 tasks.delete("/:id/subtasks/:subId", async (c) => {
-  await c.env.DB.prepare("DELETE FROM subtasks WHERE id = ?")
-    .bind(c.req.param("subId"))
+  const userId = await getUserId(c);
+  const taskId = c.req.param("id");
+  if (!(await ownsTask(c.env.DB, userId, taskId)))
+    return c.json({ error: "not found" }, 404);
+  await c.env.DB.prepare("DELETE FROM subtasks WHERE id = ? AND task_id = ?")
+    .bind(c.req.param("subId"), taskId)
     .run();
   return c.json({ ok: true });
 });
