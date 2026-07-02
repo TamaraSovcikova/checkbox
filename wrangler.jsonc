@@ -7,7 +7,13 @@
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Run the Worker BEFORE static assets for these routes. Without this,
+    // Cloudflare's SPA not_found_handling serves index.html for any browser
+    // navigation (Accept: text/html) that doesn't match a file — including
+    // /api/auth/google — so the Worker's OAuth redirect never runs. API/MCP
+    // fetches (Accept: application/json) were unaffected, which masked the bug.
+    "run_worker_first": ["/api/*", "/mcp", "/mcp/*"]
   },
   "observability": { "enabled": true },
   // Created later via: wrangler d1 create checkbox  (then paste database_id here)
