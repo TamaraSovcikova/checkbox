@@ -60,7 +60,6 @@ export function QuickCapture({
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && submit()}
         placeholder="Add a task... e.g. Call landlord tomorrow 3pm p2 @call #Belgium"
-        autoFocus
       />
       {chips.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-1">
