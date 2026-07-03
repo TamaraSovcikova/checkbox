@@ -20,8 +20,10 @@ export {
   X as CloseIcon,
   CheckSquare as LogoIcon,
   GripVertical as DragIcon,
+  ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   ChevronDown as ChevronDownIcon,
+  RefreshCw as RefreshIcon,
   LogOut as LogOutIcon,
 } from "lucide-react";
 

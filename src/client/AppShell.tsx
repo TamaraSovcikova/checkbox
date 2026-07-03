@@ -8,6 +8,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import { addMinutes, format, parseISO } from "date-fns";
 import type { Task } from "../shared/types";
 import { api } from "./lib/api";
 import { Sidebar } from "./components/Sidebar";
@@ -47,25 +48,58 @@ export function AppShell() {
       | { type?: string; task?: Task }
       | undefined;
     const target = e.over?.data.current as
-      | { type?: string; areaId?: string; projectId?: string; view?: string }
+      | {
+          type?: string;
+          areaId?: string;
+          projectId?: string;
+          view?: string;
+          column?: string;
+          done?: boolean;
+          date?: string;
+          time?: string;
+        }
       | undefined;
     if (!dragged?.task || !target) return;
-    const id = dragged.task.id;
+    const task = dragged.task;
+    const id = task.id;
 
     try {
-      if (target.type === "area") {
-        await api.updateTask(id, { area_id: target.areaId, project_id: null });
-      } else if (target.type === "project") {
-        await api.updateTask(id, {
-          project_id: target.projectId,
-          area_id: target.areaId ?? null,
-        });
-      } else if (target.type === "view" && target.view === "today") {
-        await api.rescheduleTask(id, todayStr());
-      } else if (target.type === "view" && target.view === "backlog") {
-        await api.updateTask(id, { area_id: null, project_id: null });
-      } else {
-        return;
+      switch (target.type) {
+        case "area":
+          await api.updateTask(id, { area_id: target.areaId, project_id: null });
+          break;
+        case "project":
+          await api.updateTask(id, {
+            project_id: target.projectId,
+            area_id: target.areaId ?? null,
+          });
+          break;
+        case "column":
+          if (target.column)
+            await api.updateTask(id, {
+              board_column: target.column,
+              status: target.done ? "done" : "todo",
+            });
+          break;
+        case "slot":
+          if (target.date && target.time) {
+            const start = `${target.date}T${target.time}:00`;
+            const dur = task.time_estimate_min ?? 60;
+            const endD = addMinutes(parseISO(start), dur);
+            const end = `${format(endD, "yyyy-MM-dd")}T${format(endD, "HH:mm")}:00`;
+            await api.updateTask(id, {
+              scheduled_start: start,
+              scheduled_end: end,
+            });
+          }
+          break;
+        case "view":
+          if (target.view === "today") await api.rescheduleTask(id, todayStr());
+          else if (target.view === "backlog")
+            await api.updateTask(id, { area_id: null, project_id: null });
+          break;
+        default:
+          return;
       }
     } finally {
       client.invalidateQueries({ queryKey: ["view"] });
