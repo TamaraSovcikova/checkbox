@@ -8,9 +8,9 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { addMinutes, format, parseISO } from "date-fns";
 import type { Task } from "../shared/types";
 import { api } from "./lib/api";
+import { resolveDrop, type DragData, type DropData } from "./lib/dnd";
 import { Sidebar } from "./components/Sidebar";
 import { TaskSheet } from "./components/TaskSheet";
 import { CommandCapture } from "./components/CommandCapture";
@@ -44,63 +44,16 @@ export function AppShell() {
   );
 
   async function onDragEnd(e: DragEndEvent) {
-    const dragged = e.active.data.current as
-      | { type?: string; task?: Task }
-      | undefined;
-    const target = e.over?.data.current as
-      | {
-          type?: string;
-          areaId?: string;
-          projectId?: string;
-          view?: string;
-          column?: string;
-          done?: boolean;
-          date?: string;
-          time?: string;
-        }
-      | undefined;
-    if (!dragged?.task || !target) return;
-    const task = dragged.task;
-    const id = task.id;
-
+    const action = resolveDrop(
+      e.active.data.current as DragData,
+      e.over?.data.current as DropData,
+      todayStr()
+    );
+    if (!action) return;
     try {
-      switch (target.type) {
-        case "area":
-          await api.updateTask(id, { area_id: target.areaId, project_id: null });
-          break;
-        case "project":
-          await api.updateTask(id, {
-            project_id: target.projectId,
-            area_id: target.areaId ?? null,
-          });
-          break;
-        case "column":
-          if (target.column)
-            await api.updateTask(id, {
-              board_column: target.column,
-              status: target.done ? "done" : "todo",
-            });
-          break;
-        case "slot":
-          if (target.date && target.time) {
-            const start = `${target.date}T${target.time}:00`;
-            const dur = task.time_estimate_min ?? 60;
-            const endD = addMinutes(parseISO(start), dur);
-            const end = `${format(endD, "yyyy-MM-dd")}T${format(endD, "HH:mm")}:00`;
-            await api.updateTask(id, {
-              scheduled_start: start,
-              scheduled_end: end,
-            });
-          }
-          break;
-        case "view":
-          if (target.view === "today") await api.rescheduleTask(id, todayStr());
-          else if (target.view === "backlog")
-            await api.updateTask(id, { area_id: null, project_id: null });
-          break;
-        default:
-          return;
-      }
+      if (action.kind === "reschedule")
+        await api.rescheduleTask(action.id, action.dueDate);
+      else await api.updateTask(action.id, action.body);
     } finally {
       client.invalidateQueries({ queryKey: ["view"] });
       client.invalidateQueries({ queryKey: ["tasks"] });
