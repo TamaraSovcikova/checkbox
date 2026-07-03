@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { format, parseISO } from "date-fns";
 import type { Task, Subtask } from "../../shared/types";
 import { api } from "../lib/api";
@@ -13,8 +13,12 @@ import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent } from "./ui/sheet";
 import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
-import { Calendar } from "./ui/calendar";
 import { CalendarIcon, AddIcon } from "../lib/icons";
+
+// Lazy — react-day-picker only loads when a date picker is actually opened.
+const Calendar = lazy(() =>
+  import("./ui/calendar").then((m) => ({ default: m.Calendar }))
+);
 
 function DueDatePicker({
   value,
@@ -41,14 +45,18 @@ function DueDatePicker({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
-        <Calendar
-          mode="single"
-          selected={selected}
-          onSelect={(d) => {
-            onChange(d ? format(d, "yyyy-MM-dd") : "");
-            setOpen(false);
-          }}
-        />
+        <Suspense
+          fallback={<div className="p-4 text-xs text-subtle">Loading…</div>}
+        >
+          <Calendar
+            mode="single"
+            selected={selected}
+            onSelect={(d) => {
+              onChange(d ? format(d, "yyyy-MM-dd") : "");
+              setOpen(false);
+            }}
+          />
+        </Suspense>
         {value && (
           <button
             type="button"

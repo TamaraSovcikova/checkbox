@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fetchMe, type Me } from "./lib/api";
 import { AppShell } from "./AppShell";
 import { MeContext } from "./lib/ui-context";
 import { AreaPage, LabelPage, ProjectPage, ViewPage, SettingsPage } from "./pages";
-import CalendarPage from "./CalendarPage";
+
+// Lazy — the calendar pulls in its own timeline code; keep it out of the
+// initial bundle (capture-first PWA).
+const CalendarPage = lazy(() => import("./CalendarPage"));
 
 const qc = new QueryClient({
   defaultOptions: { queries: { staleTime: 10_000, refetchOnWindowFocus: false } },
@@ -65,7 +68,20 @@ export default function App() {
               <Route path="area/:id" element={<AreaPage />} />
               <Route path="project/:id" element={<ProjectPage />} />
               <Route path="label/:name" element={<LabelPage />} />
-              <Route path="calendar" element={<CalendarPage />} />
+              <Route
+                path="calendar"
+                element={
+                  <Suspense
+                    fallback={
+                      <div className="py-24 text-center text-sm text-subtle">
+                        Loading…
+                      </div>
+                    }
+                  >
+                    <CalendarPage />
+                  </Suspense>
+                }
+              />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
           </Routes>
