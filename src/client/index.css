@@ -1,7 +1,67 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Design tokens — refined dark, single indigo accent.
+   Single source of truth for color; JS mirror lives in lib/colors.ts.
+   shadcn/ui (added in T2) consumes these same CSS variables, so the whole
+   app — rows, cards, drawer, board, AND calendar — themes from one place.
+   ───────────────────────────────────────────────────────────────────────── */
 :root {
   color-scheme: dark;
+
+  /* neutral surfaces (slate ramp) */
+  --background: #0b1120; /* app background */
+  --surface: #0f172a;    /* slate-900  cards / panels */
+  --surface-2: #1e293b;  /* slate-800  raised / hover */
+  --foreground: #e2e8f0; /* slate-200  primary text */
+  --muted: #94a3b8;      /* slate-400  secondary text */
+  --subtle: #64748b;     /* slate-500  tertiary text */
+  --border: #1e293b;     /* slate-800 */
+  --input: #334155;      /* slate-700 */
+
+  /* single accent = indigo (replaces the old sky / blue / indigo three-way split) */
+  --primary: #6366f1;         /* indigo-500 */
+  --primary-hover: #818cf8;   /* indigo-400 */
+  --primary-foreground: #ffffff;
+  --ring: #6366f1;
+
+  /* semantic state */
+  --success: #34d399; /* emerald-400 */
+  --warning: #fbbf24; /* amber-400 */
+  --danger: #f87171;  /* red-400 */
+
+  /* priority scale — identical in list, card, drawer, AND calendar */
+  --pri-1: #f87171; /* red-400     urgent */
+  --pri-2: #fb923c; /* orange-400  high   */
+  --pri-3: #fbbf24; /* amber-400   medium */
+  --pri-4: #94a3b8; /* slate-400   low    */
+
+  --radius: 0.5rem;
+}
+
+/* Expose tokens as Tailwind v4 utilities: bg-primary, text-muted, border-border,
+   text-pri-1, etc. `inline` keeps them referencing the CSS vars at runtime. */
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-pri-1: var(--pri-1);
+  --color-pri-2: var(--pri-2);
+  --color-pri-3: var(--pri-3);
+  --color-pri-4: var(--pri-4);
+  --radius: var(--radius);
 }
 
 html,
@@ -12,24 +72,24 @@ body,
 
 body {
   margin: 0;
-  background: #0b1120;
-  color: #e2e8f0;
+  background: var(--background);
+  color: var(--foreground);
   font-family:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
-/* priority accent colors */
+/* priority accent text (kept for back-compat during the rewrite; now token-driven) */
 .pri-1 {
-  color: #f87171;
+  color: var(--pri-1);
 }
 .pri-2 {
-  color: #fb923c;
+  color: var(--pri-2);
 }
 .pri-3 {
-  color: #facc15;
+  color: var(--pri-3);
 }
 .pri-4 {
-  color: #64748b;
+  color: var(--pri-4);
 }
 
 ::-webkit-scrollbar {
@@ -37,6 +97,6 @@ body {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: var(--surface-2);
   border-radius: 6px;
 }
