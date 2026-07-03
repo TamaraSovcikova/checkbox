@@ -33,6 +33,9 @@ export default defineConfig({
       },
     }),
   ],
+  resolve: {
+    alias: { "@": new URL("./src/client", import.meta.url).pathname },
+  },
   build: { outDir: "dist/client", emptyOutDir: true },
   // In dev, `vite` serves the client and proxies API calls to `wrangler dev` (8787).
   server: { proxy: { "/api": "http://localhost:8787" } },

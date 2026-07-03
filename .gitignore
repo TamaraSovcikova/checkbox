@@ -20,3 +20,4 @@ worker-configuration.d.ts
 .vscode/
 .idea/
 *.swp
+tsconfig.tsbuildinfo
