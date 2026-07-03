@@ -16,59 +16,42 @@ import { useTaskUI } from "./lib/ui-context";
 import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
 import { TaskRow } from "./components/TaskRow";
+import { TopBar, type Tab, type MenuChoice } from "./components/TopBar";
 import {
-  ViewToolbar,
-  ToolbarMenu,
-  IconGrid,
-  IconList,
-  IconSort,
-  IconGroup,
-  type Tab,
-  type MenuItem,
-} from "./components/ViewToolbar";
+  GridIcon,
+  ListIcon,
+  TodayIcon,
+  UpcomingIcon,
+  OverdueIcon,
+  BacklogIcon,
+  LogbookIcon,
+  ICON_SIZE,
+} from "./lib/icons";
+import { PRIORITY_VAR } from "./lib/colors";
 import { useViewPrefs } from "./lib/queries";
 import { Button, cx } from "./components/ui";
 import { api } from "./lib/api";
 import { useQueryClient } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 
-function Header<T extends string>({
-  title,
-  sub,
-  icon,
-  tabs,
-  activeTab,
-  onTab,
-  menu,
-  actions,
-}: {
+function Header<T extends string>(props: {
   title: string;
-  sub?: string;
   icon?: ReactNode;
   tabs?: Tab<T>[];
   activeTab?: T;
   onTab?: (id: T) => void;
-  menu?: MenuItem[];
+  sort?: MenuChoice[];
+  group?: MenuChoice[];
+  menu?: MenuChoice[];
   actions?: ReactNode;
 }) {
-  return (
-    <ViewToolbar
-      title={title}
-      sub={sub}
-      icon={icon}
-      tabs={tabs}
-      activeTab={activeTab}
-      onTab={onTab}
-      menu={menu}
-      actions={actions}
-    />
-  );
+  return <TopBar {...props} />;
 }
 
 function TaskList({ tasks, empty }: { tasks: Task[]; empty: string }) {
   const { open } = useTaskUI();
   if (tasks.length === 0)
-    return <p className="px-2 text-sm text-slate-600">{empty}</p>;
+    return <p className="px-2 text-sm text-subtle">{empty}</p>;
   return (
     <div className="max-w-2xl">
       {tasks.map((t) => (
@@ -80,13 +63,13 @@ function TaskList({ tasks, empty }: { tasks: Task[]; empty: string }) {
 
 const VIEW_META: Record<
   string,
-  { title: string; sub: string; empty: string; icon: string }
+  { title: string; empty: string; icon: ComponentType<{ className?: string }> }
 > = {
-  today: { title: "Today", sub: "Due, scheduled, or overdue", empty: "Nothing due today.", icon: "☀" },
-  upcoming: { title: "Upcoming", sub: "Coming up", empty: "Nothing upcoming.", icon: "→" },
-  overdue: { title: "Overdue", sub: "Past due", empty: "Nothing overdue. Nice.", icon: "⚠" },
-  backlog: { title: "Backlog", sub: "Unassigned - triage later", empty: "Backlog is empty.", icon: "📥" },
-  logbook: { title: "Logbook", sub: "Completed", empty: "No completed tasks yet.", icon: "✓" },
+  today: { title: "Today", empty: "Nothing due today.", icon: TodayIcon },
+  upcoming: { title: "Upcoming", empty: "Nothing upcoming.", icon: UpcomingIcon },
+  overdue: { title: "Overdue", empty: "Nothing overdue. Nice.", icon: OverdueIcon },
+  backlog: { title: "Backlog", empty: "Backlog is empty.", icon: BacklogIcon },
+  logbook: { title: "Logbook", empty: "No completed tasks yet.", icon: LogbookIcon },
 };
 
 // ── Client-side sort / group over the fetched task list ───────────────────────
@@ -153,16 +136,16 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
   return (
     <button
       onClick={() => onOpen(task)}
-      className="flex flex-col rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-left transition-colors hover:border-slate-700"
+      className="flex flex-col rounded-lg border border-border bg-surface/60 p-3 text-left transition-colors hover:border-primary/40"
     >
-      <span className={cx("text-sm", done && "text-slate-500 line-through")}>
+      <span className={cx("text-sm text-foreground", done && "text-subtle line-through")}>
         {task.title}
       </span>
-      <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
-        <span className={`pri-${task.priority}`}>P{task.priority}</span>
-        {task.due_date && <span className="text-sky-400">{task.due_date}</span>}
+      <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-subtle">
+        <span style={{ color: PRIORITY_VAR[task.priority] }}>P{task.priority}</span>
+        {task.due_date && <span className="text-primary">{task.due_date}</span>}
         {(task.labels ?? []).map((l) => (
-          <span key={l.id} className="text-violet-400">
+          <span key={l.id} className="text-muted">
             @{l.name}
           </span>
         ))}
@@ -174,7 +157,7 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
 function TaskGrid({ tasks, empty }: { tasks: Task[]; empty: string }) {
   const { open } = useTaskUI();
   if (tasks.length === 0)
-    return <p className="px-2 text-sm text-slate-600">{empty}</p>;
+    return <p className="px-2 text-sm text-subtle">{empty}</p>;
   return (
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {tasks.map((t) => (
@@ -185,8 +168,8 @@ function TaskGrid({ tasks, empty }: { tasks: Task[]; empty: string }) {
 }
 
 const VIEW_TABS: Tab<"grid" | "list">[] = [
-  { id: "grid", label: "Grid", icon: <IconGrid /> },
-  { id: "list", label: "List", icon: <IconList /> },
+  { id: "grid", label: "Grid", icon: <GridIcon className={ICON_SIZE} /> },
+  { id: "list", label: "List", icon: <ListIcon className={ICON_SIZE} /> },
 ];
 
 export function ViewPage({ name }: { name: string }) {
@@ -210,15 +193,15 @@ export function ViewPage({ name }: { name: string }) {
   const sorted = sortTasks(tasks, sort);
   const groups = groupTasks(sorted, group, names);
 
-  const sortMenu: MenuItem[] = (Object.keys(SORT_LABEL) as SortKey[]).map((k) => ({
+  const sortMenu: MenuChoice[] = (Object.keys(SORT_LABEL) as SortKey[]).map((k) => ({
     label: SORT_LABEL[k],
     active: sort === k,
-    onClick: () => setSort(k),
+    onSelect: () => setSort(k),
   }));
-  const groupMenu: MenuItem[] = (Object.keys(GROUP_LABEL) as GroupKey[]).map((k) => ({
+  const groupMenu: MenuChoice[] = (Object.keys(GROUP_LABEL) as GroupKey[]).map((k) => ({
     label: GROUP_LABEL[k],
     active: group === k,
-    onClick: () => setGroup(k),
+    onSelect: () => setGroup(k),
   }));
 
   const Body = view === "grid" ? TaskGrid : TaskList;
@@ -243,18 +226,13 @@ export function ViewPage({ name }: { name: string }) {
     <div>
       <Header
         title={meta.title}
-        sub={meta.sub}
-        icon={meta.icon}
+        icon={<meta.icon className={ICON_SIZE} />}
         tabs={VIEW_TABS}
         activeTab={view}
         onTab={setView}
-        menu={[{ label: "Hide this view", onClick: () => hide(`/${name}`) }]}
-        actions={
-          <>
-            <ToolbarMenu icon={<IconSort />} label="Sort" items={sortMenu} />
-            <ToolbarMenu icon={<IconGroup />} label="Group" items={groupMenu} />
-          </>
-        }
+        sort={sortMenu}
+        group={groupMenu}
+        menu={[{ label: "Hide this view", onSelect: () => hide(`/${name}`) }]}
       />
       {name !== "logbook" && (
         <div className="mb-4 max-w-2xl">
@@ -414,7 +392,7 @@ export function AreaPage() {
 
   return (
     <div>
-      <Header title={area?.name ?? "Area"} sub="Area" />
+      <Header title={area?.name ?? "Area"} />
 
       <div className="mb-5">
         <div className="mb-2 flex items-center justify-between">
@@ -464,7 +442,6 @@ export function ProjectPage() {
     <div>
       <Header
         title={project.name}
-        sub={project.goal ?? "Project"}
         tabs={VIEW_TABS}
         activeTab={view}
         onTab={setView}
@@ -485,7 +462,7 @@ export function LabelPage() {
   );
   return (
     <div>
-      <Header title={`@${decodeURIComponent(name)}`} sub="Label" />
+      <Header title={`@${decodeURIComponent(name)}`} />
       <TaskList tasks={filtered} empty="No tasks with this label." />
     </div>
   );

@@ -1,14 +1,9 @@
 import { useDraggable } from "@dnd-kit/core";
 import type { Task } from "../../shared/types";
 import { useCompleteTask } from "../lib/queries";
-import { cx } from "./ui";
-
-const PRI_DOT: Record<number, string> = {
-  1: "pri-1",
-  2: "pri-2",
-  3: "pri-3",
-  4: "pri-4",
-};
+import { PRIORITY_VAR } from "../lib/colors";
+import { cn } from "@/lib/utils";
+import { DragIcon, CheckIcon } from "../lib/icons";
 
 export function TaskRow({
   task,
@@ -26,8 +21,8 @@ export function TaskRow({
 
   return (
     <div
-      className={cx(
-        "group flex items-start gap-1 rounded-md px-2 py-1.5 hover:bg-slate-800/50",
+      className={cn(
+        "group flex items-start gap-1 rounded-md px-2 py-1.5 transition-colors hover:bg-surface-2/50",
         isDragging && "opacity-40"
       )}
     >
@@ -35,42 +30,40 @@ export function TaskRow({
         ref={setNodeRef}
         {...attributes}
         {...listeners}
-        aria-label="drag task"
+        aria-label="Drag task"
         title="Drag to an area, project, or view"
-        className="mt-0.5 hidden w-4 shrink-0 cursor-grab text-center text-slate-600 hover:text-slate-300 group-hover:block"
+        className="mt-0.5 hidden w-4 shrink-0 cursor-grab place-items-center text-subtle hover:text-foreground group-hover:grid"
       >
-        ⠿
+        <DragIcon className="h-3.5 w-3.5" />
       </button>
       <button
-        aria-label="complete"
+        aria-label="Complete"
         onClick={() => complete.mutate({ id: task.id, done: !done })}
-        className={cx(
-          "mt-0.5 h-4 w-4 shrink-0 rounded-full border",
+        className={cn(
+          "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border transition-colors",
           done
-            ? "border-sky-500 bg-sky-500"
-            : cx("border-slate-600 hover:border-sky-400", PRI_DOT[task.priority])
+            ? "border-primary bg-primary text-primary-foreground"
+            : "hover:border-primary"
         )}
+        style={done ? undefined : { borderColor: PRIORITY_VAR[task.priority] }}
       >
-        {done && <span className="block text-[10px] leading-none text-white">✓</span>}
+        {done && <CheckIcon className="h-2.5 w-2.5" />}
       </button>
 
-      <button
-        onClick={() => onOpen(task)}
-        className="flex-1 text-left"
-      >
-        <div className={cx("text-sm", done && "text-slate-500 line-through")}>
+      <button onClick={() => onOpen(task)} className="flex-1 text-left">
+        <div className={cn("text-sm text-foreground", done && "text-subtle line-through")}>
           {task.title}
         </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-subtle">
           {task.due_date && (
-            <span className="text-sky-400">
+            <span className="text-primary">
               {task.due_date}
               {task.due_time ? ` ${task.due_time}` : ""}
             </span>
           )}
           {task.time_estimate_min && <span>{task.time_estimate_min}m</span>}
           {(task.labels ?? []).map((l) => (
-            <span key={l.id} className="text-violet-400">
+            <span key={l.id} className="text-muted">
               @{l.name}
             </span>
           ))}

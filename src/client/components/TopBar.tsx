@@ -45,7 +45,7 @@ export function TopBar<T extends string>({
   actions?: ReactNode;
 }) {
   return (
-    <header className="sticky top-0 z-20 flex items-center gap-4 border-b border-border bg-background px-6 py-3">
+    <header className="sticky top-0 z-20 -mx-6 -mt-6 mb-4 flex items-center gap-4 border-b border-border bg-background px-6 py-3">
       <div className="flex min-w-0 items-center gap-2.5">
         {icon && <span className="shrink-0 text-primary">{icon}</span>}
         <h1 className="truncate text-xl font-bold tracking-tight text-foreground">

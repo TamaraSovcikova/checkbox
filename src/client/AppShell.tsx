@@ -11,7 +11,7 @@ import {
 import type { Task } from "../shared/types";
 import { api } from "./lib/api";
 import { Sidebar } from "./components/Sidebar";
-import { TaskDrawer } from "./components/TaskDrawer";
+import { TaskSheet } from "./components/TaskSheet";
 import { TaskUIContext } from "./lib/ui-context";
 
 // Brussels-local today as YYYY-MM-DD (matches the server's day boundary).
@@ -82,7 +82,7 @@ export function AppShell() {
               <Outlet />
             </div>
           </main>
-          {task && <TaskDrawer task={task} onClose={() => setTask(null)} />}
+          <TaskSheet task={task} onClose={() => setTask(null)} />
         </div>
       </DndContext>
     </TaskUIContext.Provider>

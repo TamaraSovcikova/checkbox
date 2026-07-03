@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "react-day-picker/style.css";
 
 /* ─────────────────────────────────────────────────────────────────────────
    Design tokens — refined dark, single indigo accent.
@@ -91,6 +92,13 @@ body {
 }
 .pri-4 {
   color: var(--pri-4);
+}
+
+/* react-day-picker themed to the design tokens */
+.rdp-root {
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: color-mix(in oklab, var(--primary) 22%, transparent);
+  --rdp-today-color: var(--primary);
 }
 
 ::-webkit-scrollbar {
