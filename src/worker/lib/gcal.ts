@@ -143,10 +143,14 @@ export async function getGoogleEmail(accessToken: string): Promise<string> {
 export async function getPrimaryCalendarId(
   accessToken: string
 ): Promise<string> {
+  // The calendarList endpoint requires the broad `calendar`/`calendar.readonly`
+  // scope, but we only request `calendar.events`. When that call is rejected,
+  // fall back to the "primary" alias — every events API endpoint accepts it,
+  // so we never actually need to resolve the concrete calendar id.
   const res = await fetch(`${GCAL_BASE}/users/me/calendarList`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) throw new Error("Failed to list calendars");
+  if (!res.ok) return "primary";
   const data = await res.json<{
     items: { id: string; primary?: boolean }[];
   }>();
