@@ -6,7 +6,7 @@ import {
 import { useEffect, useState } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { api } from "./api";
-import type { Task, UserPrefs } from "../../shared/types";
+import type { Task, UserPrefs, ViewDefault } from "../../shared/types";
 import {
   getOfflineQueueLength,
   replayOfflineQueue,
@@ -153,7 +153,7 @@ export function useOnlineStatus() {
 
 // ── View preferences (hide/show + order) ──────────────────────────────────────
 
-const EMPTY_PREFS: UserPrefs = { hiddenViews: [], viewOrder: [] };
+const EMPTY_PREFS: UserPrefs = { hiddenViews: [], viewOrder: [], viewDefaults: {} };
 
 export function useViewPrefs() {
   const qc = useQueryClient();
@@ -190,7 +190,22 @@ export function useViewPrefs() {
   };
   const isHidden = (viewKey: string) => prefs.hiddenViews.includes(viewKey);
 
-  return { prefs, hide, show, isHidden };
+  // Per-view display defaults (grid/sort/group). Merges into the same prefs blob
+  // so a write never drops hiddenViews/viewOrder.
+  const viewDefault = (viewKey: string): ViewDefault =>
+    prefs.viewDefaults?.[viewKey] ?? {};
+  const setViewDefault = (viewKey: string, patch: Partial<ViewDefault>) => {
+    const cur = prefs.viewDefaults?.[viewKey] ?? {};
+    save.mutate({
+      ...prefs,
+      viewDefaults: {
+        ...(prefs.viewDefaults ?? {}),
+        [viewKey]: { ...cur, ...patch },
+      },
+    });
+  };
+
+  return { prefs, hide, show, isHidden, viewDefault, setViewDefault };
 }
 
 // ── Calendar ──────────────────────────────────────────────────────────────────

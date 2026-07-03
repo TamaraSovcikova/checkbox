@@ -6,7 +6,13 @@ import type { UserPrefs } from "../../shared/types";
 
 export const prefs = new Hono<{ Bindings: Bindings }>();
 
-const EMPTY: UserPrefs = { hiddenViews: [], viewOrder: [] };
+const EMPTY: UserPrefs = { hiddenViews: [], viewOrder: [], viewDefaults: {} };
+
+function cleanViewDefaults(v: unknown): UserPrefs["viewDefaults"] {
+  return v && typeof v === "object" && !Array.isArray(v)
+    ? (v as UserPrefs["viewDefaults"])
+    : {};
+}
 
 function parsePrefs(raw: unknown): UserPrefs {
   if (typeof raw !== "string") return { ...EMPTY };
@@ -15,6 +21,7 @@ function parsePrefs(raw: unknown): UserPrefs {
     return {
       hiddenViews: Array.isArray(p.hiddenViews) ? p.hiddenViews : [],
       viewOrder: Array.isArray(p.viewOrder) ? p.viewOrder : [],
+      viewDefaults: cleanViewDefaults(p.viewDefaults),
     };
   } catch {
     return { ...EMPTY };
@@ -35,6 +42,7 @@ prefs.put("/", async (c) => {
   const clean: UserPrefs = {
     hiddenViews: Array.isArray(body.hiddenViews) ? body.hiddenViews : [],
     viewOrder: Array.isArray(body.viewOrder) ? body.viewOrder : [],
+    viewDefaults: cleanViewDefaults(body.viewDefaults),
   };
   await c.env.DB.prepare("UPDATE users SET prefs = ? WHERE id = ?")
     .bind(JSON.stringify(clean), userId)

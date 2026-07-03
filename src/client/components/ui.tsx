@@ -17,9 +17,9 @@ export const Button = forwardRef<HTMLButtonElement, BtnProps>(
     const base =
       "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50";
     const variants = {
-      primary: "bg-sky-500 text-white hover:bg-sky-400",
-      ghost: "text-slate-300 hover:bg-slate-800",
-      subtle: "bg-slate-800 text-slate-100 hover:bg-slate-700",
+      primary: "bg-primary text-primary-foreground hover:bg-primary-hover",
+      ghost: "text-foreground hover:bg-surface-2",
+      subtle: "bg-surface-2 text-foreground hover:bg-surface-2/80",
     };
     return (
       <button ref={ref} className={cx(base, variants[variant], className)} {...rest} />
@@ -35,7 +35,7 @@ export const Input = forwardRef<
   <input
     ref={ref}
     className={cx(
-      "w-full rounded-md bg-slate-900 border border-slate-700 px-3 py-2 text-sm outline-none focus:border-sky-500",
+      "w-full rounded-md border border-input bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary",
       className
     )}
     {...rest}

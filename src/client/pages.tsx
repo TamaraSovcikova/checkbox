@@ -11,8 +11,9 @@ import {
   useTriageAccept,
   useTriageReject,
   usePushStatus,
+  useCalendarStatus,
 } from "./lib/queries";
-import { useTaskUI } from "./lib/ui-context";
+import { useTaskUI, useMe } from "./lib/ui-context";
 import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
 import { TaskRow } from "./components/TaskRow";
@@ -177,11 +178,15 @@ export function ViewPage({ name }: { name: string }) {
   const { data: areas = [] } = useAreas();
   const { data: projects = [] } = useProjects();
   const meta = VIEW_META[name];
-  const { hide } = useViewPrefs();
+  const { hide, viewDefault, setViewDefault } = useViewPrefs();
 
-  const [view, setView] = useState<"grid" | "list">("list");
-  const [sort, setSort] = useState<SortKey>("manual");
-  const [group, setGroup] = useState<GroupKey>("none");
+  const vd = viewDefault(`/${name}`);
+  const view = (vd.mode ?? "list") as "grid" | "list";
+  const sort = (vd.sort as SortKey) ?? "manual";
+  const group = (vd.group as GroupKey) ?? "none";
+  const setView = (m: "grid" | "list") => setViewDefault(`/${name}`, { mode: m });
+  const setSort = (s: SortKey) => setViewDefault(`/${name}`, { sort: s });
+  const setGroup = (g: GroupKey) => setViewDefault(`/${name}`, { group: g });
 
   const names = {
     area: (id: string | null) =>
@@ -435,7 +440,9 @@ export function ProjectPage() {
   const { id = "" } = useParams();
   const { open } = useTaskUI();
   const { data: projects = [] } = useProjects();
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const { viewDefault, setViewDefault } = useViewPrefs();
+  const view = (viewDefault(`project:${id}`).mode ?? "grid") as "grid" | "list";
+  const setView = (m: "grid" | "list") => setViewDefault(`project:${id}`, { mode: m });
   const project = projects.find((p) => p.id === id);
   if (!project) return <p className="text-slate-500">Loading project...</p>;
   return (
@@ -488,10 +495,10 @@ function Section({
 }) {
   return (
     <div className="mb-8">
-      <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-subtle">
         {title}
       </h2>
-      <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+      <div className="rounded-xl border border-border bg-surface/40 p-5">
         {children}
       </div>
     </div>
@@ -499,13 +506,28 @@ function Section({
 }
 
 export function SettingsPage() {
+  const me = useMe();
   const { data: pushStatus, refetch: refetchPush } = usePushStatus();
+  const { data: cal, refetch: refetchCal } = useCalendarStatus();
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
   const [mcpToken, setMcpToken] = useState<string | null>(null);
   const [tokenBusy, setTokenBusy] = useState(false);
+  const [calBusy, setCalBusy] = useState(false);
 
   const swReady = "serviceWorker" in navigator;
+
+  async function disconnectCal() {
+    if (!confirm("Disconnect Google Calendar? Synced events will be cleared."))
+      return;
+    setCalBusy(true);
+    try {
+      await api.calendarDisconnect();
+      await refetchCal();
+    } finally {
+      setCalBusy(false);
+    }
+  }
 
   async function revealToken() {
     setTokenBusy(true);
@@ -582,32 +604,61 @@ export function SettingsPage() {
     <div className="max-w-xl">
       <Header title="Settings" />
 
-      <Section title="Push notifications">
+      <Section title="Account">
+        <div className="flex items-center gap-3">
+          {me?.avatar ? (
+            <img
+              src={me.avatar}
+              alt=""
+              className="h-10 w-10 rounded-full"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="grid h-10 w-10 place-items-center rounded-full bg-surface-2 text-sm font-medium text-foreground">
+              {(me?.name || me?.email || "?").trim().charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0">
+            <div className="truncate text-sm text-foreground">
+              {me?.name ?? "Signed in"}
+            </div>
+            <div className="truncate text-xs text-subtle">{me?.email}</div>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Notifications">
         {!swReady ? (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted">
             Service workers not supported in this browser.
           </p>
         ) : !pushStatus?.configured ? (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted">
             Push not configured — run{" "}
-            <code className="rounded bg-slate-800 px-1 text-[12px]">
+            <code className="rounded bg-surface-2 px-1 text-[12px]">
               node scripts/gen-vapid.mjs
             </code>{" "}
-            and set <code className="rounded bg-slate-800 px-1 text-[12px]">VAPID_PUBLIC_KEY</code> +{" "}
-            <code className="rounded bg-slate-800 px-1 text-[12px]">VAPID_PRIVATE_KEY_JWK</code> as
-            wrangler secrets.
+            and set{" "}
+            <code className="rounded bg-surface-2 px-1 text-[12px]">VAPID_PUBLIC_KEY</code> +{" "}
+            <code className="rounded bg-surface-2 px-1 text-[12px]">VAPID_PRIVATE_KEY_JWK</code>{" "}
+            as wrangler secrets.
           </p>
         ) : (
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm">
+              <p className="text-sm text-foreground">
                 Morning brief push{" "}
-                <span className={cx("font-medium", isSubscribed ? "text-emerald-400" : "text-slate-500")}>
+                <span
+                  className={cx(
+                    "font-medium",
+                    isSubscribed ? "text-success" : "text-subtle"
+                  )}
+                >
                   {isSubscribed ? "enabled" : "disabled"}
                 </span>
               </p>
-              <p className="text-xs text-slate-500">Delivered at 06:00 Brussels time</p>
-              {pushError && <p className="mt-1 text-xs text-red-400">{pushError}</p>}
+              <p className="text-xs text-subtle">Delivered at 06:00 Brussels time</p>
+              {pushError && <p className="mt-1 text-xs text-danger">{pushError}</p>}
             </div>
             <Button
               variant={isSubscribed ? "ghost" : "primary"}
@@ -621,28 +672,77 @@ export function SettingsPage() {
         )}
       </Section>
 
-      <Section title="MCP server">
-        <p className="mb-2 text-sm text-slate-300">
+      <Section title="Google Calendar">
+        {cal?.connected ? (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm text-foreground">
+                Connected <span className="text-subtle">· {cal.google_email}</span>
+              </p>
+              <p className="text-xs text-subtle">
+                Two-way sync with your primary calendar.
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                variant="subtle"
+                className="h-8 text-xs"
+                onClick={() => {
+                  window.location.href = "/calendar";
+                }}
+              >
+                Open
+              </Button>
+              <Button
+                variant="ghost"
+                className="h-8 text-xs text-danger hover:bg-danger/10"
+                disabled={calBusy}
+                onClick={disconnectCal}
+              >
+                {calBusy ? "…" : "Disconnect"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted">
+              Connect to see meetings as a backdrop and drag tasks onto a timeline.
+            </p>
+            <Button
+              variant="primary"
+              className="h-8 shrink-0 text-xs"
+              onClick={() => {
+                window.location.href = "/api/calendar/connect";
+              }}
+            >
+              Connect
+            </Button>
+          </div>
+        )}
+      </Section>
+
+      <Section title="Integrations">
+        <p className="mb-2 text-sm text-foreground">
           Add Checkbox to Claude&apos;s MCP settings to use it from chat. This token
           is yours alone — it identifies your account.
         </p>
         <div className="space-y-2 text-xs">
           <div>
-            <span className="text-slate-500">URL</span>
-            <code className="ml-2 rounded bg-slate-800 px-2 py-0.5 text-slate-200">
+            <span className="text-subtle">URL</span>
+            <code className="ml-2 rounded bg-surface-2 px-2 py-0.5 text-foreground">
               {location.origin}/mcp
             </code>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-slate-500">Token</span>
+            <span className="text-subtle">Token</span>
             {mcpToken ? (
-              <code className="rounded bg-slate-800 px-2 py-0.5 text-slate-200 break-all">
+              <code className="break-all rounded bg-surface-2 px-2 py-0.5 text-foreground">
                 {mcpToken}
               </code>
             ) : (
               <button
                 onClick={revealToken}
-                className="rounded bg-slate-800 px-2 py-0.5 text-indigo-300 hover:bg-slate-700"
+                className="rounded bg-surface-2 px-2 py-0.5 text-primary hover:bg-surface-2/70"
               >
                 {tokenBusy ? "…" : "Reveal my token"}
               </button>
@@ -650,7 +750,7 @@ export function SettingsPage() {
             {mcpToken && (
               <button
                 onClick={rotateToken}
-                className="rounded px-2 py-0.5 text-slate-500 hover:text-slate-200"
+                className="rounded px-2 py-0.5 text-subtle hover:text-foreground"
                 title="Rotate — invalidates the old token"
               >
                 {tokenBusy ? "…" : "rotate"}
@@ -658,18 +758,8 @@ export function SettingsPage() {
             )}
           </div>
         </div>
-        <p className="mt-3 text-xs text-slate-600">
+        <p className="mt-3 text-xs text-subtle">
           16 tools: task CRUD, triage, plan-my-day, daily brief, weekly review.
-        </p>
-      </Section>
-
-      <Section title="Google Calendar">
-        <p className="text-sm text-slate-400">
-          Connect or manage your calendar from the{" "}
-          <a href="/calendar" className="text-sky-400 hover:underline">
-            Calendar page
-          </a>
-          .
         </p>
       </Section>
     </div>

@@ -106,10 +106,18 @@ export interface TriageSuggestion {
   status: "pending" | "accepted" | "rejected";
 }
 
+// Per-view display defaults (grid vs list, sort key, group key), keyed by view.
+export interface ViewDefault {
+  mode?: "grid" | "list";
+  sort?: string;
+  group?: string;
+}
+
 // Per-user view preferences (stored as JSON on the users row).
 export interface UserPrefs {
   hiddenViews: string[]; // view keys the user has hidden from the sidebar
   viewOrder: string[]; // optional custom ordering of view keys
+  viewDefaults?: Record<string, ViewDefault>; // per-view grid/sort/group memory
 }
 
 // Payload from the NLP capture bar.
