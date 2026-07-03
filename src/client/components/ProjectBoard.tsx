@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   DndContext,
   type DragEndEvent,
@@ -11,7 +10,7 @@ import {
 import type { Project, Task } from "../../shared/types";
 import { useTasks, useUpdateTask } from "../lib/queries";
 import { TaskRow } from "./TaskRow";
-import { Button, cx } from "./ui";
+import { cx } from "./ui";
 
 function Card({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -81,14 +80,15 @@ function Column({
 
 export function ProjectBoard({
   project,
+  view = "grid",
   onOpen,
 }: {
   project: Project;
+  view?: "grid" | "list";
   onOpen: (t: Task) => void;
 }) {
   const { data: tasks = [] } = useTasks({ project_id: project.id });
   const update = useUpdateTask();
-  const [view, setView] = useState<"board" | "list">("board");
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
@@ -111,22 +111,7 @@ export function ProjectBoard({
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-2">
-        <Button
-          variant={view === "board" ? "primary" : "subtle"}
-          onClick={() => setView("board")}
-        >
-          Board
-        </Button>
-        <Button
-          variant={view === "list" ? "primary" : "subtle"}
-          onClick={() => setView("list")}
-        >
-          List
-        </Button>
-      </div>
-
-      {view === "board" ? (
+      {view === "grid" ? (
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>
           <div className="flex gap-3 overflow-x-auto pb-2">
             {columns.map((col) => (

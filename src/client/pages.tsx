@@ -16,25 +16,53 @@ import { useTaskUI } from "./lib/ui-context";
 import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
 import { TaskRow } from "./components/TaskRow";
-import { ViewToolbar, ToolbarButton } from "./components/ViewToolbar";
+import {
+  ViewToolbar,
+  ToolbarMenu,
+  IconGrid,
+  IconList,
+  IconSort,
+  IconGroup,
+  type Tab,
+  type MenuItem,
+} from "./components/ViewToolbar";
 import { useViewPrefs } from "./lib/queries";
 import { Button, cx } from "./components/ui";
 import { api } from "./lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-function Header({
+function Header<T extends string>({
   title,
   sub,
   icon,
+  tabs,
+  activeTab,
+  onTab,
+  menu,
   actions,
 }: {
   title: string;
   sub?: string;
-  icon?: string;
+  icon?: ReactNode;
+  tabs?: Tab<T>[];
+  activeTab?: T;
+  onTab?: (id: T) => void;
+  menu?: MenuItem[];
   actions?: ReactNode;
 }) {
-  return <ViewToolbar title={title} sub={sub} icon={icon} actions={actions} />;
+  return (
+    <ViewToolbar
+      title={title}
+      sub={sub}
+      icon={icon}
+      tabs={tabs}
+      activeTab={activeTab}
+      onTab={onTab}
+      menu={menu}
+      actions={actions}
+    />
+  );
 }
 
 function TaskList({ tasks, empty }: { tasks: Task[]; empty: string }) {
@@ -61,20 +89,171 @@ const VIEW_META: Record<
   logbook: { title: "Logbook", sub: "Completed", empty: "No completed tasks yet.", icon: "✓" },
 };
 
+// ── Client-side sort / group over the fetched task list ───────────────────────
+
+type SortKey = "manual" | "priority" | "due" | "title" | "created";
+type GroupKey = "none" | "priority" | "area" | "project";
+
+const SORT_LABEL: Record<SortKey, string> = {
+  manual: "Manual",
+  priority: "Priority",
+  due: "Due date",
+  title: "Title",
+  created: "Date created",
+};
+
+const GROUP_LABEL: Record<GroupKey, string> = {
+  none: "None",
+  priority: "Priority",
+  area: "Area",
+  project: "Project",
+};
+
+function sortTasks(tasks: Task[], key: SortKey): Task[] {
+  const arr = [...tasks];
+  switch (key) {
+    case "priority":
+      return arr.sort((a, b) => a.priority - b.priority || a.position - b.position);
+    case "due":
+      return arr.sort((a, b) =>
+        (a.due_date ?? "9999-99-99").localeCompare(b.due_date ?? "9999-99-99")
+      );
+    case "title":
+      return arr.sort((a, b) => a.title.localeCompare(b.title));
+    case "created":
+      return arr.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    default:
+      return arr.sort((a, b) => a.position - b.position);
+  }
+}
+
+function groupTasks(
+  tasks: Task[],
+  key: GroupKey,
+  names: { area: (id: string | null) => string; project: (id: string | null) => string }
+): { label: string; tasks: Task[] }[] {
+  if (key === "none") return [{ label: "", tasks }];
+  const groups = new Map<string, Task[]>();
+  for (const t of tasks) {
+    const label =
+      key === "priority"
+        ? `Priority ${t.priority}`
+        : key === "area"
+        ? names.area(t.area_id)
+        : names.project(t.project_id);
+    (groups.get(label) ?? groups.set(label, []).get(label)!).push(t);
+  }
+  return [...groups.entries()]
+    .map(([label, tasks]) => ({ label, tasks }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
+  const done = task.status === "done";
+  return (
+    <button
+      onClick={() => onOpen(task)}
+      className="flex flex-col rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-left transition-colors hover:border-slate-700"
+    >
+      <span className={cx("text-sm", done && "text-slate-500 line-through")}>
+        {task.title}
+      </span>
+      <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+        <span className={`pri-${task.priority}`}>P{task.priority}</span>
+        {task.due_date && <span className="text-sky-400">{task.due_date}</span>}
+        {(task.labels ?? []).map((l) => (
+          <span key={l.id} className="text-violet-400">
+            @{l.name}
+          </span>
+        ))}
+      </span>
+    </button>
+  );
+}
+
+function TaskGrid({ tasks, empty }: { tasks: Task[]; empty: string }) {
+  const { open } = useTaskUI();
+  if (tasks.length === 0)
+    return <p className="px-2 text-sm text-slate-600">{empty}</p>;
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      {tasks.map((t) => (
+        <TaskCard key={t.id} task={t} onOpen={open} />
+      ))}
+    </div>
+  );
+}
+
+const VIEW_TABS: Tab<"grid" | "list">[] = [
+  { id: "grid", label: "Grid", icon: <IconGrid /> },
+  { id: "list", label: "List", icon: <IconList /> },
+];
+
 export function ViewPage({ name }: { name: string }) {
   const { data: tasks = [] } = useView(name);
+  const { data: areas = [] } = useAreas();
+  const { data: projects = [] } = useProjects();
   const meta = VIEW_META[name];
   const { hide } = useViewPrefs();
+
+  const [view, setView] = useState<"grid" | "list">("list");
+  const [sort, setSort] = useState<SortKey>("manual");
+  const [group, setGroup] = useState<GroupKey>("none");
+
+  const names = {
+    area: (id: string | null) =>
+      areas.find((a) => a.id === id)?.name ?? "No area",
+    project: (id: string | null) =>
+      projects.find((p) => p.id === id)?.name ?? "No project",
+  };
+
+  const sorted = sortTasks(tasks, sort);
+  const groups = groupTasks(sorted, group, names);
+
+  const sortMenu: MenuItem[] = (Object.keys(SORT_LABEL) as SortKey[]).map((k) => ({
+    label: SORT_LABEL[k],
+    active: sort === k,
+    onClick: () => setSort(k),
+  }));
+  const groupMenu: MenuItem[] = (Object.keys(GROUP_LABEL) as GroupKey[]).map((k) => ({
+    label: GROUP_LABEL[k],
+    active: group === k,
+    onClick: () => setGroup(k),
+  }));
+
+  const Body = view === "grid" ? TaskGrid : TaskList;
+
+  const body =
+    group === "none" ? (
+      <Body tasks={groups[0].tasks} empty={meta.empty} />
+    ) : (
+      <div className="space-y-6">
+        {groups.map((g) => (
+          <section key={g.label}>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {g.label} <span className="text-slate-600">{g.tasks.length}</span>
+            </h2>
+            <Body tasks={g.tasks} empty={meta.empty} />
+          </section>
+        ))}
+      </div>
+    );
+
   return (
     <div>
       <Header
         title={meta.title}
         sub={meta.sub}
         icon={meta.icon}
+        tabs={VIEW_TABS}
+        activeTab={view}
+        onTab={setView}
+        menu={[{ label: "Hide this view", onClick: () => hide(`/${name}`) }]}
         actions={
-          <ToolbarButton title="Hide this view" onClick={() => hide(`/${name}`)}>
-            ⊘
-          </ToolbarButton>
+          <>
+            <ToolbarMenu icon={<IconSort />} label="Sort" items={sortMenu} />
+            <ToolbarMenu icon={<IconGroup />} label="Group" items={groupMenu} />
+          </>
         }
       />
       {name !== "logbook" && (
@@ -83,9 +262,9 @@ export function ViewPage({ name }: { name: string }) {
         </div>
       )}
       {name === "backlog" ? (
-        <BacklogBody tasks={tasks} />
+        <BacklogBody tasks={tasks} list={body} />
       ) : (
-        <TaskList tasks={tasks} empty={meta.empty} />
+        body
       )}
     </div>
   );
@@ -144,7 +323,7 @@ function TriageCard({
   );
 }
 
-function BacklogBody({ tasks }: { tasks: Task[] }) {
+function BacklogBody({ tasks, list }: { tasks: Task[]; list: ReactNode }) {
   const [triageOpen, setTriageOpen] = useState(false);
   const { data: suggestions = [], isLoading: loadingSugs } = useTriageSuggestions();
   const generate = useTriageGenerate();
@@ -212,8 +391,8 @@ function BacklogBody({ tasks }: { tasks: Task[] }) {
         )}
       </div>
 
-      {/* Task list */}
-      <TaskList tasks={tasks} empty="Backlog is empty." />
+      {/* Task list (grid/list + sort/group applied by ViewPage) */}
+      {list}
     </div>
   );
 }
@@ -278,15 +457,22 @@ export function ProjectPage() {
   const { id = "" } = useParams();
   const { open } = useTaskUI();
   const { data: projects = [] } = useProjects();
+  const [view, setView] = useState<"grid" | "list">("grid");
   const project = projects.find((p) => p.id === id);
   if (!project) return <p className="text-slate-500">Loading project...</p>;
   return (
     <div>
-      <Header title={project.name} sub={project.goal ?? "Project"} />
+      <Header
+        title={project.name}
+        sub={project.goal ?? "Project"}
+        tabs={VIEW_TABS}
+        activeTab={view}
+        onTab={setView}
+      />
       <div className="mb-4 max-w-2xl">
         <QuickCapture defaultProjectId={project.id} defaultAreaId={project.area_id} />
       </div>
-      <ProjectBoard project={project} onOpen={open} />
+      <ProjectBoard project={project} view={view} onOpen={open} />
     </div>
   );
 }
