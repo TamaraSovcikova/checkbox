@@ -218,8 +218,8 @@ export function ViewPage({ name }: { name: string }) {
       <div className="space-y-6">
         {groups.map((g) => (
           <section key={g.label}>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {g.label} <span className="text-slate-600">{g.tasks.length}</span>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
+              {g.label} <span className="text-subtle">{g.tasks.length}</span>
             </h2>
             <Body tasks={g.tasks} empty={meta.empty} />
           </section>
@@ -270,21 +270,21 @@ function TriageCard({
 
   const confidenceCls =
     sug.confidence >= 0.5
-      ? "text-emerald-400"
+      ? "text-success"
       : sug.confidence > 0
-      ? "text-amber-400"
-      : "text-slate-500";
+      ? "text-warning"
+      : "text-subtle";
 
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+    <div className="rounded-lg border border-border bg-surface/60 p-3">
       <p className="mb-1 text-sm font-medium leading-snug">{sug.task_title}</p>
-      <p className="mb-2 text-xs text-slate-400">
-        → <span className="text-slate-200">{dest}</span>
+      <p className="mb-2 text-xs text-muted">
+        → <span className="text-foreground">{dest}</span>
         <span className={cx("ml-2 text-[11px]", confidenceCls)}>
           {sug.confidence > 0 ? `${Math.round(sug.confidence * 100)}% match` : "no match"}
         </span>
       </p>
-      <p className="mb-3 text-[11px] text-slate-500">{sug.reason}</p>
+      <p className="mb-3 text-[11px] text-subtle">{sug.reason}</p>
       <div className="flex gap-2">
         <Button
           variant="primary"
@@ -323,11 +323,11 @@ function BacklogBody({ tasks, list }: { tasks: Task[]; list: ReactNode }) {
   return (
     <div className="max-w-3xl">
       {/* Triage panel */}
-      <div className="mb-5 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+      <div className="mb-5 rounded-xl border border-border bg-surface/40 p-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
             <span className="text-sm font-medium">AI Triage</span>
-            <span className="ml-2 text-xs text-slate-500">
+            <span className="ml-2 text-xs text-subtle">
               {tasks.length} task{tasks.length !== 1 ? "s" : ""} in backlog
             </span>
           </div>
@@ -344,9 +344,9 @@ function BacklogBody({ tasks, list }: { tasks: Task[]; list: ReactNode }) {
         {triageOpen && (
           <>
             {loadingSugs && !pending.length ? (
-              <p className="text-xs text-slate-500">Loading suggestions…</p>
+              <p className="text-xs text-subtle">Loading suggestions…</p>
             ) : pending.length === 0 ? (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-subtle">
                 {tasks.length === 0
                   ? "Backlog is empty."
                   : "No suggestions yet — click «Suggest placements» to analyse."}
@@ -367,7 +367,7 @@ function BacklogBody({ tasks, list }: { tasks: Task[]; list: ReactNode }) {
         )}
 
         {!triageOpen && tasks.length > 0 && (
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-subtle">
             Keyword-match suggestions across your areas and projects.
             Claude can do deeper triage via MCP → <code>triage_backlog</code>.
           </p>
@@ -401,10 +401,10 @@ export function AreaPage() {
 
       <div className="mb-5">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs uppercase tracking-wide text-slate-500">
+          <span className="text-xs uppercase tracking-wide text-subtle">
             Projects
           </span>
-          <button onClick={addProject} className="text-sm text-sky-400">
+          <button onClick={addProject} className="text-sm text-primary">
             + New project
           </button>
         </div>
@@ -413,19 +413,19 @@ export function AreaPage() {
             <a
               key={p.id}
               href={`/project/${p.id}`}
-              className="rounded-lg border border-slate-800 bg-slate-900 p-3 hover:border-slate-700"
+              className="rounded-lg border border-border bg-surface p-3 hover:border-primary/40"
             >
               <div className="font-medium">{p.name}</div>
-              {p.goal && <div className="text-xs text-slate-500">{p.goal}</div>}
+              {p.goal && <div className="text-xs text-subtle">{p.goal}</div>}
             </a>
           ))}
           {projects.length === 0 && (
-            <p className="text-sm text-slate-600">No projects yet.</p>
+            <p className="text-sm text-subtle">No projects yet.</p>
           )}
         </div>
       </div>
 
-      <div className="mb-2 text-xs uppercase tracking-wide text-slate-500">
+      <div className="mb-2 text-xs uppercase tracking-wide text-subtle">
         Loose tasks
       </div>
       <div className="mb-3 max-w-2xl">
@@ -444,7 +444,7 @@ export function ProjectPage() {
   const view = (viewDefault(`project:${id}`).mode ?? "grid") as "grid" | "list";
   const setView = (m: "grid" | "list") => setViewDefault(`project:${id}`, { mode: m });
   const project = projects.find((p) => p.id === id);
-  if (!project) return <p className="text-slate-500">Loading project...</p>;
+  if (!project) return <p className="text-subtle">Loading project...</p>;
   return (
     <div>
       <Header

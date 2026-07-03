@@ -4,10 +4,10 @@ import { useCreateTask, useProjects } from "../lib/queries";
 import { Input } from "./ui";
 
 const CHIP_STYLE: Record<string, string> = {
-  date: "bg-sky-500/20 text-sky-300",
-  priority: "bg-orange-500/20 text-orange-300",
-  label: "bg-violet-500/20 text-violet-300",
-  project: "bg-emerald-500/20 text-emerald-300",
+  date: "bg-surface-2 text-muted",
+  priority: "bg-surface-2 text-muted",
+  label: "bg-surface-2 text-muted",
+  project: "bg-surface-2 text-muted",
 };
 
 export function QuickCapture({
@@ -71,7 +71,7 @@ export function QuickCapture({
               {ch.label}
             </span>
           ))}
-          <span className="text-[11px] text-slate-500 self-center">
+          <span className="self-center text-[11px] text-subtle">
             press Enter to add
           </span>
         </div>
