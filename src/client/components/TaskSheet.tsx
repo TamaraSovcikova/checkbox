@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, addDays } from "date-fns";
 import type { Task, Subtask } from "../../shared/types";
 import { api } from "../lib/api";
 import {
@@ -8,12 +8,14 @@ import {
   useTaskInvalidate,
   useUpdateTask,
 } from "../lib/queries";
+import { RECURRENCE_PRESETS } from "../../shared/recurrence";
+import { Markdown } from "../lib/markdown";
 import { PRIORITY_VAR } from "../lib/colors";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent } from "./ui/sheet";
 import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
-import { CalendarIcon, AddIcon } from "../lib/icons";
+import { CalendarIcon, AddIcon, RepeatIcon, TrashIcon } from "../lib/icons";
 
 // Lazy — react-day-picker only loads when a date picker is actually opened.
 const Calendar = lazy(() =>
@@ -45,6 +47,26 @@ function DueDatePicker({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
+        {/* Quick presets — the common reschedules without opening the grid. */}
+        <div className="mb-2 flex flex-wrap gap-1">
+          {[
+            { label: "Today", days: 0 },
+            { label: "Tomorrow", days: 1 },
+            { label: "Next week", days: 7 },
+          ].map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => {
+                onChange(format(addDays(new Date(), p.days), "yyyy-MM-dd"));
+                setOpen(false);
+              }}
+              className="rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <Suspense
           fallback={<div className="p-4 text-xs text-subtle">Loading…</div>}
         >
@@ -90,10 +112,14 @@ export function TaskSheet({
 
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
+  const [editingNotes, setEditingNotes] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
   const [priority, setPriority] = useState<Task["priority"]>(4);
   const [estimate, setEstimate] = useState<number | "">("");
+  const [recurrence, setRecurrence] = useState("");
+  const [recurrenceMode, setRecurrenceMode] =
+    useState<Task["recurrence_mode"]>("fixed");
   const [more, setMore] = useState(false);
   const [newSub, setNewSub] = useState("");
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
@@ -102,10 +128,13 @@ export function TaskSheet({
     if (!task) return;
     setTitle(task.title);
     setNotes(task.notes ?? "");
+    setEditingNotes(false);
     setDueDate(task.due_date ?? "");
     setDueTime(task.due_time ?? "");
     setPriority(task.priority);
     setEstimate(task.time_estimate_min ?? "");
+    setRecurrence(task.recurrence ?? "");
+    setRecurrenceMode(task.recurrence_mode ?? "fixed");
     setSubtasks(task.subtasks ?? []);
     setMore(false);
   }, [task]);
@@ -139,6 +168,15 @@ export function TaskSheet({
     invalidate();
   }
 
+  async function deleteSub(id: string) {
+    if (!task) return;
+    setSubtasks((s) => s.filter((x) => x.id !== id));
+    await api.deleteSubtask(task.id, id);
+    invalidate();
+  }
+
+  const subDone = subtasks.filter((s) => s.done).length;
+
   return (
     <Sheet
       open={!!task}
@@ -156,14 +194,31 @@ export function TaskSheet({
               className="w-full bg-transparent pr-8 text-lg font-semibold text-foreground outline-none"
             />
 
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              onBlur={() => notes !== (task.notes ?? "") && save({ notes })}
-              placeholder="Notes..."
-              rows={3}
-              className="w-full resize-none rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-            />
+            {/* Notes: rendered markdown when idle, textarea on click/focus.
+                Blur commits and returns to the rendered preview. */}
+            {editingNotes || !notes.trim() ? (
+              <textarea
+                value={notes}
+                autoFocus={editingNotes}
+                onChange={(e) => setNotes(e.target.value)}
+                onBlur={() => {
+                  setEditingNotes(false);
+                  if (notes !== (task.notes ?? "")) save({ notes });
+                }}
+                placeholder="Notes... (markdown supported)"
+                rows={3}
+                className="w-full resize-none rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditingNotes(true)}
+                className="rounded-md border border-transparent px-3 py-2 text-left text-sm text-foreground transition-colors hover:border-border"
+                title="Click to edit"
+              >
+                <Markdown text={notes} className="space-y-0.5" />
+              </button>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <label className="text-xs text-muted">
@@ -221,12 +276,73 @@ export function TaskSheet({
             </div>
 
             <div>
-              <span className="text-xs text-muted">Subtasks</span>
-              <div className="mt-1 space-y-1">
+              <span className="flex items-center gap-1.5 text-xs text-muted">
+                <RepeatIcon className="h-3.5 w-3.5" /> Repeat
+              </span>
+              <div className="mt-1 flex gap-2">
+                <select
+                  value={recurrence}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setRecurrence(v);
+                    save({ recurrence: v || null });
+                  }}
+                  className="h-9 flex-1 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
+                >
+                  {RECURRENCE_PRESETS.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+                {recurrence && (
+                  <select
+                    value={recurrenceMode}
+                    onChange={(e) => {
+                      const v = e.target.value as Task["recurrence_mode"];
+                      setRecurrenceMode(v);
+                      save({ recurrence_mode: v });
+                    }}
+                    className="h-9 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
+                    title="When completed, advance from…"
+                  >
+                    <option value="fixed">from due date</option>
+                    <option value="after_completion">after completion</option>
+                  </select>
+                )}
+              </div>
+              {recurrence && (
+                <p className="mt-1 text-[11px] text-subtle">
+                  Completing this task rolls it to the next occurrence instead of
+                  finishing it.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted">Subtasks</span>
+                {subtasks.length > 0 && (
+                  <span className="text-[11px] text-subtle">
+                    {subDone}/{subtasks.length}
+                  </span>
+                )}
+              </div>
+              {subtasks.length > 0 && (
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-2">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{
+                      width: `${Math.round((subDone / subtasks.length) * 100)}%`,
+                    }}
+                  />
+                </div>
+              )}
+              <div className="mt-2 space-y-1">
                 {subtasks.map((s) => (
-                  <label
+                  <div
                     key={s.id}
-                    className="flex items-center gap-2 text-sm text-foreground"
+                    className="group flex items-center gap-2 text-sm text-foreground"
                   >
                     <input
                       type="checkbox"
@@ -234,10 +350,17 @@ export function TaskSheet({
                       onChange={(e) => toggleSub(s.id, e.target.checked)}
                       className="h-4 w-4 [accent-color:var(--primary)]"
                     />
-                    <span className={cn(s.done && "text-subtle line-through")}>
+                    <span className={cn("flex-1", s.done && "text-subtle line-through")}>
                       {s.title}
                     </span>
-                  </label>
+                    <button
+                      onClick={() => deleteSub(s.id)}
+                      aria-label="Delete subtask"
+                      className="hidden shrink-0 text-subtle hover:text-danger group-hover:block"
+                    >
+                      <TrashIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 ))}
               </div>
               <div className="mt-1 flex gap-2">

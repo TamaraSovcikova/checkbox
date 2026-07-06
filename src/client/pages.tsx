@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import type { Task, TriageSuggestion } from "../shared/types";
 import {
   useAreas,
@@ -12,11 +12,21 @@ import {
   useTriageReject,
   usePushStatus,
   useCalendarStatus,
+  useSavedFilters,
+  useFilterTasks,
+  useDeleteFilter,
 } from "./lib/queries";
+import { FilterDialog } from "./components/FilterDialog";
+import { FilterIcon } from "./lib/icons";
 import { useTaskUI, useMe } from "./lib/ui-context";
 import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
 import { TaskRow } from "./components/TaskRow";
+import {
+  useTaskSelection,
+  BulkActionBar,
+  type TaskControls,
+} from "./components/TaskListControls";
 import { TopBar, type Tab, type MenuChoice } from "./components/TopBar";
 import {
   GridIcon,
@@ -45,18 +55,34 @@ function Header<T extends string>(props: {
   group?: MenuChoice[];
   menu?: MenuChoice[];
   actions?: ReactNode;
+  below?: ReactNode;
 }) {
   return <TopBar {...props} />;
 }
 
-function TaskList({ tasks, empty }: { tasks: Task[]; empty: string }) {
+function TaskList({
+  tasks,
+  empty,
+  controls,
+  indexOffset = 0,
+}: {
+  tasks: Task[];
+  empty: string;
+  controls?: TaskControls;
+  indexOffset?: number;
+}) {
   const { open } = useTaskUI();
   if (tasks.length === 0)
     return <p className="px-2 text-sm text-subtle">{empty}</p>;
   return (
     <div className="max-w-2xl">
-      {tasks.map((t) => (
-        <TaskRow key={t.id} task={t} onOpen={open} />
+      {tasks.map((t, i) => (
+        <TaskRow
+          key={t.id}
+          task={t}
+          onOpen={open}
+          selection={controls?.rowFor(t, indexOffset + i)}
+        />
       ))}
     </div>
   );
@@ -76,7 +102,7 @@ const VIEW_META: Record<
 // ── Client-side sort / group over the fetched task list ───────────────────────
 
 type SortKey = "manual" | "priority" | "due" | "title" | "created";
-type GroupKey = "none" | "priority" | "area" | "project";
+type GroupKey = "none" | "due" | "priority" | "area" | "project";
 
 const SORT_LABEL: Record<SortKey, string> = {
   manual: "Manual",
@@ -88,10 +114,33 @@ const SORT_LABEL: Record<SortKey, string> = {
 
 const GROUP_LABEL: Record<GroupKey, string> = {
   none: "None",
+  due: "Due",
   priority: "Priority",
   area: "Area",
   project: "Project",
 };
+
+// Today (Europe/Brussels) as YYYY-MM-DD, matching the server's day boundary.
+function todayStr() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Brussels",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+// Bucket a task by due date into a fixed, chronological set of groups.
+const DUE_ORDER = ["Overdue", "Today", "This week", "Later", "No date"];
+function dueBucket(due: string | null, today: string): string {
+  if (!due) return "No date";
+  if (due < today) return "Overdue";
+  if (due === today) return "Today";
+  const [y, m, d] = today.split("-").map(Number);
+  const wk = new Date(Date.UTC(y, m - 1, d + 7)).toISOString().slice(0, 10);
+  if (due <= wk) return "This week";
+  return "Later";
+}
 
 function sortTasks(tasks: Task[], key: SortKey): Task[] {
   const arr = [...tasks];
@@ -117,6 +166,21 @@ function groupTasks(
   names: { area: (id: string | null) => string; project: (id: string | null) => string }
 ): { label: string; tasks: Task[] }[] {
   if (key === "none") return [{ label: "", tasks }];
+
+  // Due grouping uses fixed chronological buckets rather than alphabetical order.
+  if (key === "due") {
+    const today = todayStr();
+    const groups = new Map<string, Task[]>();
+    for (const t of tasks) {
+      const label = dueBucket(t.due_date, today);
+      (groups.get(label) ?? groups.set(label, []).get(label)!).push(t);
+    }
+    return DUE_ORDER.filter((l) => groups.has(l)).map((label) => ({
+      label,
+      tasks: groups.get(label)!,
+    }));
+  }
+
   const groups = new Map<string, Task[]>();
   for (const t of tasks) {
     const label =
@@ -209,21 +273,43 @@ export function ViewPage({ name }: { name: string }) {
     onSelect: () => setGroup(k),
   }));
 
-  const Body = view === "grid" ? TaskGrid : TaskList;
+  // Selection + keyboard nav run over the flattened, grouped order — only in list
+  // view (grid keeps plain click-to-open). The running offset keeps each group's
+  // rows in one continuous cursor sequence.
+  const { open } = useTaskUI();
+  const flat = groups.flatMap((g) => g.tasks);
+  const controls = useTaskSelection(flat, open, view === "list");
 
+  function renderBody(list: Task[], offset: number) {
+    if (view === "grid") return <TaskGrid tasks={list} empty={meta.empty} />;
+    return (
+      <TaskList
+        tasks={list}
+        empty={meta.empty}
+        controls={controls}
+        indexOffset={offset}
+      />
+    );
+  }
+
+  let running = 0;
   const body =
     group === "none" ? (
-      <Body tasks={groups[0].tasks} empty={meta.empty} />
+      renderBody(groups[0].tasks, 0)
     ) : (
       <div className="space-y-6">
-        {groups.map((g) => (
-          <section key={g.label}>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
-              {g.label} <span className="text-subtle">{g.tasks.length}</span>
-            </h2>
-            <Body tasks={g.tasks} empty={meta.empty} />
-          </section>
-        ))}
+        {groups.map((g) => {
+          const offset = running;
+          running += g.tasks.length;
+          return (
+            <section key={g.label}>
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
+                {g.label} <span className="text-subtle">{g.tasks.length}</span>
+              </h2>
+              {renderBody(g.tasks, offset)}
+            </section>
+          );
+        })}
       </div>
     );
 
@@ -238,17 +324,20 @@ export function ViewPage({ name }: { name: string }) {
         sort={sortMenu}
         group={groupMenu}
         menu={[{ label: "Hide this view", onSelect: () => hide(`/${name}`) }]}
+        below={
+          name !== "logbook" ? (
+            <div className="max-w-2xl">
+              <QuickCapture />
+            </div>
+          ) : undefined
+        }
       />
-      {name !== "logbook" && (
-        <div className="mb-4 max-w-2xl">
-          <QuickCapture />
-        </div>
-      )}
       {name === "backlog" ? (
         <BacklogBody tasks={tasks} list={body} />
       ) : (
         body
       )}
+      {view === "list" && <BulkActionBar controls={controls} />}
     </div>
   );
 }
@@ -452,10 +541,12 @@ export function ProjectPage() {
         tabs={VIEW_TABS}
         activeTab={view}
         onTab={setView}
+        below={
+          <div className="max-w-2xl">
+            <QuickCapture defaultProjectId={project.id} defaultAreaId={project.area_id} />
+          </div>
+        }
       />
-      <div className="mb-4 max-w-2xl">
-        <QuickCapture defaultProjectId={project.id} defaultAreaId={project.area_id} />
-      </div>
       <ProjectBoard project={project} view={view} onOpen={open} />
     </div>
   );
@@ -471,6 +562,49 @@ export function LabelPage() {
     <div>
       <Header title={`@${decodeURIComponent(name)}`} />
       <TaskList tasks={filtered} empty="No tasks with this label." />
+    </div>
+  );
+}
+
+// ── Saved filter view ─────────────────────────────────────────────────────────
+
+export function FilterPage() {
+  const { id = "" } = useParams();
+  const navigate = useNavigate();
+  const { open } = useTaskUI();
+  const { data: filters = [] } = useSavedFilters();
+  const { data: tasks = [], isLoading } = useFilterTasks(id);
+  const del = useDeleteFilter();
+  const [editOpen, setEditOpen] = useState(false);
+
+  const filter = filters.find((f) => f.id === id);
+  const controls = useTaskSelection(tasks, open, true);
+
+  return (
+    <div>
+      <Header
+        title={filter?.name ?? "Filter"}
+        icon={<FilterIcon className={ICON_SIZE} />}
+        menu={[
+          { label: "Edit filter", onSelect: () => setEditOpen(true) },
+          {
+            label: "Delete filter",
+            onSelect: () => {
+              if (confirm("Delete this filter?")) {
+                del.mutate(id);
+                navigate("/today");
+              }
+            },
+          },
+        ]}
+      />
+      {isLoading ? (
+        <p className="px-2 text-sm text-subtle">Loading…</p>
+      ) : (
+        <TaskList tasks={tasks} empty="No tasks match this filter." controls={controls} />
+      )}
+      <BulkActionBar controls={controls} />
+      <FilterDialog open={editOpen} onOpenChange={setEditOpen} existing={filter} />
     </div>
   );
 }

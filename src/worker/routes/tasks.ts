@@ -2,8 +2,19 @@ import { Hono } from "hono";
 import { type Bindings, getUserId, now, uuid } from "../db";
 import { hydrateTasks } from "./_hydrate";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
+import { nextDueDate } from "../../shared/recurrence";
 
 export const tasks = new Hono<{ Bindings: Bindings }>();
+
+// Today (Europe/Brussels) as YYYY-MM-DD — the anchor for after-completion recurrence.
+function todayStr(tz = "Europe/Brussels") {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
 
 const WRITABLE = [
   "title",
@@ -20,6 +31,8 @@ const WRITABLE = [
   "project_id",
   "status",
   "position",
+  "recurrence",
+  "recurrence_mode",
 ];
 
 // Does this task belong to this user? Used to gate subtask + label mutations.
@@ -83,6 +96,25 @@ tasks.get("/", async (c) => {
   sql += " ORDER BY position, priority, created_at";
   const { results } = await c.env.DB.prepare(sql)
     .bind(...binds)
+    .all();
+  return c.json(await hydrateTasks(c.env.DB, results as Record<string, unknown>[]));
+});
+
+// Full-text-ish search across the user's open tasks (title + notes). Powers the
+// Cmd-K palette. Registered before /:id so "search" isn't read as a task id.
+tasks.get("/search", async (c) => {
+  const userId = await getUserId(c);
+  const q = (c.req.query("q") ?? "").trim();
+  if (!q) return c.json([]);
+  const like = `%${q.replace(/[%_]/g, (m) => "\\" + m)}%`;
+  const { results } = await c.env.DB.prepare(
+    `SELECT * FROM tasks
+       WHERE user_id = ? AND parent_task_id IS NULL AND status != 'done'
+         AND (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
+     ORDER BY (title LIKE ? ESCAPE '\\') DESC, priority, due_date
+     LIMIT 20`
+  )
+    .bind(userId, like, like, like)
     .all();
   return c.json(await hydrateTasks(c.env.DB, results as Record<string, unknown>[]));
 });
@@ -179,16 +211,60 @@ tasks.patch("/:id", async (c) => {
 });
 
 // complete / uncomplete (toggle-able via ?done=0)
+//
+// Recurring tasks roll forward instead of completing: on completion a task with
+// a `recurrence` spec advances its due date to the next occurrence and stays
+// `todo` (its subtasks reset), matching the Todoist model. `fixed` mode advances
+// from the current due date; `after_completion` advances from today. The
+// response carries `{ recurred, due_date }` so the client can toast it.
 tasks.post("/:id/complete", async (c) => {
   const userId = await getUserId(c);
   const id = c.req.param("id");
   const done = c.req.query("done") !== "0";
+
+  if (done) {
+    const t = await c.env.DB.prepare(
+      "SELECT recurrence, recurrence_mode, due_date FROM tasks WHERE id = ? AND user_id = ?"
+    )
+      .bind(id, userId)
+      .first<{
+        recurrence: string | null;
+        recurrence_mode: string | null;
+        due_date: string | null;
+      }>();
+
+    if (t?.recurrence) {
+      const anchor =
+        t.recurrence_mode === "after_completion"
+          ? todayStr()
+          : t.due_date ?? todayStr();
+      const next = nextDueDate(t.recurrence, anchor);
+      if (next) {
+        await c.env.DB.prepare(
+          "UPDATE tasks SET due_date = ?, status = 'todo', completed_at = NULL, updated_at = ? WHERE id = ? AND user_id = ?"
+        )
+          .bind(next, now(), id, userId)
+          .run();
+        // reset checklist for the next cycle
+        await c.env.DB.prepare(
+          "UPDATE subtasks SET done = 0 WHERE task_id = ?"
+        )
+          .bind(id)
+          .run();
+        c.executionCtx?.waitUntil(
+          pushTaskToGcal(c.env, id, userId).catch(console.error)
+        );
+        return c.json({ ok: true, recurred: true, due_date: next });
+      }
+    }
+  }
+
   await c.env.DB.prepare(
     `UPDATE tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ? AND user_id = ?`
   )
     .bind(done ? "done" : "todo", done ? now() : null, now(), id, userId)
     .run();
-  return c.json({ ok: true });
+  return c.json({ ok: true, recurred: false });
 });
 
 // reschedule due date/time
@@ -249,6 +325,51 @@ tasks.delete("/:id", async (c) => {
     );
   }
   return c.json({ ok: true });
+});
+
+// restore a deleted task from a client-held snapshot (undo). Re-inserts the row
+// with its original id, then re-attaches labels (by name) and subtasks. Ignored
+// if a row with that id already exists.
+tasks.post("/restore", async (c) => {
+  const userId = await getUserId(c);
+  const snap = await c.req.json<Record<string, unknown>>();
+  const id = snap.id as string;
+  if (!id) return c.json({ error: "id required" }, 400);
+
+  const refErr = await badRefs(c.env.DB, userId, snap);
+  if (refErr) {
+    // area/project may have been deleted since; drop the dangling refs.
+    if (refErr.startsWith("area")) snap.area_id = null;
+    if (refErr.startsWith("project")) snap.project_id = null;
+  }
+
+  const cols = ["id", "user_id", ...WRITABLE.filter((f) => f in snap)];
+  const vals = [id, userId, ...WRITABLE.filter((f) => f in snap).map((f) => snap[f])];
+  const ph = cols.map(() => "?").join(",");
+  await c.env.DB.prepare(
+    `INSERT OR IGNORE INTO tasks (${cols.join(",")}) VALUES (${ph})`
+  )
+    .bind(...vals)
+    .run();
+
+  const labels = (snap.labels as { name: string }[] | undefined) ?? [];
+  if (labels.length)
+    await attachLabelNames(c.env.DB, userId, id, labels.map((l) => l.name));
+
+  const subs = (snap.subtasks as { title: string; done?: boolean; position?: number }[] | undefined) ?? [];
+  for (const s of subs) {
+    await c.env.DB.prepare(
+      "INSERT INTO subtasks (id, task_id, title, done, position) VALUES (?, ?, ?, ?, ?)"
+    )
+      .bind(uuid(), id, s.title, s.done ? 1 : 0, s.position ?? 0)
+      .run();
+  }
+
+  const row = await c.env.DB.prepare("SELECT * FROM tasks WHERE id = ? AND user_id = ?")
+    .bind(id, userId)
+    .first();
+  const [task] = await hydrateTasks(c.env.DB, [row as Record<string, unknown>]);
+  return c.json(task, 201);
 });
 
 // --- subtasks ---

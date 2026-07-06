@@ -4,7 +4,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fetchMe, type Me } from "./lib/api";
 import { AppShell } from "./AppShell";
 import { MeContext } from "./lib/ui-context";
-import { AreaPage, LabelPage, ProjectPage, ViewPage, SettingsPage } from "./pages";
+import { ToastProvider } from "./lib/toast";
+import {
+  AreaPage,
+  LabelPage,
+  ProjectPage,
+  ViewPage,
+  SettingsPage,
+  FilterPage,
+} from "./pages";
 
 // Lazy — the calendar pulls in its own timeline code; keep it out of the
 // initial bundle (capture-first PWA).
@@ -55,6 +63,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <QueryClientProvider client={qc}>
+      <ToastProvider>
       <AuthGate>
         <BrowserRouter>
           <Routes>
@@ -68,6 +77,7 @@ export default function App() {
               <Route path="area/:id" element={<AreaPage />} />
               <Route path="project/:id" element={<ProjectPage />} />
               <Route path="label/:name" element={<LabelPage />} />
+              <Route path="filter/:id" element={<FilterPage />} />
               <Route
                 path="calendar"
                 element={
@@ -87,6 +97,7 @@ export default function App() {
           </Routes>
         </BrowserRouter>
       </AuthGate>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

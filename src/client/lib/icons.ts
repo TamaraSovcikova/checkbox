@@ -25,6 +25,11 @@ export {
   ChevronDown as ChevronDownIcon,
   RefreshCw as RefreshIcon,
   LogOut as LogOutIcon,
+  Repeat as RepeatIcon,
+  Search as SearchIcon,
+  Filter as FilterIcon,
+  Trash2 as TrashIcon,
+  CalendarClock as RescheduleIcon,
 } from "lucide-react";
 
 // A shared default size class so icons read consistently across the app.

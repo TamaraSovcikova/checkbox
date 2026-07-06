@@ -10,6 +10,7 @@ import { views } from "./routes/views";
 import { calendar } from "./routes/calendar";
 import { push } from "./routes/push";
 import { triage } from "./routes/triage";
+import { filters } from "./routes/filters";
 import { mcp } from "./routes/mcp";
 import { syncCalendar, renewWatchChannel } from "./lib/sync";
 import { sendMorningBrief } from "./lib/brief";
@@ -31,6 +32,7 @@ app.route("/api/views", views);
 app.route("/api/calendar", calendar);
 app.route("/api/push", push);
 app.route("/api/triage", triage);
+app.route("/api/saved-filters", filters);
 app.route("/mcp", mcp);
 
 // --- Static SPA fallback --------------------------------------------------

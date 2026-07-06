@@ -6,6 +6,7 @@ import { Input } from "./ui";
 const CHIP_STYLE: Record<string, string> = {
   date: "bg-surface-2 text-muted",
   priority: "bg-surface-2 text-muted",
+  recurrence: "bg-surface-2 text-muted",
   label: "bg-surface-2 text-muted",
   project: "bg-surface-2 text-muted",
 };
@@ -47,6 +48,7 @@ export function QuickCapture({
       due_time: parsed.due_time,
       priority: parsed.priority ?? 4,
       labelNames: parsed.labelNames,
+      recurrence: parsed.recurrence,
       area_id,
       project_id,
     });

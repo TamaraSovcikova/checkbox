@@ -4,10 +4,12 @@ import type {
   CalendarStatus,
   Label,
   Project,
+  SavedFilter,
   Task,
   TriageSuggestion,
   UserPrefs,
 } from "../../shared/types";
+import type { FilterQuery } from "../../shared/types";
 import { enqueueOffline } from "./offline";
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
@@ -86,6 +88,8 @@ export const api = {
   // tasks
   listTasks: (params: Record<string, string> = {}) =>
     http<Task[]>(`/api/tasks?${new URLSearchParams(params)}`),
+  searchTasks: (q: string) =>
+    http<Task[]>(`/api/tasks/search?${new URLSearchParams({ q })}`),
   view: (name: string) => http<Task[]>(`/api/views/${name}`),
   getTask: (id: string) => http<Task>(`/api/tasks/${id}`),
   createTask: (b: Record<string, unknown>) =>
@@ -93,7 +97,10 @@ export const api = {
   updateTask: (id: string, b: Record<string, unknown>) =>
     httpMutate<Task>("PATCH", `/api/tasks/${id}`, b),
   completeTask: (id: string, done = true) =>
-    httpMutate("POST", `/api/tasks/${id}/complete?done=${done ? 1 : 0}`),
+    httpMutate<{ ok: boolean; recurred: boolean; due_date?: string }>(
+      "POST",
+      `/api/tasks/${id}/complete?done=${done ? 1 : 0}`
+    ),
   rescheduleTask: (id: string, due_date: string | null, due_time?: string | null) =>
     httpMutate("POST", `/api/tasks/${id}/reschedule`, { due_date, due_time }),
   reorderTasks: (
@@ -101,13 +108,34 @@ export const api = {
   ) => httpMutate("POST", "/api/tasks/reorder", items),
   deleteTask: (id: string) =>
     httpMutate("DELETE", `/api/tasks/${id}`),
+  restoreTask: (snapshot: Task) =>
+    httpMutate<Task>("POST", "/api/tasks/restore", snapshot),
   addSubtask: (taskId: string, title: string) =>
     httpMutate("POST", `/api/tasks/${taskId}/subtasks`, { title }),
   updateSubtask: (taskId: string, subId: string, b: { done?: boolean; title?: string }) =>
     httpMutate("PATCH", `/api/tasks/${taskId}/subtasks/${subId}`, b),
+  deleteSubtask: (taskId: string, subId: string) =>
+    httpMutate("DELETE", `/api/tasks/${taskId}/subtasks/${subId}`),
 
   // labels
   listLabels: () => http<Label[]>("/api/labels"),
+
+  // saved filters
+  listFilters: () => http<SavedFilter[]>("/api/saved-filters"),
+  createFilter: (b: { name: string; query: FilterQuery }) =>
+    http<SavedFilter>("/api/saved-filters", {
+      method: "POST",
+      body: JSON.stringify(b),
+    }),
+  updateFilter: (id: string, b: { name?: string; query?: FilterQuery }) =>
+    http(`/api/saved-filters/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(b),
+    }),
+  deleteFilter: (id: string) =>
+    http(`/api/saved-filters/${id}`, { method: "DELETE" }),
+  filterTasks: (id: string) =>
+    http<Task[]>(`/api/saved-filters/${id}/tasks`),
 
   // triage
   triageGenerate: () =>

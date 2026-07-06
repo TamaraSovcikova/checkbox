@@ -7,13 +7,16 @@ import { DndContext } from "@dnd-kit/core";
 import type { ReactNode } from "react";
 import { TaskRow } from "../components/TaskRow";
 import { TopBar } from "../components/TopBar";
+import { ToastProvider } from "../lib/toast";
 import type { Task } from "../../shared/types";
 
 function providers(ui: ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <DndContext>{ui}</DndContext>
+      <ToastProvider>
+        <DndContext>{ui}</DndContext>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }
@@ -34,6 +37,8 @@ const sample: Task = {
   section_id: null,
   parent_task_id: null,
   recurring_rule_id: null,
+  recurrence: null,
+  recurrence_mode: "fixed",
   position: 0,
   status: "todo",
   completed_at: null,

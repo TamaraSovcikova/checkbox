@@ -57,6 +57,8 @@ export interface Task {
   section_id: string | null;
   parent_task_id: string | null;
   recurring_rule_id: string | null;
+  recurrence: string | null; // compact spec, see shared/recurrence.ts
+  recurrence_mode: "fixed" | "after_completion";
   position: number;
   status: TaskStatus;
   completed_at: string | null;
@@ -67,10 +69,21 @@ export interface Task {
   subtasks?: Subtask[];
 }
 
+// A saved filter's query. Every field optional and ANDed together server-side.
+export interface FilterQuery {
+  text?: string;
+  priority_max?: Priority;
+  label?: string;
+  area_id?: string;
+  project_id?: string;
+  due?: "overdue" | "today" | "week" | "none" | "any";
+  status?: "open" | "done" | "any";
+}
+
 export interface SavedFilter {
   id: string;
   name: string;
-  query: Record<string, unknown>;
+  query: FilterQuery;
   position: number;
 }
 
@@ -128,4 +141,5 @@ export interface CaptureParse {
   priority: Priority | null;
   labelNames: string[];
   projectName: string | null;
+  recurrence: string | null; // compact spec, see shared/recurrence.ts
 }

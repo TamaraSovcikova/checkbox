@@ -7,8 +7,10 @@ import {
   useProjects,
   useOnlineStatus,
   useViewPrefs,
+  useSavedFilters,
 } from "../lib/queries";
 import { api } from "../lib/api";
+import { FilterDialog } from "./FilterDialog";
 import { useMe } from "../lib/ui-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -23,6 +25,7 @@ import {
   LogOutIcon,
   AddIcon,
   LogoIcon,
+  FilterIcon,
   ChevronRightIcon,
   ChevronDownIcon,
 } from "../lib/icons";
@@ -278,10 +281,12 @@ function ProfileCard() {
 export function Sidebar() {
   const { data: areas = [] } = useAreas();
   const { data: labels = [] } = useLabels();
+  const { data: savedFilters = [] } = useSavedFilters();
   const qc = useQueryClient();
   const { online, pending } = useOnlineStatus();
   const { hide, show, isHidden } = useViewPrefs();
   const [manage, setManage] = useState(false);
+  const [filterDialog, setFilterDialog] = useState(false);
 
   const hiddenViews = ALL_VIEWS.filter((s) => isHidden(s.to));
   const visible = (items: NavDef[]) => items.filter((s) => !isHidden(s.to));
@@ -387,6 +392,43 @@ export function Sidebar() {
           )}
         </div>
 
+        {/* Filters */}
+        <div className="mt-5" />
+        <SectionHeader
+          title="Filters"
+          action={
+            <button
+              onClick={() => setFilterDialog(true)}
+              title="New filter"
+              className="grid h-5 w-5 place-items-center rounded text-subtle hover:bg-surface-2 hover:text-foreground"
+            >
+              <AddIcon className="h-3.5 w-3.5" />
+            </button>
+          }
+        />
+        <nav className="space-y-0.5">
+          {savedFilters.map((f) => (
+            <NavLink
+              key={f.id}
+              to={`/filter/${f.id}`}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                  isActive
+                    ? "bg-surface-2 text-foreground"
+                    : "text-muted hover:bg-surface-2/60 hover:text-foreground"
+                )
+              }
+            >
+              <FilterIcon className="h-4 w-4 shrink-0" />
+              <span className="truncate">{f.name}</span>
+            </NavLink>
+          ))}
+          {savedFilters.length === 0 && (
+            <p className="px-2 text-xs text-subtle">No filters yet. Click +</p>
+          )}
+        </nav>
+
         {/* Labels */}
         {labels.length > 0 && (
           <>
@@ -408,6 +450,7 @@ export function Sidebar() {
       </div>
 
       <ProfileCard />
+      <FilterDialog open={filterDialog} onOpenChange={setFilterDialog} />
     </aside>
   );
 }

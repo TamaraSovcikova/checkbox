@@ -6,7 +6,12 @@ import {
 import { useEffect, useState } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { api } from "./api";
-import type { Task, UserPrefs, ViewDefault } from "../../shared/types";
+import type {
+  FilterQuery,
+  Task,
+  UserPrefs,
+  ViewDefault,
+} from "../../shared/types";
 import {
   getOfflineQueueLength,
   replayOfflineQueue,
@@ -73,6 +78,45 @@ export function useDeleteTask() {
   return useMutation({
     mutationFn: (id: string) => api.deleteTask(id),
     onSuccess: invalidate,
+  });
+}
+
+// ── Saved filters ──────────────────────────────────────────────────────────────
+
+export const useSavedFilters = () =>
+  useQuery({ queryKey: ["filters"], queryFn: api.listFilters, staleTime: 60_000 });
+
+export const useFilterTasks = (id: string) =>
+  useQuery({
+    queryKey: ["filter-tasks", id],
+    queryFn: () => api.filterTasks(id),
+  });
+
+export function useCreateFilter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { name: string; query: FilterQuery }) => api.createFilter(b),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["filters"] }),
+  });
+}
+
+export function useUpdateFilter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { name?: string; query?: FilterQuery } }) =>
+      api.updateFilter(id, body),
+    onSuccess: (_d, { id }) => {
+      qc.invalidateQueries({ queryKey: ["filters"] });
+      qc.invalidateQueries({ queryKey: ["filter-tasks", id] });
+    },
+  });
+}
+
+export function useDeleteFilter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteFilter(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["filters"] }),
   });
 }
 

@@ -1,12 +1,75 @@
 import * as chrono from "chrono-node";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
 import type { CaptureParse, Priority } from "../../shared/types";
+import { nextDueDate, recurrenceLabel } from "../../shared/recurrence";
+
+const WEEKDAY_WORDS: Record<string, string> = {
+  mon: "mon", monday: "mon",
+  tue: "tue", tues: "tue", tuesday: "tue",
+  wed: "wed", weds: "wed", wednesday: "wed",
+  thu: "thu", thur: "thu", thurs: "thu", thursday: "thu",
+  fri: "fri", friday: "fri",
+  sat: "sat", saturday: "sat",
+  sun: "sun", sunday: "sun",
+};
+
+// Extract a recurrence spec from a capture string, returning the spec (or null)
+// and the text with the recurrence phrase removed. Runs before chrono so
+// "every monday" isn't misread as a one-off date.
+function extractRecurrence(text: string): { spec: string | null; rest: string } {
+  // "every weekday(s)" / "on weekdays"
+  let m = text.match(/\bevery\s+weekdays?\b/i) || text.match(/\bon\s+weekdays\b/i);
+  if (m) return { spec: "weekdays", rest: text.replace(m[0], "") };
+
+  // "daily" / "weekly" / "monthly" / "yearly" / "annually"
+  m = text.match(/\b(daily|weekly|monthly|yearly|annually)\b/i);
+  if (m) {
+    const map: Record<string, string> = {
+      daily: "daily", weekly: "weekly", monthly: "monthly",
+      yearly: "yearly", annually: "yearly",
+    };
+    return { spec: map[m[1].toLowerCase()], rest: text.replace(m[0], "") };
+  }
+
+  // "every N days/weeks/months/years"
+  m = text.match(/\bevery\s+(\d+)\s+(day|week|month|year)s?\b/i);
+  if (m) {
+    return { spec: `every:${m[1]}:${m[2].toLowerCase()}`, rest: text.replace(m[0], "") };
+  }
+
+  // "every day/week/month/year"
+  m = text.match(/\bevery\s+(day|week|month|year)\b/i);
+  if (m) {
+    const unit = m[1].toLowerCase();
+    const spec = unit === "day" ? "daily" : unit === "week" ? "weekly" : unit === "month" ? "monthly" : "yearly";
+    return { spec, rest: text.replace(m[0], "") };
+  }
+
+  // "every mon", "every mon,wed,fri", "every monday and thursday"
+  m = text.match(/\bevery\s+([a-z, &]+?)(?=\s|$)/i);
+  if (m) {
+    const days = m[1]
+      .split(/[,&]|\band\b/i)
+      .map((d) => WEEKDAY_WORDS[d.trim().toLowerCase()])
+      .filter(Boolean);
+    if (days.length) {
+      return { spec: `weekly:${[...new Set(days)].join(",")}`, rest: text.replace(m[0], "") };
+    }
+  }
+
+  return { spec: null, rest: text };
+}
 
 // Parse a quick-capture string like:
 //   "Call dentist tomorrow 3pm p2 @call #Belgium"
 // into structured fields, returning the cleaned title plus what was extracted.
 export function parseCapture(input: string): CaptureParse {
   let text = input;
+
+  // recurrence first, so "every monday" is not consumed by the date parser
+  const rec = extractRecurrence(text);
+  const recurrence = rec.spec;
+  text = rec.rest;
 
   // priority: p1..p4 (word-boundary, case-insensitive)
   let priority: Priority | null = null;
@@ -43,8 +106,15 @@ export function parseCapture(input: string): CaptureParse {
     text = (text.slice(0, r.index) + text.slice(r.index + r.text.length)).trim();
   }
 
+  // A recurring task needs a due-date anchor to roll forward from. If none was
+  // given explicitly, anchor to the next occurrence starting today.
+  if (recurrence && !due_date) {
+    const yesterday = format(addDays(new Date(), -1), "yyyy-MM-dd");
+    due_date = nextDueDate(recurrence, yesterday);
+  }
+
   const title = text.replace(/\s{2,}/g, " ").trim();
-  return { title, due_date, due_time, priority, labelNames, projectName };
+  return { title, due_date, due_time, priority, labelNames, projectName, recurrence };
 }
 
 // Build the chips shown live under the capture bar.
@@ -56,6 +126,8 @@ export function previewChips(p: CaptureParse): { label: string; kind: string }[]
       kind: "date",
     });
   if (p.priority) chips.push({ label: `P${p.priority}`, kind: "priority" });
+  if (p.recurrence)
+    chips.push({ label: recurrenceLabel(p.recurrence) ?? "repeats", kind: "recurrence" });
   for (const l of p.labelNames) chips.push({ label: `@${l}`, kind: "label" });
   if (p.projectName) chips.push({ label: `#${p.projectName}`, kind: "project" });
   return chips;

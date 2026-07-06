@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { parseCapture, previewChips } from "../lib/nlp";
 import { useCreateTask, useProjects } from "../lib/queries";
+import { api } from "../lib/api";
+import { useTaskUI } from "../lib/ui-context";
 import {
   CommandDialog,
   CommandInput,
@@ -11,6 +14,7 @@ import {
 } from "./ui/command";
 import {
   AddIcon,
+  SearchIcon,
   TodayIcon,
   UpcomingIcon,
   OverdueIcon,
@@ -38,7 +42,21 @@ export function CommandCapture() {
   const [text, setText] = useState("");
   const navigate = useNavigate();
   const create = useCreateTask();
+  const { open: openTask } = useTaskUI();
   const { data: projects = [] } = useProjects();
+
+  // Debounced task search — only queries once ≥2 chars have settled for 200ms.
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(text.trim()), 200);
+    return () => clearTimeout(t);
+  }, [text]);
+  const { data: results = [] } = useQuery({
+    queryKey: ["search", debounced],
+    queryFn: () => api.searchTasks(debounced),
+    enabled: open && debounced.length >= 2,
+    staleTime: 10_000,
+  });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -79,6 +97,7 @@ export function CommandCapture() {
       due_time: parsed.due_time,
       priority: parsed.priority ?? 4,
       labelNames: parsed.labelNames,
+      recurrence: parsed.recurrence,
       area_id,
       project_id,
     });
@@ -119,8 +138,28 @@ export function CommandCapture() {
           </CommandGroup>
         ) : (
           <p className="px-3 py-6 text-center text-sm text-subtle">
-            Type to add a task, or search views.
+            Type to add a task, search existing tasks, or jump to a view.
           </p>
+        )}
+        {results.length > 0 && (
+          <CommandGroup heading="Tasks">
+            {results.map((t) => (
+              <CommandItem
+                key={t.id}
+                value={`task:${t.id}`}
+                onSelect={() => {
+                  openTask(t);
+                  close();
+                }}
+              >
+                <SearchIcon className="h-4 w-4 text-muted" />
+                <span className="flex-1 truncate">{t.title}</span>
+                {t.due_date && (
+                  <span className="shrink-0 text-[11px] text-primary">{t.due_date}</span>
+                )}
+              </CommandItem>
+            ))}
+          </CommandGroup>
         )}
         {navMatches.length > 0 && (
           <CommandGroup heading="Go to">
