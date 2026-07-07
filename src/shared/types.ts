@@ -51,6 +51,9 @@ export interface Task {
   due_date: string | null; // YYYY-MM-DD
   due_time: string | null; // HH:MM
   time_estimate_min: number | null;
+  time_spent_min: number; // accumulated actual minutes
+  timer_started_at: string | null; // ISO instant a running timer began
+  snoozed_until: string | null; // YYYY-MM-DD; hidden from views until this day
   scheduled_start: string | null;
   scheduled_end: string | null;
   board_column: string | null;
@@ -67,6 +70,15 @@ export interface Task {
   // joined
   labels?: Label[];
   subtasks?: Subtask[];
+  depends_on?: TaskRef[]; // blockers (this task waits on these)
+  blocks?: TaskRef[]; // tasks waiting on this one
+}
+
+// Lightweight task reference for dependency lists.
+export interface TaskRef {
+  id: string;
+  title: string;
+  status: TaskStatus;
 }
 
 // A saved filter's query. Every field optional and ANDed together server-side.
@@ -131,6 +143,72 @@ export interface UserPrefs {
   hiddenViews: string[]; // view keys the user has hidden from the sidebar
   viewOrder: string[]; // optional custom ordering of view keys
   viewDefaults?: Record<string, ViewDefault>; // per-view grid/sort/group memory
+}
+
+// ── Attachments ────────────────────────────────────────────────────────────
+export interface Attachment {
+  id: string;
+  task_id: string;
+  kind: "file" | "link";
+  url: string; // R2 key (file) or external URL (link)
+  filename: string | null;
+  created_at: string;
+}
+
+// ── Templates ──────────────────────────────────────────────────────────────
+export interface TemplateItem {
+  id: string;
+  template_id: string;
+  title: string;
+  notes: string | null;
+  priority: Priority;
+  offset_days: number | null; // due = anchor + offset_days; null = no due date
+  position: number;
+}
+
+export interface Template {
+  id: string;
+  name: string;
+  icon: string | null;
+  color: string | null;
+  created_at: string;
+  items?: TemplateItem[];
+}
+
+// ── Plan my day ────────────────────────────────────────────────────────────
+export interface PlanBlock {
+  task_id: string;
+  title: string;
+  priority: Priority;
+  start: string; // ISO
+  end: string; // ISO
+  estimate_min: number;
+}
+
+export interface PlanProposal {
+  date: string;
+  blocks: PlanBlock[];
+  unscheduled: TaskRef[]; // couldn't find a slot
+  meetings: { title: string | null; start: string; end: string }[];
+}
+
+// ── Weekly review ──────────────────────────────────────────────────────────
+export interface WeeklyReview {
+  period: { from: string; to: string };
+  stats: { completed: number; slipped: number; upcoming: number; created: number };
+  completed_tasks: TaskRef[];
+  slipped_tasks: (TaskRef & { due_date: string | null })[];
+  upcoming_tasks: (TaskRef & { due_date: string | null })[];
+  by_area: { area: string; completed: number }[];
+}
+
+// ── Progress / streaks ─────────────────────────────────────────────────────
+export interface Stats {
+  done_today: number;
+  done_this_week: number;
+  streak_days: number; // consecutive days (ending today or yesterday) with a completion
+  best_streak: number;
+  heatmap: { date: string; count: number }[]; // last ~84 days, oldest first
 }
 
 // Payload from the NLP capture bar.

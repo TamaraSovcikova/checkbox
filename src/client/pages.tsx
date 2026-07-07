@@ -17,7 +17,14 @@ import {
   useDeleteFilter,
 } from "./lib/queries";
 import { FilterDialog } from "./components/FilterDialog";
-import { FilterIcon } from "./lib/icons";
+import { AreaDialog } from "./components/AreaDialog";
+import { PlanMyDay } from "./components/PlanMyDay";
+import { StatsWidget } from "./components/StatsWidget";
+import { CheatSheet } from "./components/CheatSheet";
+import { FilterIcon, SnoozeIcon, ReviewIcon } from "./lib/icons";
+import { areaColorVar } from "./lib/colors";
+import { areaIcon } from "./lib/icons";
+import { useReview } from "./lib/queries";
 import { useTaskUI, useMe } from "./lib/ui-context";
 import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
@@ -97,6 +104,11 @@ const VIEW_META: Record<
   overdue: { title: "Overdue", empty: "Nothing overdue. Nice.", icon: OverdueIcon },
   backlog: { title: "Backlog", empty: "Backlog is empty.", icon: BacklogIcon },
   logbook: { title: "Logbook", empty: "No completed tasks yet.", icon: LogbookIcon },
+  snoozed: {
+    title: "Snoozed",
+    empty: "Nothing snoozed. Snooze a task to defer it here.",
+    icon: SnoozeIcon,
+  },
 };
 
 // ── Client-side sort / group over the fetched task list ───────────────────────
@@ -332,6 +344,13 @@ export function ViewPage({ name }: { name: string }) {
           ) : undefined
         }
       />
+      {name === "today" && (
+        <>
+          <CheatSheet />
+          <StatsWidget />
+          <PlanMyDay tasks={tasks} />
+        </>
+      )}
       {name === "backlog" ? (
         <BacklogBody tasks={tasks} list={body} />
       ) : (
@@ -476,6 +495,8 @@ export function AreaPage() {
   const { data: tasks = [] } = useTasks({ area_id: id });
   const qc = useQueryClient();
   const area = areas.find((a) => a.id === id);
+  const [editArea, setEditArea] = useState(false);
+  const AreaIcon = areaIcon(area?.icon);
 
   async function addProject() {
     const name = prompt("New project (sprint) name");
@@ -486,7 +507,23 @@ export function AreaPage() {
 
   return (
     <div>
-      <Header title={area?.name ?? "Area"} />
+      <Header
+        title={area?.name ?? "Area"}
+        icon={
+          AreaIcon ? (
+            <AreaIcon className={ICON_SIZE} style={{ color: areaColorVar(area?.color) }} />
+          ) : (
+            <span
+              className="inline-block h-3 w-3 rounded-full"
+              style={{ background: areaColorVar(area?.color) }}
+            />
+          )
+        }
+        menu={[{ label: "Edit area", onSelect: () => setEditArea(true) }]}
+      />
+      {area && (
+        <AreaDialog open={editArea} onOpenChange={setEditArea} existing={area} />
+      )}
 
       <div className="mb-5">
         <div className="mb-2 flex items-center justify-between">
@@ -606,6 +643,145 @@ export function FilterPage() {
       <BulkActionBar controls={controls} />
       <FilterDialog open={editOpen} onOpenChange={setEditOpen} existing={filter} />
     </div>
+  );
+}
+
+// ── Weekly review ─────────────────────────────────────────────────────────────
+
+export function ReviewPage() {
+  const { data, isLoading } = useReview();
+
+  return (
+    <div className="max-w-3xl">
+      <Header title="Weekly review" icon={<ReviewIcon className={ICON_SIZE} />} />
+
+      {isLoading || !data ? (
+        <p className="px-2 text-sm text-subtle">Loading…</p>
+      ) : (
+        <div className="space-y-6">
+          <p className="text-xs text-subtle">
+            {data.period.from} → {data.period.to}
+          </p>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <ReviewStat value={data.stats.completed} label="Completed" tone="success" />
+            <ReviewStat value={data.stats.slipped} label="Slipped" tone="danger" />
+            <ReviewStat value={data.stats.upcoming} label="Next 7 days" tone="primary" />
+            <ReviewStat value={data.stats.created} label="Created" tone="muted" />
+          </div>
+
+          {data.by_area.length > 0 && (
+            <section>
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
+                Completed by area
+              </h2>
+              <div className="space-y-1.5">
+                {data.by_area.map((a) => {
+                  const pct = Math.round(
+                    (a.completed / Math.max(1, data.stats.completed)) * 100
+                  );
+                  return (
+                    <div key={a.area} className="flex items-center gap-3 text-sm">
+                      <span className="w-28 shrink-0 truncate text-muted">{a.area}</span>
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
+                        <div
+                          className="h-full rounded-full bg-success"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="w-6 text-right tabular-nums text-subtle">
+                        {a.completed}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          <ReviewList
+            title="Done this week"
+            tasks={data.completed_tasks}
+            empty="Nothing completed yet this week."
+          />
+          <ReviewList
+            title="Slipped (overdue, still open)"
+            tasks={data.slipped_tasks}
+            empty="Nothing overdue. Nice."
+            danger
+          />
+          <ReviewList
+            title="Coming up (next 7 days)"
+            tasks={data.upcoming_tasks}
+            empty="Nothing scheduled in the next week."
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewStat({
+  value,
+  label,
+  tone,
+}: {
+  value: number;
+  label: string;
+  tone: "success" | "danger" | "primary" | "muted";
+}) {
+  const color =
+    tone === "success"
+      ? "text-success"
+      : tone === "danger"
+      ? "text-danger"
+      : tone === "primary"
+      ? "text-primary"
+      : "text-foreground";
+  return (
+    <div className="rounded-lg border border-border bg-surface/60 p-3">
+      <div className={cx("text-2xl font-semibold tabular-nums", color)}>{value}</div>
+      <div className="text-[11px] uppercase tracking-wide text-subtle">{label}</div>
+    </div>
+  );
+}
+
+function ReviewList({
+  title,
+  tasks,
+  empty,
+  danger,
+}: {
+  title: string;
+  tasks: { id: string; title: string; due_date?: string | null }[];
+  empty: string;
+  danger?: boolean;
+}) {
+  return (
+    <section>
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
+        {title} <span className="text-subtle">{tasks.length}</span>
+      </h2>
+      {tasks.length === 0 ? (
+        <p className="px-2 text-sm text-subtle">{empty}</p>
+      ) : (
+        <ul className="space-y-0.5">
+          {tasks.map((t) => (
+            <li
+              key={t.id}
+              className="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-foreground"
+            >
+              <span className="flex-1 truncate">{t.title}</span>
+              {t.due_date && (
+                <span className={cx("text-[11px]", danger ? "text-danger" : "text-subtle")}>
+                  {t.due_date}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

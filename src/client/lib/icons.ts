@@ -30,7 +30,71 @@ export {
   Filter as FilterIcon,
   Trash2 as TrashIcon,
   CalendarClock as RescheduleIcon,
+  // Tier 2
+  Sparkles as PlanIcon,
+  ClipboardCheck as ReviewIcon,
+  Flame as StreakIcon,
+  BarChart3 as StatsIcon,
+  Timer as TimerIcon,
+  Play as PlayIcon,
+  Square as StopIcon,
+  Clock as ClockIcon,
+  Moon as SnoozeIcon,
+  Ban as BlockedIcon,
+  LayoutTemplate as TemplateIcon,
+  Paperclip as AttachIcon,
+  Link2 as LinkIcon,
+  Upload as UploadIcon,
+  ExternalLink as ExternalLinkIcon,
+  Pencil as EditIcon,
 } from "lucide-react";
+
+// Curated icon set an area can be tagged with (the picker offers these by name;
+// the DB stores the name string). Kept small + generic so the grid stays scannable.
+import {
+  Briefcase,
+  Home,
+  Heart,
+  Dumbbell,
+  BookOpen,
+  Code2,
+  Palette,
+  DollarSign,
+  Plane,
+  ShoppingCart,
+  Users,
+  Target,
+  Leaf,
+  Music,
+  Coffee,
+  Star,
+  type LucideIcon,
+} from "lucide-react";
+
+export const AREA_ICONS: Record<string, LucideIcon> = {
+  briefcase: Briefcase,
+  home: Home,
+  heart: Heart,
+  dumbbell: Dumbbell,
+  book: BookOpen,
+  code: Code2,
+  palette: Palette,
+  money: DollarSign,
+  plane: Plane,
+  cart: ShoppingCart,
+  users: Users,
+  target: Target,
+  leaf: Leaf,
+  music: Music,
+  coffee: Coffee,
+  star: Star,
+};
+
+// Resolve an area's stored icon name to a component (or null if unset/unknown).
+export function areaIcon(name: string | null | undefined): LucideIcon | null {
+  if (!name) return null;
+  return AREA_ICONS[name] ?? null;
+}
 
 // A shared default size class so icons read consistently across the app.
 export const ICON_SIZE = "h-[18px] w-[18px]";

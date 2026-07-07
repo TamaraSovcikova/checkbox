@@ -12,6 +12,7 @@ import {
   ViewPage,
   SettingsPage,
   FilterPage,
+  ReviewPage,
 } from "./pages";
 
 // Lazy — the calendar pulls in its own timeline code; keep it out of the
@@ -74,6 +75,8 @@ export default function App() {
               <Route path="overdue" element={<ViewPage name="overdue" />} />
               <Route path="backlog" element={<ViewPage name="backlog" />} />
               <Route path="logbook" element={<ViewPage name="logbook" />} />
+              <Route path="snoozed" element={<ViewPage name="snoozed" />} />
+              <Route path="review" element={<ReviewPage />} />
               <Route path="area/:id" element={<AreaPage />} />
               <Route path="project/:id" element={<ProjectPage />} />
               <Route path="label/:name" element={<LabelPage />} />

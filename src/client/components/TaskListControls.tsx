@@ -3,7 +3,7 @@ import type { Task } from "../../shared/types";
 import { api } from "../lib/api";
 import { useTaskInvalidate } from "../lib/queries";
 import { useToast } from "../lib/toast";
-import { CheckIcon, TrashIcon, RescheduleIcon, BacklogIcon, CloseIcon } from "../lib/icons";
+import { CheckIcon, TrashIcon, RescheduleIcon, BacklogIcon, CloseIcon, SnoozeIcon } from "../lib/icons";
 import { Button } from "./ui";
 
 // Today (Europe/Brussels) as YYYY-MM-DD, matching the server's day boundary.
@@ -40,6 +40,7 @@ export interface TaskControls {
   deleteSelected: () => void;
   scheduleSelected: (date: string | null) => void;
   moveSelectedToBacklog: () => void;
+  snoozeSelected: (until: string) => void;
 }
 
 // Selection + keyboard navigation over an ordered task list. j/k move a cursor,
@@ -128,6 +129,20 @@ export function useTaskSelection(
         Promise.all(prev.map((p) => api.rescheduleTask(p.id, p.due, p.time))).then(
           invalidate
         );
+      });
+    },
+    [selectedTasks, invalidate, clear, toast]
+  );
+
+  const snoozeSelected = useCallback(
+    (until: string) => {
+      const items = selectedTasks();
+      if (!items.length) return;
+      const prev = items.map((t) => ({ id: t.id, until: t.snoozed_until }));
+      Promise.all(items.map((t) => api.snoozeTask(t.id, until))).then(invalidate);
+      clear();
+      toast(`${items.length} snoozed`, () => {
+        Promise.all(prev.map((p) => api.snoozeTask(p.id, p.until))).then(invalidate);
       });
     },
     [selectedTasks, invalidate, clear, toast]
@@ -253,6 +268,7 @@ export function useTaskSelection(
     deleteSelected,
     scheduleSelected,
     moveSelectedToBacklog,
+    snoozeSelected,
   };
 }
 
@@ -277,6 +293,12 @@ export function BulkActionBar({ controls }: { controls: TaskControls }) {
       </BarBtn>
       <BarBtn onClick={() => controls.scheduleSelected(addDaysStr(today, 1))}>
         Tomorrow
+      </BarBtn>
+      <BarBtn
+        onClick={() => controls.snoozeSelected(addDaysStr(today, 1))}
+        icon={<SnoozeIcon className="h-4 w-4" />}
+      >
+        Snooze
       </BarBtn>
       <BarBtn
         onClick={controls.moveSelectedToBacklog}

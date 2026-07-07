@@ -117,6 +117,22 @@ export function parseCapture(input: string): CaptureParse {
   return { title, due_date, due_time, priority, labelNames, projectName, recurrence };
 }
 
+// Parse a free-text date phrase ("next tue", "tomorrow 3pm", "in 2 weeks") into
+// a due date/time. Powers inline NLP date editing in the drawer (#11). Returns
+// nulls when nothing date-like is found.
+export function parseDatePhrase(
+  input: string
+): { due_date: string | null; due_time: string | null } {
+  const results = chrono.parse(input, new Date(), { forwardDate: true });
+  if (!results.length) return { due_date: null, due_time: null };
+  const r = results[0];
+  const d = r.start.date();
+  return {
+    due_date: format(d, "yyyy-MM-dd"),
+    due_time: r.start.isCertain("hour") ? format(d, "HH:mm") : null,
+  };
+}
+
 // Build the chips shown live under the capture bar.
 export function previewChips(p: CaptureParse): { label: string; kind: string }[] {
   const chips: { label: string; kind: string }[] = [];

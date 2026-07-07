@@ -33,6 +33,7 @@ const WRITABLE = [
   "position",
   "recurrence",
   "recurrence_mode",
+  "snoozed_until",
 ];
 
 // Does this task belong to this user? Used to gate subtask + label mutations.
@@ -370,6 +371,131 @@ tasks.post("/restore", async (c) => {
     .first();
   const [task] = await hydrateTasks(c.env.DB, [row as Record<string, unknown>]);
   return c.json(task, 201);
+});
+
+// --- snooze / defer ---
+// Hide a task from the active views until `until` (YYYY-MM-DD). `until: null`
+// clears the snooze and re-surfaces it immediately.
+tasks.post("/:id/snooze", async (c) => {
+  const userId = await getUserId(c);
+  const id = c.req.param("id");
+  if (!(await ownsTask(c.env.DB, userId, id)))
+    return c.json({ error: "not found" }, 404);
+  const b = await c.req.json<{ until: string | null }>();
+  await c.env.DB.prepare(
+    "UPDATE tasks SET snoozed_until = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+  )
+    .bind(b.until ?? null, now(), id, userId)
+    .run();
+  return c.json({ ok: true, snoozed_until: b.until ?? null });
+});
+
+// --- time tracking ---
+// Start a timer: stamp timer_started_at now (idempotent — keeps an existing start).
+tasks.post("/:id/timer/start", async (c) => {
+  const userId = await getUserId(c);
+  const id = c.req.param("id");
+  const row = await c.env.DB.prepare(
+    "SELECT timer_started_at FROM tasks WHERE id = ? AND user_id = ?"
+  )
+    .bind(id, userId)
+    .first<{ timer_started_at: string | null }>();
+  if (!row) return c.json({ error: "not found" }, 404);
+  if (!row.timer_started_at) {
+    await c.env.DB.prepare(
+      "UPDATE tasks SET timer_started_at = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+    )
+      .bind(now(), now(), id, userId)
+      .run();
+  }
+  const t = await c.env.DB.prepare(
+    "SELECT * FROM tasks WHERE id = ? AND user_id = ?"
+  )
+    .bind(id, userId)
+    .first();
+  const [task] = await hydrateTasks(c.env.DB, [t as Record<string, unknown>]);
+  return c.json(task);
+});
+
+// Stop a timer: fold elapsed whole minutes into time_spent_min, clear the start.
+tasks.post("/:id/timer/stop", async (c) => {
+  const userId = await getUserId(c);
+  const id = c.req.param("id");
+  const row = await c.env.DB.prepare(
+    "SELECT timer_started_at, time_spent_min FROM tasks WHERE id = ? AND user_id = ?"
+  )
+    .bind(id, userId)
+    .first<{ timer_started_at: string | null; time_spent_min: number }>();
+  if (!row) return c.json({ error: "not found" }, 404);
+  if (row.timer_started_at) {
+    const elapsedMs = Date.now() - new Date(row.timer_started_at).getTime();
+    const mins = Math.max(0, Math.round(elapsedMs / 60000));
+    await c.env.DB.prepare(
+      "UPDATE tasks SET time_spent_min = time_spent_min + ?, timer_started_at = NULL, updated_at = ? WHERE id = ? AND user_id = ?"
+    )
+      .bind(mins, now(), id, userId)
+      .run();
+  }
+  const t = await c.env.DB.prepare(
+    "SELECT * FROM tasks WHERE id = ? AND user_id = ?"
+  )
+    .bind(id, userId)
+    .first();
+  const [task] = await hydrateTasks(c.env.DB, [t as Record<string, unknown>]);
+  return c.json(task);
+});
+
+// Set the accumulated actual directly (manual adjust from the drawer).
+tasks.post("/:id/time-spent", async (c) => {
+  const userId = await getUserId(c);
+  const id = c.req.param("id");
+  if (!(await ownsTask(c.env.DB, userId, id)))
+    return c.json({ error: "not found" }, 404);
+  const b = await c.req.json<{ minutes: number }>();
+  await c.env.DB.prepare(
+    "UPDATE tasks SET time_spent_min = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+  )
+    .bind(Math.max(0, Math.round(b.minutes || 0)), now(), id, userId)
+    .run();
+  return c.json({ ok: true });
+});
+
+// --- dependencies ("blocked by") ---
+// Add a blocker: `id` waits on `depends_on_id`. Rejects self-links, duplicate,
+// and the immediate reverse edge (which would deadlock the pair).
+tasks.post("/:id/dependencies", async (c) => {
+  const userId = await getUserId(c);
+  const id = c.req.param("id");
+  const b = await c.req.json<{ depends_on_id: string }>();
+  const dep = b.depends_on_id;
+  if (!dep || dep === id) return c.json({ error: "invalid dependency" }, 400);
+  if (!(await ownsTask(c.env.DB, userId, id)) || !(await ownsTask(c.env.DB, userId, dep)))
+    return c.json({ error: "not found" }, 404);
+  const reverse = await c.env.DB.prepare(
+    "SELECT 1 FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?"
+  )
+    .bind(dep, id)
+    .first();
+  if (reverse) return c.json({ error: "would create a cycle" }, 400);
+  await c.env.DB.prepare(
+    "INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?)"
+  )
+    .bind(id, dep)
+    .run();
+  return c.json({ ok: true });
+});
+
+tasks.delete("/:id/dependencies/:depId", async (c) => {
+  const userId = await getUserId(c);
+  const id = c.req.param("id");
+  if (!(await ownsTask(c.env.DB, userId, id)))
+    return c.json({ error: "not found" }, 404);
+  await c.env.DB.prepare(
+    "DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?"
+  )
+    .bind(id, c.req.param("depId"))
+    .run();
+  return c.json({ ok: true });
 });
 
 // --- subtasks ---

@@ -38,6 +38,20 @@
   --pri-3: #fbbf24; /* amber-400   medium */
   --pri-4: #94a3b8; /* slate-400   low    */
 
+  /* area accent palette — user-pickable per area for at-a-glance scanning.
+     Muted 400-level hues so a colored dot reads clearly on the dark surface
+     without clashing with the single indigo primary. Referenced by key from
+     lib/colors.ts (AREA_COLORS); never hardcode these hexes at call sites. */
+  --area-indigo: #818cf8;
+  --area-sky: #38bdf8;
+  --area-emerald: #34d399;
+  --area-amber: #fbbf24;
+  --area-rose: #fb7185;
+  --area-violet: #a78bfa;
+  --area-teal: #2dd4bf;
+  --area-orange: #fb923c;
+  --area-slate: #94a3b8;
+
   --radius: 0.5rem;
 }
 

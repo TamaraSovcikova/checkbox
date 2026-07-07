@@ -1,6 +1,7 @@
 import { useState, type ComponentType } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useDroppable } from "@dnd-kit/core";
+import type { Area } from "../../shared/types";
 import {
   useAreas,
   useLabels,
@@ -9,11 +10,12 @@ import {
   useViewPrefs,
   useSavedFilters,
 } from "../lib/queries";
-import { api } from "../lib/api";
 import { FilterDialog } from "./FilterDialog";
+import { AreaDialog } from "./AreaDialog";
+import { TemplatesSection } from "./TemplatesSection";
 import { useMe } from "../lib/ui-context";
-import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { areaColorVar } from "../lib/colors";
 import {
   TodayIcon,
   UpcomingIcon,
@@ -26,9 +28,13 @@ import {
   AddIcon,
   LogoIcon,
   FilterIcon,
+  ReviewIcon,
+  SnoozeIcon,
   ChevronRightIcon,
   ChevronDownIcon,
+  areaIcon,
 } from "../lib/icons";
+import { api } from "../lib/api";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -48,9 +54,13 @@ const TASK_VIEWS: NavDef[] = [
   { to: "/upcoming", label: "Upcoming", icon: UpcomingIcon },
   { to: "/overdue", label: "Overdue", icon: OverdueIcon },
   { to: "/backlog", label: "Backlog", icon: BacklogIcon },
+  { to: "/snoozed", label: "Snoozed", icon: SnoozeIcon },
   { to: "/logbook", label: "Logbook", icon: LogbookIcon },
 ];
-const PLAN_VIEWS: NavDef[] = [{ to: "/calendar", label: "Calendar", icon: CalendarIcon }];
+const PLAN_VIEWS: NavDef[] = [
+  { to: "/calendar", label: "Calendar", icon: CalendarIcon },
+  { to: "/review", label: "Weekly review", icon: ReviewIcon },
+];
 const ALL_VIEWS = [...TASK_VIEWS, ...PLAN_VIEWS];
 
 // Wraps a sidebar node as a drop target for tasks being dragged.
@@ -112,13 +122,16 @@ function NavItem({
   );
 }
 
-function AreaNode({ id, name }: { id: string; name: string }) {
+function AreaNode({ area }: { area: Area }) {
+  const { id, name } = area;
   const [open, setOpen] = useState(false);
+  const [edit, setEdit] = useState(false);
   const { data: projects = [] } = useProjects(id);
   const { ref, isOver } = useDrop({ id: `area:${id}`, data: { type: "area", areaId: id } });
+  const AreaIcon = areaIcon(area.icon);
   return (
     <div>
-      <div className="flex items-center">
+      <div className="group flex items-center">
         <button
           onClick={() => setOpen((o) => !o)}
           className="grid w-4 place-items-center text-subtle"
@@ -139,7 +152,7 @@ function AreaNode({ id, name }: { id: string; name: string }) {
           to={`/area/${id}`}
           className={({ isActive }) =>
             cn(
-              "flex-1 truncate rounded-md px-2 py-1 text-sm transition-colors",
+              "flex flex-1 items-center gap-2 truncate rounded-md px-2 py-1 text-sm transition-colors",
               isActive
                 ? "bg-surface-2 text-foreground"
                 : "text-foreground/90 hover:bg-surface-2/60",
@@ -147,8 +160,27 @@ function AreaNode({ id, name }: { id: string; name: string }) {
             )
           }
         >
-          {name}
+          {AreaIcon ? (
+            <AreaIcon
+              className="h-3.5 w-3.5 shrink-0"
+              style={{ color: areaColorVar(area.color) }}
+            />
+          ) : (
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ background: areaColorVar(area.color) }}
+            />
+          )}
+          <span className="truncate">{name}</span>
         </NavLink>
+        <button
+          onClick={() => setEdit(true)}
+          title="Edit area"
+          aria-label={`Edit ${name}`}
+          className="mr-1 hidden h-6 w-6 shrink-0 place-items-center rounded text-subtle hover:text-foreground group-hover:grid"
+        >
+          <SettingsIcon className="h-3.5 w-3.5" />
+        </button>
       </div>
       {open && (
         <div className="ml-5 border-l border-border pl-2">
@@ -157,6 +189,7 @@ function AreaNode({ id, name }: { id: string; name: string }) {
           ))}
         </div>
       )}
+      <AreaDialog open={edit} onOpenChange={setEdit} existing={area} />
     </div>
   );
 }
@@ -282,21 +315,14 @@ export function Sidebar() {
   const { data: areas = [] } = useAreas();
   const { data: labels = [] } = useLabels();
   const { data: savedFilters = [] } = useSavedFilters();
-  const qc = useQueryClient();
   const { online, pending } = useOnlineStatus();
   const { hide, show, isHidden } = useViewPrefs();
   const [manage, setManage] = useState(false);
   const [filterDialog, setFilterDialog] = useState(false);
+  const [areaDialog, setAreaDialog] = useState(false);
 
   const hiddenViews = ALL_VIEWS.filter((s) => isHidden(s.to));
   const visible = (items: NavDef[]) => items.filter((s) => !isHidden(s.to));
-
-  async function addArea() {
-    const name = prompt("New area name");
-    if (!name) return;
-    await api.createArea({ name });
-    qc.invalidateQueries({ queryKey: ["areas"] });
-  }
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-surface/60 p-3">
@@ -375,7 +401,7 @@ export function Sidebar() {
           title="Areas"
           action={
             <button
-              onClick={addArea}
+              onClick={() => setAreaDialog(true)}
               title="New area"
               className="grid h-5 w-5 place-items-center rounded text-subtle hover:bg-surface-2 hover:text-foreground"
             >
@@ -385,12 +411,20 @@ export function Sidebar() {
         />
         <div className="space-y-0.5">
           {areas.map((a) => (
-            <AreaNode key={a.id} id={a.id} name={a.name} />
+            <AreaNode key={a.id} area={a} />
           ))}
           {areas.length === 0 && (
-            <p className="px-2 text-xs text-subtle">No areas yet. Click +</p>
+            <button
+              onClick={() => setAreaDialog(true)}
+              className="w-full rounded-md border border-dashed border-border px-2 py-1.5 text-left text-xs text-subtle hover:border-primary/50 hover:text-foreground"
+            >
+              + Add your first area (e.g. Work, Health)
+            </button>
           )}
         </div>
+
+        {/* Templates */}
+        <TemplatesSection />
 
         {/* Filters */}
         <div className="mt-5" />
@@ -451,6 +485,7 @@ export function Sidebar() {
 
       <ProfileCard />
       <FilterDialog open={filterDialog} onOpenChange={setFilterDialog} />
+      <AreaDialog open={areaDialog} onOpenChange={setAreaDialog} />
     </aside>
   );
 }

@@ -5,6 +5,9 @@ export type Bindings = {
   DB: D1Database;
   SESSIONS: KVNamespace;
   ASSETS: Fetcher;
+  // R2 bucket for file attachments. Optional — when unbound, the app runs in
+  // link-only mode and the file-upload endpoint returns 501.
+  ATTACHMENTS: R2Bucket | undefined;
   // Calendar integration — set via wrangler secret in prod, .dev.vars locally.
   GOOGLE_CLIENT_ID: string | undefined;
   GOOGLE_CLIENT_SECRET: string | undefined;
@@ -168,6 +171,7 @@ export function rowToTask(r: Record<string, unknown>): Record<string, unknown> {
     position: Number(r.position),
     time_estimate_min:
       r.time_estimate_min == null ? null : Number(r.time_estimate_min),
+    time_spent_min: r.time_spent_min == null ? 0 : Number(r.time_spent_min),
   };
 }
 

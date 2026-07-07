@@ -1,13 +1,17 @@
 import type {
   Area,
+  Attachment,
   CalendarEvent,
   CalendarStatus,
   Label,
   Project,
   SavedFilter,
+  Stats,
   Task,
+  Template,
   TriageSuggestion,
   UserPrefs,
+  WeeklyReview,
 } from "../../shared/types";
 import type { FilterQuery } from "../../shared/types";
 import { enqueueOffline } from "./offline";
@@ -110,6 +114,22 @@ export const api = {
     httpMutate("DELETE", `/api/tasks/${id}`),
   restoreTask: (snapshot: Task) =>
     httpMutate<Task>("POST", "/api/tasks/restore", snapshot),
+  snoozeTask: (id: string, until: string | null) =>
+    httpMutate<{ ok: boolean; snoozed_until: string | null }>(
+      "POST",
+      `/api/tasks/${id}/snooze`,
+      { until }
+    ),
+  timerStart: (id: string) =>
+    httpMutate<Task>("POST", `/api/tasks/${id}/timer/start`),
+  timerStop: (id: string) =>
+    httpMutate<Task>("POST", `/api/tasks/${id}/timer/stop`),
+  setTimeSpent: (id: string, minutes: number) =>
+    httpMutate("POST", `/api/tasks/${id}/time-spent`, { minutes }),
+  addDependency: (id: string, depends_on_id: string) =>
+    httpMutate("POST", `/api/tasks/${id}/dependencies`, { depends_on_id }),
+  removeDependency: (id: string, depId: string) =>
+    httpMutate("DELETE", `/api/tasks/${id}/dependencies/${depId}`),
   addSubtask: (taskId: string, title: string) =>
     httpMutate("POST", `/api/tasks/${taskId}/subtasks`, { title }),
   updateSubtask: (taskId: string, subId: string, b: { done?: boolean; title?: string }) =>
@@ -172,6 +192,46 @@ export const api = {
   mcpToken: () => http<{ token: string }>("/api/prefs/mcp-token"),
   mcpTokenRotate: () =>
     http<{ token: string }>("/api/prefs/mcp-token", { method: "POST" }),
+
+  // progress + weekly review
+  stats: () => http<Stats>("/api/stats"),
+  review: () => http<WeeklyReview>("/api/review"),
+
+  // templates
+  listTemplates: () => http<Template[]>("/api/templates"),
+  createTemplate: (b: Partial<Template>) =>
+    http<Template>("/api/templates", { method: "POST", body: JSON.stringify(b) }),
+  updateTemplate: (id: string, b: Partial<Template>) =>
+    http<Template>(`/api/templates/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(b),
+    }),
+  deleteTemplate: (id: string) =>
+    http(`/api/templates/${id}`, { method: "DELETE" }),
+  applyTemplate: (
+    id: string,
+    b: { anchor?: string; area_id?: string | null; project_id?: string | null }
+  ) =>
+    http<{ ok: boolean; created: number; task_ids: string[] }>(
+      `/api/templates/${id}/apply`,
+      { method: "POST", body: JSON.stringify(b) }
+    ),
+
+  // attachments
+  listAttachments: (taskId: string) =>
+    http<Attachment[]>(`/api/attachments/${taskId}`),
+  addLinkAttachment: (taskId: string, url: string, filename?: string) =>
+    http<Attachment>(`/api/attachments/${taskId}/link`, {
+      method: "POST",
+      body: JSON.stringify({ url, filename }),
+    }),
+  uploadAttachment: (taskId: string, file: File) =>
+    http<Attachment>(
+      `/api/attachments/${taskId}/file?filename=${encodeURIComponent(file.name)}`,
+      { method: "POST", body: file, headers: {} }
+    ),
+  deleteAttachment: (taskId: string, id: string) =>
+    http(`/api/attachments/${taskId}/${id}`, { method: "DELETE" }),
 
   // calendar
   calendarStatus: () => http<CalendarStatus>("/api/calendar/status"),

@@ -11,6 +11,10 @@ import { calendar } from "./routes/calendar";
 import { push } from "./routes/push";
 import { triage } from "./routes/triage";
 import { filters } from "./routes/filters";
+import { stats } from "./routes/stats";
+import { review } from "./routes/review";
+import { templates } from "./routes/templates";
+import { attachments } from "./routes/attachments";
 import { mcp } from "./routes/mcp";
 import { syncCalendar, renewWatchChannel } from "./lib/sync";
 import { sendMorningBrief } from "./lib/brief";
@@ -19,7 +23,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 // --- API routes -----------------------------------------------------------
 app.get("/api/health", (c) =>
-  c.json({ ok: true, app: "checkbox", phase: 5, ts: new Date().toISOString() })
+  c.json({ ok: true, app: "checkbox", phase: 6, ts: new Date().toISOString() })
 );
 
 app.route("/api/auth", auth);
@@ -33,6 +37,10 @@ app.route("/api/calendar", calendar);
 app.route("/api/push", push);
 app.route("/api/triage", triage);
 app.route("/api/saved-filters", filters);
+app.route("/api/stats", stats);
+app.route("/api/review", review);
+app.route("/api/templates", templates);
+app.route("/api/attachments", attachments);
 app.route("/mcp", mcp);
 
 // --- Static SPA fallback --------------------------------------------------

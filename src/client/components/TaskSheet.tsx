@@ -10,12 +10,17 @@ import {
 } from "../lib/queries";
 import { RECURRENCE_PRESETS } from "../../shared/recurrence";
 import { Markdown } from "../lib/markdown";
+import { parseDatePhrase } from "../lib/nlp";
 import { PRIORITY_VAR } from "../lib/colors";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent } from "./ui/sheet";
 import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
-import { CalendarIcon, AddIcon, RepeatIcon, TrashIcon } from "../lib/icons";
+import { CalendarIcon, AddIcon, RepeatIcon, TrashIcon, SnoozeIcon } from "../lib/icons";
+import { TimeTracker } from "./TimeTracker";
+import { DependencyEditor } from "./DependencyEditor";
+import { AttachmentList } from "./AttachmentList";
+import { useSnoozeTask } from "../lib/queries";
 
 // Lazy — react-day-picker only loads when a date picker is actually opened.
 const Calendar = lazy(() =>
@@ -108,6 +113,7 @@ export function TaskSheet({
 }) {
   const update = useUpdateTask();
   const del = useDeleteTask();
+  const snooze = useSnoozeTask();
   const invalidate = useTaskInvalidate();
 
   const [title, setTitle] = useState("");
@@ -123,6 +129,7 @@ export function TaskSheet({
   const [more, setMore] = useState(false);
   const [newSub, setNewSub] = useState("");
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
+  const [nlpDate, setNlpDate] = useState("");
 
   useEffect(() => {
     if (!task) return;
@@ -136,8 +143,26 @@ export function TaskSheet({
     setRecurrence(task.recurrence ?? "");
     setRecurrenceMode(task.recurrence_mode ?? "fixed");
     setSubtasks(task.subtasks ?? []);
+    setNlpDate("");
     setMore(false);
   }, [task]);
+
+  // Inline NLP date: parse a phrase like "next tue 3pm" and set due date/time.
+  function applyNlpDate() {
+    const phrase = nlpDate.trim();
+    if (!phrase) return;
+    const parsed = parseDatePhrase(phrase);
+    if (parsed.due_date) {
+      setDueDate(parsed.due_date);
+      const body: Record<string, unknown> = { due_date: parsed.due_date };
+      if (parsed.due_time) {
+        setDueTime(parsed.due_time);
+        body.due_time = parsed.due_time;
+      }
+      save(body);
+      setNlpDate("");
+    }
+  }
 
   function save(body: Record<string, unknown>) {
     if (!task) return;
@@ -243,6 +268,54 @@ export function TaskSheet({
                   className="mt-1 h-9 w-full rounded-md border border-input bg-surface px-3 text-sm text-foreground outline-none focus:border-primary"
                 />
               </label>
+            </div>
+
+            {/* Inline NLP date — type a phrase, Enter (or ↵ button) to set. */}
+            <input
+              value={nlpDate}
+              onChange={(e) => setNlpDate(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && applyNlpDate()}
+              onBlur={applyNlpDate}
+              placeholder="Type a date… e.g. next tue 3pm, in 2 weeks"
+              className="h-8 w-full rounded-md border border-dashed border-input bg-transparent px-3 text-sm text-foreground outline-none placeholder:text-subtle focus:border-primary"
+            />
+
+            {/* Snooze — hide until a chosen day. */}
+            <div>
+              <span className="flex items-center gap-1.5 text-xs text-muted">
+                <SnoozeIcon className="h-3.5 w-3.5" /> Snooze
+                {task.snoozed_until && (
+                  <span className="text-warning">until {task.snoozed_until}</span>
+                )}
+              </span>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {[
+                  { label: "Tomorrow", days: 1 },
+                  { label: "In 3 days", days: 3 },
+                  { label: "Next week", days: 7 },
+                ].map((s) => (
+                  <button
+                    key={s.label}
+                    onClick={() =>
+                      snooze.mutate({
+                        id: task.id,
+                        until: format(addDays(new Date(), s.days), "yyyy-MM-dd"),
+                      })
+                    }
+                    className="rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+                  >
+                    {s.label}
+                  </button>
+                ))}
+                {task.snoozed_until && (
+                  <button
+                    onClick={() => snooze.mutate({ id: task.id, until: null })}
+                    className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
 
             <div>
@@ -376,6 +449,12 @@ export function TaskSheet({
                 </Button>
               </div>
             </div>
+
+            <TimeTracker task={task} />
+
+            <DependencyEditor task={task} />
+
+            <AttachmentList taskId={task.id} />
 
             <button
               onClick={() => setMore((m) => !m)}

@@ -81,6 +81,72 @@ export function useDeleteTask() {
   });
 }
 
+export function useSnoozeTask() {
+  const invalidate = useTaskInvalidate();
+  return useMutation({
+    mutationFn: ({ id, until }: { id: string; until: string | null }) =>
+      api.snoozeTask(id, until),
+    onSuccess: invalidate,
+  });
+}
+
+// ── Progress + weekly review ────────────────────────────────────────────────
+
+export const useStats = () =>
+  useQuery({ queryKey: ["stats"], queryFn: api.stats, staleTime: 30_000 });
+
+export const useReview = () =>
+  useQuery({ queryKey: ["review"], queryFn: api.review, staleTime: 30_000 });
+
+// ── Templates ───────────────────────────────────────────────────────────────
+
+export const useTemplates = () =>
+  useQuery({ queryKey: ["templates"], queryFn: api.listTemplates, staleTime: 60_000 });
+
+export function useSaveTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id?: string; body: Partial<import("../../shared/types").Template> }) =>
+      id ? api.updateTemplate(id, body) : api.createTemplate(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["templates"] }),
+  });
+}
+
+export function useDeleteTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteTemplate(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["templates"] }),
+  });
+}
+
+export function useApplyTemplate() {
+  const invalidate = useTaskInvalidate();
+  return useMutation({
+    mutationFn: ({
+      id,
+      anchor,
+      area_id,
+      project_id,
+    }: {
+      id: string;
+      anchor?: string;
+      area_id?: string | null;
+      project_id?: string | null;
+    }) => api.applyTemplate(id, { anchor, area_id, project_id }),
+    onSuccess: invalidate,
+  });
+}
+
+// ── Attachments ─────────────────────────────────────────────────────────────
+
+export const useAttachments = (taskId: string | null) =>
+  useQuery({
+    queryKey: ["attachments", taskId],
+    queryFn: () => api.listAttachments(taskId!),
+    enabled: !!taskId,
+  });
+
 // ── Saved filters ──────────────────────────────────────────────────────────────
 
 export const useSavedFilters = () =>

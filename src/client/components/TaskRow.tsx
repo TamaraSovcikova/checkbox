@@ -5,7 +5,13 @@ import { useToast } from "../lib/toast";
 import { recurrenceLabel } from "../../shared/recurrence";
 import { PRIORITY_VAR } from "../lib/colors";
 import { cn } from "@/lib/utils";
-import { DragIcon, CheckIcon, RepeatIcon } from "../lib/icons";
+import {
+  DragIcon,
+  CheckIcon,
+  RepeatIcon,
+  BlockedIcon,
+  TimerIcon,
+} from "../lib/icons";
 import type { RowSelection } from "./TaskListControls";
 
 export function TaskRow({
@@ -20,6 +26,11 @@ export function TaskRow({
   const complete = useCompleteTask();
   const { toast } = useToast();
   const done = task.status === "done";
+  const openBlockers = (task.depends_on ?? []).filter(
+    (d) => d.status !== "done"
+  ).length;
+  const blocked = openBlockers > 0 && !done;
+  const running = !!task.timer_started_at;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
     data: { type: "task", task },
@@ -104,13 +115,35 @@ export function TaskRow({
               {task.due_time ? ` ${task.due_time}` : ""}
             </span>
           )}
+          {blocked && (
+            <span
+              className="inline-flex items-center gap-0.5 text-warning"
+              title={`Blocked by ${openBlockers} open task${openBlockers !== 1 ? "s" : ""}`}
+            >
+              <BlockedIcon className="h-3 w-3" />
+              Blocked
+            </span>
+          )}
+          {running && (
+            <span className="inline-flex items-center gap-0.5 text-danger" title="Timer running">
+              <TimerIcon className="h-3 w-3" />
+              tracking
+            </span>
+          )}
           {task.recurrence && (
             <span className="inline-flex items-center gap-0.5 text-muted">
               <RepeatIcon className="h-3 w-3" />
               {recurrenceLabel(task.recurrence)}
             </span>
           )}
-          {task.time_estimate_min && <span>{task.time_estimate_min}m</span>}
+          {task.time_spent_min > 0 ? (
+            <span title="Time spent / estimate">
+              {task.time_spent_min}m
+              {task.time_estimate_min ? `/${task.time_estimate_min}m` : ""}
+            </span>
+          ) : (
+            task.time_estimate_min && <span>{task.time_estimate_min}m</span>
+          )}
           {(task.labels ?? []).map((l) => (
             <span key={l.id} className="text-muted">
               @{l.name}
