@@ -192,6 +192,18 @@ export interface PlanProposal {
   meetings: { title: string | null; start: string; end: string }[];
 }
 
+// ── Note→task extraction (#31) ─────────────────────────────────────────────
+export interface NoteCandidateRow {
+  id: string;
+  title: string;
+  source_path: string | null;
+  source_line: number | null;
+  kind: "checkbox" | "todo" | "commitment";
+  context: string | null;
+  status: "pending" | "accepted" | "rejected";
+  created_at: string;
+}
+
 // ── Ambient day plan (#30) ─────────────────────────────────────────────────
 export interface DayPlanBlock {
   task_id: string;

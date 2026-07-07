@@ -5,6 +5,7 @@ import type {
   CalendarStatus,
   DayPlan,
   Label,
+  NoteCandidateRow,
   Project,
   SavedFilter,
   Stats,
@@ -197,6 +198,29 @@ export const api = {
   // progress + weekly review
   stats: () => http<Stats>("/api/stats"),
   review: () => http<WeeklyReview>("/api/review"),
+
+  // note→task extraction (#31)
+  noteCandidates: () =>
+    http<NoteCandidateRow[]>("/api/notes/candidates"),
+  addNoteCandidates: (
+    candidates: {
+      title: string;
+      source_path?: string | null;
+      source_line?: number | null;
+      kind?: string;
+      context?: string | null;
+    }[]
+  ) =>
+    http<{ ok: boolean; added: number }>("/api/notes/candidates", {
+      method: "POST",
+      body: JSON.stringify({ candidates }),
+    }),
+  acceptNoteCandidate: (id: string) =>
+    http<Task>(`/api/notes/candidates/${id}/accept`, { method: "POST" }),
+  rejectNoteCandidate: (id: string) =>
+    http(`/api/notes/candidates/${id}/reject`, { method: "POST" }),
+  rejectAllNoteCandidates: () =>
+    http("/api/notes/candidates/reject-all", { method: "POST" }),
 
   // ambient day plan (#30)
   dayPlanToday: () => http<DayPlan | null>("/api/plans/today"),

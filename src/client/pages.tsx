@@ -21,6 +21,7 @@ import { AreaDialog } from "./components/AreaDialog";
 import { PlanMyDay } from "./components/PlanMyDay";
 import { StatsWidget } from "./components/StatsWidget";
 import { CheatSheet } from "./components/CheatSheet";
+import { NotesInbox } from "./components/NotesInbox";
 import { FilterIcon, SnoozeIcon, ReviewIcon } from "./lib/icons";
 import { areaColorVar } from "./lib/colors";
 import { areaIcon } from "./lib/icons";
@@ -430,6 +431,9 @@ function BacklogBody({ tasks, list }: { tasks: Task[]; list: ReactNode }) {
 
   return (
     <div className="max-w-3xl">
+      {/* From your notes (Obsidian extraction inbox) */}
+      <NotesInbox />
+
       {/* Triage panel */}
       <div className="mb-5 rounded-xl border border-border bg-surface/40 p-4">
         <div className="mb-3 flex items-center justify-between">

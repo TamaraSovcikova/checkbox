@@ -98,6 +98,45 @@ export const useStats = () =>
 export const useReview = () =>
   useQuery({ queryKey: ["review"], queryFn: api.review, staleTime: 30_000 });
 
+// ── Note→task extraction (#31) ──────────────────────────────────────────────
+
+export const useNoteCandidates = () =>
+  useQuery({
+    queryKey: ["note-candidates"],
+    queryFn: api.noteCandidates,
+    staleTime: 15_000,
+  });
+
+export function useAcceptNoteCandidate() {
+  const qc = useQueryClient();
+  const invalidate = useTaskInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => api.acceptNoteCandidate(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["note-candidates"] });
+      invalidate();
+    },
+  });
+}
+
+export function useRejectNoteCandidate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.rejectNoteCandidate(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["note-candidates"] }),
+  });
+}
+
+export function useAddNoteCandidates() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      candidates: Parameters<typeof api.addNoteCandidates>[0]
+    ) => api.addNoteCandidates(candidates),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["note-candidates"] }),
+  });
+}
+
 // ── Ambient day plan (#30) ──────────────────────────────────────────────────
 
 export const useDayPlan = () =>

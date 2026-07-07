@@ -47,6 +47,7 @@ export {
   Upload as UploadIcon,
   ExternalLink as ExternalLinkIcon,
   Pencil as EditIcon,
+  FileText as NotesIcon,
 } from "lucide-react";
 
 // Curated icon set an area can be tagged with (the picker offers these by name;

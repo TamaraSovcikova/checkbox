@@ -7,6 +7,8 @@ import type { Bindings } from "../db";
 import { resolveBearerUser, uuid, now } from "../db";
 import { hydrateTasks } from "./_hydrate";
 import { generateDayPlan } from "../lib/planner";
+import { extractNoteTasks } from "../../shared/notes";
+import { insertCandidates, type CandidateInput } from "./notes";
 
 export const mcp = new Hono<{ Bindings: Bindings }>();
 
@@ -264,6 +266,42 @@ const TOOLS = [
     description:
       "Draft and persist a proposed time-blocked schedule for today (the ambient planner). Blocks today's open tasks around calendar meetings; the user accepts it with one tap in the app. Returns the proposed blocks.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "scan_notes_for_tasks",
+    description:
+      "Bridge Obsidian notes into Checkbox. Pass the raw text of one or more vault notes; the server extracts unchecked `- [ ]` checkboxes and TODO/FIXME markers (with source path + line) and files them as pending candidates the user accepts into Backlog. Also pass any looser commitments you spotted (e.g. 'I should email Sam') via `commitments`. Deduplicated — safe to re-run. Returns how many new candidates were added.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        notes: {
+          type: "array",
+          description: "The notes to scan.",
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string", description: "Vault-relative path, e.g. 'Daily/2026-07-07.md'" },
+              text: { type: "string", description: "The full raw markdown of the note" },
+            },
+            required: ["text"],
+          },
+        },
+        commitments: {
+          type: "array",
+          description: "Looser action items you inferred (not literal checkboxes).",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              path: { type: "string" },
+              line: { type: "number" },
+              context: { type: "string" },
+            },
+            required: ["title"],
+          },
+        },
+      },
+    },
   },
   {
     name: "daily_brief",
@@ -600,6 +638,47 @@ async function handleTool(
         blocks: res.plan.blocks,
         unscheduled: res.plan.unscheduled,
         note: "Draft saved. The user can accept it in the app to write the time-blocks.",
+      });
+    }
+
+    // ── scan_notes_for_tasks ───────────────────────────────────────────────────
+    case "scan_notes_for_tasks": {
+      const inputNotes =
+        (args.notes as { path?: string; text: string }[] | undefined) ?? [];
+      const commitments =
+        (args.commitments as
+          | { title: string; path?: string; line?: number; context?: string }[]
+          | undefined) ?? [];
+
+      const candidates: CandidateInput[] = [];
+      for (const note of inputNotes) {
+        for (const t of extractNoteTasks(note.text ?? "")) {
+          candidates.push({
+            title: t.title,
+            source_path: note.path ?? null,
+            source_line: t.line,
+            kind: t.kind,
+            context: t.context,
+          });
+        }
+      }
+      for (const cmt of commitments) {
+        candidates.push({
+          title: cmt.title,
+          source_path: cmt.path ?? null,
+          source_line: cmt.line ?? null,
+          kind: "commitment",
+          context: cmt.context ?? null,
+        });
+      }
+
+      const added = await insertCandidates(db, userId, candidates);
+      return json({
+        scanned_notes: inputNotes.length,
+        found: candidates.length,
+        added,
+        skipped_duplicates: candidates.length - added,
+        note: "New candidates are pending in the app's Backlog → 'From your notes' inbox for the user to accept or reject.",
       });
     }
 
