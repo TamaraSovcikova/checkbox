@@ -98,6 +98,31 @@ export const useStats = () =>
 export const useReview = () =>
   useQuery({ queryKey: ["review"], queryFn: api.review, staleTime: 30_000 });
 
+// ── Ambient day plan (#30) ──────────────────────────────────────────────────
+
+export const useDayPlan = () =>
+  useQuery({ queryKey: ["day-plan"], queryFn: api.dayPlanToday, staleTime: 30_000 });
+
+export function useAcceptDayPlan() {
+  const qc = useQueryClient();
+  const invalidate = useTaskInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => api.dayPlanAccept(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["day-plan"] });
+      invalidate();
+    },
+  });
+}
+
+export function useDismissDayPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.dayPlanDismiss(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["day-plan"] }),
+  });
+}
+
 // ── Templates ───────────────────────────────────────────────────────────────
 
 export const useTemplates = () =>

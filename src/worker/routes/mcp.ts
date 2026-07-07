@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import type { Bindings } from "../db";
 import { resolveBearerUser, uuid, now } from "../db";
 import { hydrateTasks } from "./_hydrate";
+import { generateDayPlan } from "../lib/planner";
 
 export const mcp = new Hono<{ Bindings: Bindings }>();
 
@@ -257,6 +258,12 @@ const TOOLS = [
         },
       },
     },
+  },
+  {
+    name: "propose_day_plan",
+    description:
+      "Draft and persist a proposed time-blocked schedule for today (the ambient planner). Blocks today's open tasks around calendar meetings; the user accepts it with one tap in the app. Returns the proposed blocks.",
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "daily_brief",
@@ -575,6 +582,24 @@ async function handleTool(
         })),
         time_slots_hint:
           "Review the calendar events to find free blocks. Schedule the highest-priority tasks into those blocks using schedule_block.",
+      });
+    }
+
+    // ── propose_day_plan ───────────────────────────────────────────────────────
+    case "propose_day_plan": {
+      const res = await generateDayPlan(env, userId);
+      if (!res)
+        return json({
+          proposed: false,
+          note: "Today's plan was already accepted or dismissed; not overwriting.",
+        });
+      return json({
+        proposed: true,
+        plan_id: res.id,
+        date: res.plan.date,
+        blocks: res.plan.blocks,
+        unscheduled: res.plan.unscheduled,
+        note: "Draft saved. The user can accept it in the app to write the time-blocks.",
       });
     }
 

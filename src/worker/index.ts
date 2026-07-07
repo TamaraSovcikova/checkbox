@@ -15,15 +15,17 @@ import { stats } from "./routes/stats";
 import { review } from "./routes/review";
 import { templates } from "./routes/templates";
 import { attachments } from "./routes/attachments";
+import { plans } from "./routes/plans";
 import { mcp } from "./routes/mcp";
 import { syncCalendar, renewWatchChannel } from "./lib/sync";
 import { sendMorningBrief } from "./lib/brief";
+import { generateDayPlansForAll } from "./lib/planner";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
 // --- API routes -----------------------------------------------------------
 app.get("/api/health", (c) =>
-  c.json({ ok: true, app: "checkbox", phase: 6, ts: new Date().toISOString() })
+  c.json({ ok: true, app: "checkbox", phase: 7, ts: new Date().toISOString() })
 );
 
 app.route("/api/auth", auth);
@@ -41,6 +43,7 @@ app.route("/api/stats", stats);
 app.route("/api/review", review);
 app.route("/api/templates", templates);
 app.route("/api/attachments", attachments);
+app.route("/api/plans", plans);
 app.route("/mcp", mcp);
 
 // --- Static SPA fallback --------------------------------------------------
@@ -57,8 +60,13 @@ export default {
     const cron = event.cron; // "*/15 * * * *" or "0 6 * * *"
 
     if (cron === "0 6 * * *") {
-      // Morning brief: push notification + email digest
-      ctx.waitUntil(sendMorningBrief(env).catch(console.error));
+      // Ambient planner: draft each user's day plan (accept with one tap in the
+      // UI), then the morning brief push + email digest that announces it.
+      ctx.waitUntil(
+        generateDayPlansForAll(env)
+          .then(() => sendMorningBrief(env))
+          .catch(console.error)
+      );
       return;
     }
 

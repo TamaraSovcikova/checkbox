@@ -3,6 +3,7 @@ import type {
   Attachment,
   CalendarEvent,
   CalendarStatus,
+  DayPlan,
   Label,
   Project,
   SavedFilter,
@@ -196,6 +197,17 @@ export const api = {
   // progress + weekly review
   stats: () => http<Stats>("/api/stats"),
   review: () => http<WeeklyReview>("/api/review"),
+
+  // ambient day plan (#30)
+  dayPlanToday: () => http<DayPlan | null>("/api/plans/today"),
+  dayPlanGenerate: () =>
+    http<DayPlan & { status: string }>("/api/plans/generate", { method: "POST" }),
+  dayPlanAccept: (id: string) =>
+    http<{ ok: boolean; scheduled: number }>(`/api/plans/${id}/accept`, {
+      method: "POST",
+    }),
+  dayPlanDismiss: (id: string) =>
+    http(`/api/plans/${id}/dismiss`, { method: "POST" }),
 
   // templates
   listTemplates: () => http<Template[]>("/api/templates"),

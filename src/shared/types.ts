@@ -192,6 +192,23 @@ export interface PlanProposal {
   meetings: { title: string | null; start: string; end: string }[];
 }
 
+// ── Ambient day plan (#30) ─────────────────────────────────────────────────
+export interface DayPlanBlock {
+  task_id: string;
+  title: string;
+  priority: Priority;
+  start: string; // ISO instant
+  end: string; // ISO instant
+}
+
+export interface DayPlan {
+  id: string;
+  date: string; // YYYY-MM-DD
+  status: "proposed" | "accepted" | "dismissed";
+  blocks: DayPlanBlock[];
+  created_at: string;
+}
+
 // ── Weekly review ──────────────────────────────────────────────────────────
 export interface WeeklyReview {
   period: { from: string; to: string };
