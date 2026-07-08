@@ -15,15 +15,12 @@ import { hydrateTasks } from "./_hydrate";
 import { generateDayPlan } from "../lib/planner";
 import { extractNoteTasks } from "../../shared/notes";
 import { insertCandidates, type CandidateInput } from "./notes";
+import { nextDueDate } from "../../shared/recurrence";
 
 export const mcp = new Hono<{ Bindings: Bindings }>();
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 
-// Resolve the MCP caller to a user_id via their bearer token (per-user tokens in
-// mcp_tokens, or the legacy MCP_AUTH_TOKEN -> owner). Returns null when the token
-// is missing/unknown. Dev-open fallback: if nothing is configured at all (no
-// MCP_AUTH_TOKEN and no per-user tokens), map to the owner for local development.
 // Effective Authorization header for a request: the real header if present, else
 // a synthetic one built from a ?token= query param (cloud connectors can't set
 // headers). Header wins so an explicit bearer is never overridden.
@@ -33,6 +30,10 @@ function authHeaderFor(header: string | undefined, queryToken: string | undefine
   return undefined;
 }
 
+// Resolve the MCP caller to a user_id via their bearer token (per-user tokens in
+// mcp_tokens, or the legacy MCP_AUTH_TOKEN -> owner). Returns null when the token
+// is missing/unknown. Dev-open fallback: if nothing is configured at all (no
+// MCP_AUTH_TOKEN and no per-user tokens), map to the owner for local development.
 async function mcpUser(
   env: Bindings,
   header: string | undefined
@@ -79,6 +80,85 @@ function json(v: unknown) {
   return text(JSON.stringify(v, null, 2));
 }
 
+// Does this task belong to the caller? Gate every subtask/dependency write on it
+// so the single-user isolation pattern holds even over MCP.
+async function ownsTask(
+  db: D1Database,
+  userId: string,
+  id: string
+): Promise<boolean> {
+  const r = await db
+    .prepare("SELECT 1 FROM tasks WHERE id = ? AND user_id = ?")
+    .bind(id, userId)
+    .first();
+  return !!r;
+}
+
+// Upsert labels by name (creating any that don't exist) and attach them to a task.
+// replace=true clears the task's current labels first, so update_task's label_names
+// sets the exact set rather than appending. Shared by create_task and update_task.
+async function syncLabels(
+  db: D1Database,
+  userId: string,
+  taskId: string,
+  names: unknown[],
+  replace: boolean
+): Promise<void> {
+  if (replace) {
+    await db.prepare("DELETE FROM task_labels WHERE task_id = ?").bind(taskId).run();
+  }
+  for (const raw of names) {
+    const name = String(raw).trim();
+    if (!name) continue;
+    let lbl = await db
+      .prepare("SELECT id FROM labels WHERE user_id = ? AND name = ?")
+      .bind(userId, name)
+      .first<{ id: string }>();
+    if (!lbl) {
+      const lid = uuid();
+      await db
+        .prepare("INSERT INTO labels (id, user_id, name) VALUES (?, ?, ?)")
+        .bind(lid, userId, name)
+        .run();
+      lbl = { id: lid };
+    }
+    await db
+      .prepare("INSERT OR IGNORE INTO task_labels (task_id, label_id) VALUES (?, ?)")
+      .bind(taskId, lbl.id)
+      .run();
+  }
+}
+
+// Columns create_task / update_task may write directly (labels + id are handled
+// separately). Shared so both paths accept the exact same field set.
+const TASK_WRITABLE = [
+  "title", "notes", "priority", "due_date", "due_time",
+  "time_estimate_min", "scheduled_start", "scheduled_end",
+  "area_id", "project_id", "parent_task_id", "section_id", "board_column",
+  "status", "recurrence", "recurrence_mode",
+] as const;
+
+// Insert one task from a create-shaped args object and attach any label_names.
+// Returns the new id. Shared by create_task and create_tasks.
+async function createOneTask(
+  db: D1Database,
+  userId: string,
+  args: Record<string, unknown>
+): Promise<string> {
+  const id = uuid();
+  const present = TASK_WRITABLE.filter((f) => f in args);
+  const cols = ["id", "user_id", ...present];
+  const vals = [id, userId, ...present.map((f) => args[f])];
+  await db
+    .prepare(`INSERT INTO tasks (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`)
+    .bind(...vals)
+    .run();
+  if (Array.isArray(args.label_names)) {
+    await syncLabels(db, userId, id, args.label_names as unknown[], false);
+  }
+  return id;
+}
+
 // ── Tool definitions ───────────────────────────────────────────────────────────
 
 const TOOLS = [
@@ -107,7 +187,10 @@ const TOOLS = [
   {
     name: "create_task",
     description:
-      "Create a new task. title is required. priority: 1=urgent 2=this-week 3=flexible 4=backlog.",
+      "Create a new task. title is required. priority: 1=urgent 2=this-week 3=flexible 4=backlog. " +
+      "For a recurring task set `recurrence` (e.g. 'daily', 'weekly:mon,wed', 'monthly', 'every:3:week'); " +
+      "completing it rolls the due date forward instead of finishing it. To create a subtask card, pass parent_task_id " +
+      "(note: this is different from the lightweight checklist items managed by create_subtask).",
     inputSchema: {
       type: "object",
       properties: {
@@ -124,6 +207,26 @@ const TOOLS = [
         time_estimate_min: { type: "number" },
         area_id: { type: "string" },
         project_id: { type: "string" },
+        parent_task_id: {
+          type: "string",
+          description: "Make this a child card of another task",
+        },
+        section_id: { type: "string", description: "Section within a project" },
+        board_column: {
+          type: "string",
+          description: "Kanban column name (must match one of the project's board_columns)",
+        },
+        recurrence: {
+          type: "string",
+          description:
+            "Recurrence spec: daily | weekdays | weekly | monthly | yearly | weekly:<mon,tue,...> | every:<N>:day|week|month|year",
+        },
+        recurrence_mode: {
+          type: "string",
+          enum: ["fixed", "after_completion"],
+          description:
+            "fixed = advance from the due date; after_completion = advance from the completion day. Default fixed.",
+        },
         label_names: {
           type: "array",
           items: { type: "string" },
@@ -135,7 +238,9 @@ const TOOLS = [
   },
   {
     name: "update_task",
-    description: "Update one or more fields of an existing task.",
+    description:
+      "Update one or more fields of an existing task. Only the fields you pass change. " +
+      "label_names REPLACES the task's labels with exactly that set (pass [] to clear).",
     inputSchema: {
       type: "object",
       properties: {
@@ -150,7 +255,24 @@ const TOOLS = [
         time_estimate_min: { type: "number" },
         area_id: { type: "string" },
         project_id: { type: "string" },
+        parent_task_id: { type: "string" },
+        section_id: { type: "string" },
+        board_column: { type: "string" },
         status: { type: "string", enum: ["todo", "doing", "done"] },
+        recurrence: {
+          type: "string",
+          description:
+            "Recurrence spec (see create_task). Pass an empty string to remove recurrence.",
+        },
+        recurrence_mode: {
+          type: "string",
+          enum: ["fixed", "after_completion"],
+        },
+        label_names: {
+          type: "array",
+          items: { type: "string" },
+          description: "Replaces the task's labels with exactly this set (created if missing).",
+        },
       },
       required: ["id"],
     },
@@ -351,6 +473,178 @@ const TOOLS = [
       },
     },
   },
+
+  // ── Structure: areas, projects, subtasks, dependencies (write tools) ────────
+  {
+    name: "get_task",
+    description:
+      "Return one task fully hydrated (labels, checklist subtasks, dependencies/blocks).",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "create_tasks",
+    description:
+      "Batch-create multiple tasks in one call. Each item takes the same fields as create_task. Returns the created ids.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tasks: {
+          type: "array",
+          items: { type: "object", properties: { title: { type: "string" } }, required: ["title"] },
+          description: "Array of task objects (same shape as create_task input).",
+        },
+      },
+      required: ["tasks"],
+    },
+  },
+  {
+    name: "create_area",
+    description: "Create an area (a permanent life bucket, e.g. Work, Health).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        color: { type: "string", description: "Palette key, e.g. sky/emerald/rose" },
+        icon: { type: "string", description: "Icon key, e.g. briefcase/heart" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "update_area",
+    description: "Update an area's name, color, or icon.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        color: { type: "string" },
+        icon: { type: "string" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "archive_area",
+    description: "Archive an area (soft: it stops showing in lists but is not deleted).",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "create_project",
+    description:
+      "Create a project (a board/sprint under an area). Kanban columns default to To do/Doing/Done.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        area_id: { type: "string" },
+        description: { type: "string" },
+        goal: { type: "string" },
+        due_date: { type: "string", description: "YYYY-MM-DD" },
+        board_columns: {
+          type: "array",
+          items: { type: "string" },
+          description: "Kanban column names, in order.",
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "update_project",
+    description: "Update a project's fields (name, area, description, goal, dates, board_columns, status).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        area_id: { type: "string" },
+        description: { type: "string" },
+        goal: { type: "string" },
+        status: { type: "string", enum: ["active", "completed", "archived"] },
+        start_date: { type: "string" },
+        due_date: { type: "string" },
+        board_columns: { type: "array", items: { type: "string" } },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "archive_project",
+    description: "Archive a project (sets status=archived; reversible via update_project).",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "create_subtask",
+    description: "Add a checklist subtask to a task.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string" },
+        title: { type: "string" },
+      },
+      required: ["task_id", "title"],
+    },
+  },
+  {
+    name: "update_subtask",
+    description: "Update a checklist subtask's title and/or done state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        done: { type: "boolean" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "delete_subtask",
+    description: "Delete a checklist subtask.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "set_task_dependency",
+    description:
+      "Make one task depend on (be blocked by) another: task_id waits on depends_on_id. Rejects self-links and cycles.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string" },
+        depends_on_id: { type: "string" },
+      },
+      required: ["task_id", "depends_on_id"],
+    },
+  },
+  {
+    name: "remove_task_dependency",
+    description: "Remove a dependency link (task_id no longer waits on depends_on_id).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string" },
+        depends_on_id: { type: "string" },
+      },
+      required: ["task_id", "depends_on_id"],
+    },
+  },
 ] as const;
 
 // ── Tool handlers ──────────────────────────────────────────────────────────────
@@ -419,36 +713,7 @@ async function handleTool(
 
     // ── create_task ─────────────────────────────────────────────────────────
     case "create_task": {
-      const FIELDS = [
-        "title", "notes", "priority", "due_date", "due_time",
-        "time_estimate_min", "scheduled_start", "scheduled_end",
-        "area_id", "project_id", "status",
-      ];
-      const id = uuid();
-      const cols = ["id", "user_id", ...FIELDS.filter((f) => f in args)];
-      const vals = [id, userId, ...FIELDS.filter((f) => f in args).map((f) => args[f])];
-      await db.prepare(
-        `INSERT INTO tasks (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`
-      ).bind(...vals).run();
-
-      if (Array.isArray(args.label_names)) {
-        for (const raw of args.label_names as string[]) {
-          const name = String(raw).trim();
-          if (!name) continue;
-          let lbl = await db.prepare(
-            "SELECT id FROM labels WHERE user_id = ? AND name = ?"
-          ).bind(userId, name).first<{ id: string }>();
-          if (!lbl) {
-            const lid = uuid();
-            await db.prepare("INSERT INTO labels (id, user_id, name) VALUES (?, ?, ?)")
-              .bind(lid, userId, name).run();
-            lbl = { id: lid };
-          }
-          await db.prepare("INSERT OR IGNORE INTO task_labels (task_id, label_id) VALUES (?, ?)")
-            .bind(id, lbl.id).run();
-        }
-      }
-
+      const id = await createOneTask(db, userId, args);
       const row = await db.prepare("SELECT * FROM tasks WHERE id = ?").bind(id).first();
       const [task] = await hydrateTasks(db, [row as Record<string, unknown>]);
       return text(
@@ -456,20 +721,42 @@ async function handleTool(
       );
     }
 
+    // ── create_tasks (batch) ──────────────────────────────────────────────────
+    case "create_tasks": {
+      const items = Array.isArray(args.tasks) ? (args.tasks as Record<string, unknown>[]) : [];
+      if (!items.length) return text("No tasks provided.");
+      const ids: string[] = [];
+      for (const it of items) {
+        if (!it || typeof it.title !== "string" || !it.title.trim()) continue;
+        ids.push(await createOneTask(db, userId, it));
+      }
+      return json({ created: ids.length, ids });
+    }
+
+    // ── get_task ──────────────────────────────────────────────────────────────
+    case "get_task": {
+      const row = await db.prepare(
+        "SELECT * FROM tasks WHERE id = ? AND user_id = ?"
+      ).bind(args.id, userId).first();
+      if (!row) return text(`Task ${args.id} not found.`);
+      const [task] = await hydrateTasks(db, [row as Record<string, unknown>]);
+      return json({ task });
+    }
+
     // ── update_task ─────────────────────────────────────────────────────────
     case "update_task": {
       const id = args.id as string;
-      const WRITABLE = [
-        "title", "notes", "priority", "due_date", "due_time",
-        "time_estimate_min", "scheduled_start", "scheduled_end",
-        "area_id", "project_id", "status",
-      ];
-      const fields = WRITABLE.filter((f) => f in args);
+      if (!(await ownsTask(db, userId, id))) return text(`Task ${id} not found.`);
+      const fields = TASK_WRITABLE.filter((f) => f in args);
       if (fields.length) {
         const set = fields.map((f) => `${f} = ?`).join(", ");
         await db.prepare(
           `UPDATE tasks SET ${set}, updated_at = ? WHERE id = ? AND user_id = ?`
         ).bind(...fields.map((f) => args[f]), now(), id, userId).run();
+      }
+      // label_names replaces the task's label set (pass [] to clear).
+      if (Array.isArray(args.label_names)) {
+        await syncLabels(db, userId, id, args.label_names as unknown[], true);
       }
       return text(`Updated task ${id}.`);
     }
@@ -478,6 +765,35 @@ async function handleTool(
     case "complete_task": {
       const id = args.id as string;
       const done = args.done !== false;
+
+      // Recurring tasks roll forward instead of completing (mirrors the app's
+      // /tasks/:id/complete): advance the due date to the next occurrence, stay
+      // todo, and reset the checklist. fixed = from the due date; after_completion
+      // = from today.
+      if (done) {
+        const t = await db.prepare(
+          "SELECT recurrence, recurrence_mode, due_date FROM tasks WHERE id = ? AND user_id = ?"
+        ).bind(id, userId).first<{
+          recurrence: string | null;
+          recurrence_mode: string | null;
+          due_date: string | null;
+        }>();
+        if (t?.recurrence) {
+          const anchor =
+            t.recurrence_mode === "after_completion"
+              ? todayBrussels()
+              : t.due_date ?? todayBrussels();
+          const next = nextDueDate(t.recurrence, anchor);
+          if (next) {
+            await db.prepare(
+              "UPDATE tasks SET due_date = ?, status = 'todo', completed_at = NULL, updated_at = ? WHERE id = ? AND user_id = ?"
+            ).bind(next, now(), id, userId).run();
+            await db.prepare("UPDATE subtasks SET done = 0 WHERE task_id = ?").bind(id).run();
+            return text(`Task ${id} recurred: next due ${next}.`);
+          }
+        }
+      }
+
       await db.prepare(
         "UPDATE tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ? AND user_id = ?"
       ).bind(done ? "done" : "todo", done ? now() : null, now(), id, userId).run();
@@ -811,6 +1127,162 @@ async function handleTool(
       });
     }
 
+    // ── create_area ───────────────────────────────────────────────────────────
+    case "create_area": {
+      const nm = String(args.name ?? "").trim();
+      if (!nm) return text("name required.");
+      const id = uuid();
+      await db.prepare(
+        "INSERT INTO areas (id, user_id, name, color, icon) VALUES (?, ?, ?, ?, ?)"
+      ).bind(id, userId, nm, args.color ?? null, args.icon ?? null).run();
+      return text(`Created area "${nm}" (id: ${id}).`);
+    }
+
+    // ── update_area ───────────────────────────────────────────────────────────
+    case "update_area": {
+      const fields = ["name", "color", "icon"].filter((f) => f in args);
+      if (!fields.length) return text("No fields to update.");
+      const set = fields.map((f) => `${f} = ?`).join(", ");
+      const res = await db.prepare(
+        `UPDATE areas SET ${set}, updated_at = ? WHERE id = ? AND user_id = ?`
+      ).bind(...fields.map((f) => args[f]), now(), args.id, userId).run();
+      if (!res.meta.changes) return text(`Area ${args.id} not found.`);
+      return text(`Updated area ${args.id}.`);
+    }
+
+    // ── archive_area ──────────────────────────────────────────────────────────
+    case "archive_area": {
+      const res = await db.prepare(
+        "UPDATE areas SET archived_at = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+      ).bind(now(), now(), args.id, userId).run();
+      if (!res.meta.changes) return text(`Area ${args.id} not found.`);
+      return text(`Archived area ${args.id}.`);
+    }
+
+    // ── create_project ────────────────────────────────────────────────────────
+    case "create_project": {
+      const nm = String(args.name ?? "").trim();
+      if (!nm) return text("name required.");
+      if (args.area_id) {
+        const a = await db.prepare(
+          "SELECT 1 FROM areas WHERE id = ? AND user_id = ?"
+        ).bind(args.area_id, userId).first();
+        if (!a) return text(`area_id ${args.area_id} not found.`);
+      }
+      const id = uuid();
+      const cols = Array.isArray(args.board_columns) ? args.board_columns : ["To do", "Doing", "Done"];
+      await db.prepare(
+        `INSERT INTO projects (id, user_id, area_id, name, description, goal, due_date, board_columns)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        id, userId, args.area_id ?? null, nm,
+        args.description ?? null, args.goal ?? null, args.due_date ?? null,
+        JSON.stringify(cols)
+      ).run();
+      return text(`Created project "${nm}" (id: ${id}).`);
+    }
+
+    // ── update_project ────────────────────────────────────────────────────────
+    case "update_project": {
+      if (args.area_id) {
+        const a = await db.prepare(
+          "SELECT 1 FROM areas WHERE id = ? AND user_id = ?"
+        ).bind(args.area_id, userId).first();
+        if (!a) return text(`area_id ${args.area_id} not found.`);
+      }
+      const patch: Record<string, unknown> = { ...args };
+      if (Array.isArray(patch.board_columns)) patch.board_columns = JSON.stringify(patch.board_columns);
+      const fields = [
+        "name", "area_id", "description", "goal", "status",
+        "start_date", "due_date", "board_columns",
+      ].filter((f) => f in patch);
+      if (!fields.length) return text("No fields to update.");
+      const set = fields.map((f) => `${f} = ?`).join(", ");
+      const res = await db.prepare(
+        `UPDATE projects SET ${set}, updated_at = ? WHERE id = ? AND user_id = ?`
+      ).bind(...fields.map((f) => patch[f]), now(), args.id, userId).run();
+      if (!res.meta.changes) return text(`Project ${args.id} not found.`);
+      return text(`Updated project ${args.id}.`);
+    }
+
+    // ── archive_project ───────────────────────────────────────────────────────
+    case "archive_project": {
+      const res = await db.prepare(
+        "UPDATE projects SET status = 'archived', updated_at = ? WHERE id = ? AND user_id = ?"
+      ).bind(now(), args.id, userId).run();
+      if (!res.meta.changes) return text(`Project ${args.id} not found.`);
+      return text(`Archived project ${args.id}.`);
+    }
+
+    // ── create_subtask ────────────────────────────────────────────────────────
+    case "create_subtask": {
+      const taskId = args.task_id as string;
+      const title = String(args.title ?? "").trim();
+      if (!title) return text("title required.");
+      if (!(await ownsTask(db, userId, taskId))) return text(`Task ${taskId} not found.`);
+      const pos = await db.prepare(
+        "SELECT COALESCE(MAX(position) + 1, 0) AS p FROM subtasks WHERE task_id = ?"
+      ).bind(taskId).first<{ p: number }>();
+      const id = uuid();
+      await db.prepare(
+        "INSERT INTO subtasks (id, task_id, title, position) VALUES (?, ?, ?, ?)"
+      ).bind(id, taskId, title, pos?.p ?? 0).run();
+      return text(`Added subtask "${title}" (id: ${id}) to task ${taskId}.`);
+    }
+
+    // ── update_subtask ────────────────────────────────────────────────────────
+    case "update_subtask": {
+      const sets: string[] = [];
+      const binds: unknown[] = [];
+      if ("title" in args) { sets.push("title = ?"); binds.push(args.title); }
+      if ("done" in args) { sets.push("done = ?"); binds.push(args.done ? 1 : 0); }
+      if (!sets.length) return text("No fields to update.");
+      // Isolation: only touch a subtask whose parent task is the caller's.
+      const res = await db.prepare(
+        `UPDATE subtasks SET ${sets.join(", ")}
+         WHERE id = ? AND task_id IN (SELECT id FROM tasks WHERE user_id = ?)`
+      ).bind(...binds, args.id, userId).run();
+      if (!res.meta.changes) return text(`Subtask ${args.id} not found.`);
+      return text(`Updated subtask ${args.id}.`);
+    }
+
+    // ── delete_subtask ────────────────────────────────────────────────────────
+    case "delete_subtask": {
+      const res = await db.prepare(
+        `DELETE FROM subtasks
+         WHERE id = ? AND task_id IN (SELECT id FROM tasks WHERE user_id = ?)`
+      ).bind(args.id, userId).run();
+      if (!res.meta.changes) return text(`Subtask ${args.id} not found.`);
+      return text(`Deleted subtask ${args.id}.`);
+    }
+
+    // ── set_task_dependency ───────────────────────────────────────────────────
+    case "set_task_dependency": {
+      const taskId = args.task_id as string;
+      const dep = args.depends_on_id as string;
+      if (!dep || dep === taskId) return text("Invalid dependency (a task cannot depend on itself).");
+      if (!(await ownsTask(db, userId, taskId)) || !(await ownsTask(db, userId, dep)))
+        return text("Task not found.");
+      const reverse = await db.prepare(
+        "SELECT 1 FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?"
+      ).bind(dep, taskId).first();
+      if (reverse) return text("Rejected: that would create a cycle.");
+      await db.prepare(
+        "INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?)"
+      ).bind(taskId, dep).run();
+      return text(`Task ${taskId} now waits on ${dep}.`);
+    }
+
+    // ── remove_task_dependency ────────────────────────────────────────────────
+    case "remove_task_dependency": {
+      const taskId = args.task_id as string;
+      if (!(await ownsTask(db, userId, taskId))) return text(`Task ${taskId} not found.`);
+      await db.prepare(
+        "DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?"
+      ).bind(taskId, args.depends_on_id).run();
+      return text(`Removed dependency ${taskId} -> ${args.depends_on_id}.`);
+    }
+
     default:
       throw { code: -32601, message: `Unknown tool: ${name}` };
   }
@@ -842,7 +1314,7 @@ mcp.post("/", async (c) => {
       ok(id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "checkbox", version: "3.0.0" },
+        serverInfo: { name: "checkbox", version: "3.1.0" },
       })
     );
   }
@@ -880,7 +1352,7 @@ mcp.post("/", async (c) => {
 mcp.get("/", (c) => {
   return c.json({
     name: "checkbox",
-    version: "3.0.0",
+    version: "3.1.0",
     description: "Checkbox task manager MCP server",
     tools_count: TOOLS.length,
     auth: c.env.MCP_AUTH_TOKEN ? "bearer" : "none (dev mode)",
