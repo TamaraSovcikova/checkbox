@@ -22,6 +22,7 @@ import { PlanMyDay } from "./components/PlanMyDay";
 import { StatsWidget } from "./components/StatsWidget";
 import { CheatSheet } from "./components/CheatSheet";
 import { NotesInbox } from "./components/NotesInbox";
+import { InstallHint } from "./components/InstallHint";
 import { FilterIcon, SnoozeIcon, ReviewIcon } from "./lib/icons";
 import { areaColorVar } from "./lib/colors";
 import { areaIcon } from "./lib/icons";
@@ -347,6 +348,7 @@ export function ViewPage({ name }: { name: string }) {
       />
       {name === "today" && (
         <>
+          <InstallHint />
           <CheatSheet />
           <StatsWidget />
           <PlanMyDay tasks={tasks} />
@@ -917,6 +919,8 @@ export function SettingsPage() {
   return (
     <div className="max-w-xl">
       <Header title="Settings" />
+
+      <InstallHint dismissible={false} />
 
       <Section title="Account">
         <div className="flex items-center gap-3">
