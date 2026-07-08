@@ -20,3 +20,12 @@ if ("serviceWorker" in navigator) {
     })
     .catch(() => {});
 }
+
+// Ask the browser to keep our storage (the offline mutation queue + SW caches)
+// from being evicted under disk pressure. The server (D1) is the source of truth,
+// so this only hardens the offline experience; safe to ignore if unsupported.
+if (navigator.storage?.persist) {
+  navigator.storage.persisted().then((p) => {
+    if (!p) navigator.storage.persist().catch(() => {});
+  });
+}
