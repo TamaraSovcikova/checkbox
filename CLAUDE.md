@@ -127,6 +127,27 @@ git config --local http.https://github.com.extraheader "Authorization: Basic $B6
 
 4. **Email digest** (optional): `wrangler secret put RESEND_API_KEY` with a Resend API key.
 
+## MCP auth (two clients, two transports)
+
+`/mcp` accepts a bearer token two ways (resolved in `routes/mcp.ts` -> `mcpUser`
+-> `db.resolveBearerUser`): per-user tokens in `mcp_tokens`, or the legacy
+`MCP_AUTH_TOKEN` -> owner. The token can arrive as either:
+
+- **`Authorization: Bearer <token>` header** — used by the LOCAL clients (standalone
+  Claude Desktop app + Claude Code) via `claude_desktop_config.json`, which run a
+  local `mcp-remote` bridge that injects the header.
+- **`?token=<token>` query param** — used by CLOUD-brokered connectors (Cowork /
+  claude.ai "Add custom connector"). Anthropic's cloud reaches the public worker
+  URL directly (no local bridge), and that connector UI takes only a URL + OAuth,
+  with no header field, so the token rides in the URL. Header wins if both present.
+
+Cowork/claude.ai do NOT read `claude_desktop_config.json` (that is local-only). For
+Cowork, register `https://checkbox.tamara-sovcik.workers.dev/mcp?token=<token>` as a
+custom connector. Token-in-URL is fine for this single-user app but can appear in
+logs; rotate via Settings > Integrations. The proper long-term hardening is OAuth
+2.1 (the connector UI's OAuth fields; Cloudflare `workers-oauth-provider` +
+`@cloudflare/mcp-agent` do the heavy lifting) — not yet implemented.
+
 ## Conventions
 
 - Single-user app, but every owned row carries `user_id` (isolation pattern).
