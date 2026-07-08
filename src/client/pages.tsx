@@ -28,6 +28,7 @@ import { areaColorVar } from "./lib/colors";
 import { areaIcon } from "./lib/icons";
 import { useReview } from "./lib/queries";
 import { useTaskUI, useMe } from "./lib/ui-context";
+import { useTheme, type ThemePref } from "./lib/theme";
 import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
 import { TaskRow } from "./components/TaskRow";
@@ -821,6 +822,48 @@ function Section({
   );
 }
 
+// System / Light / Dark segmented control. Writes through useTheme (persists to
+// localStorage + applies to the DOM immediately). "System" follows the OS.
+function AppearanceSection() {
+  const { pref, resolved, setPref } = useTheme();
+  const opts: { value: ThemePref; label: string }[] = [
+    { value: "system", label: "System" },
+    { value: "light", label: "Light" },
+    { value: "dark", label: "Dark" },
+  ];
+  return (
+    <Section title="Appearance">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-sm text-foreground">Theme</div>
+          <div className="text-xs text-subtle">
+            {pref === "system"
+              ? `Following your system (${resolved})`
+              : `Always ${pref}`}
+          </div>
+        </div>
+        <div className="flex shrink-0 rounded-lg border border-border bg-surface-2/40 p-0.5">
+          {opts.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => setPref(o.value)}
+              className={
+                "rounded-md px-3 py-1.5 text-sm font-medium transition-colors " +
+                (pref === o.value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted hover:text-foreground")
+              }
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 export function SettingsPage() {
   const me = useMe();
   const { data: pushStatus, refetch: refetchPush } = usePushStatus();
@@ -944,6 +987,8 @@ export function SettingsPage() {
           </div>
         </div>
       </Section>
+
+      <AppearanceSection />
 
       <Section title="Notifications">
         {!swReady ? (

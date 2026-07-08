@@ -16,8 +16,8 @@ export default defineConfig({
         name: "Checkbox",
         short_name: "Checkbox",
         description: "Personal task manager",
-        theme_color: "#0f172a",
-        background_color: "#0f172a",
+        theme_color: "#0b1120",
+        background_color: "#0b1120",
         display: "standalone",
         start_url: "/",
         icons: [

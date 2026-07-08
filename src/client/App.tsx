@@ -5,6 +5,7 @@ import { fetchMe, type Me } from "./lib/api";
 import { AppShell } from "./AppShell";
 import { MeContext } from "./lib/ui-context";
 import { ToastProvider } from "./lib/toast";
+import { ThemeProvider } from "./components/ThemeProvider";
 import {
   AreaPage,
   LabelPage,
@@ -74,6 +75,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <QueryClientProvider client={qc}>
+      <ThemeProvider>
       <ToastProvider>
       <AuthGate>
         <BrowserRouter>
@@ -111,6 +113,7 @@ export default function App() {
         </BrowserRouter>
       </AuthGate>
       </ToastProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

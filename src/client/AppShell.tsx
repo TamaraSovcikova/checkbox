@@ -16,6 +16,7 @@ import { TaskSheet } from "./components/TaskSheet";
 import { CommandCapture } from "./components/CommandCapture";
 import { TaskUIContext } from "./lib/ui-context";
 import { MenuIcon, AddIcon, LogoIcon } from "./lib/icons";
+import { ThemeToggle } from "./components/ThemeToggle";
 
 // Fire the global capture surface (CommandCapture listens). Touch clients have no
 // Cmd-K, so the mobile header button and the FAB both dispatch this.
@@ -95,6 +96,7 @@ export function AppShell() {
                   Checkbox
                 </span>
               </div>
+              <ThemeToggle />
               <button
                 type="button"
                 aria-label="Add task"

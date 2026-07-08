@@ -48,6 +48,7 @@ import {
   DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
+import { ThemeToggle } from "./ThemeToggle";
 
 type IconType = ComponentType<{ className?: string }>;
 type NavDef = { to: string; label: string; icon: IconType };
@@ -356,14 +357,18 @@ function SidebarInner() {
       <div className="mb-3 flex items-center gap-2 px-1">
         <LogoIcon className="h-5 w-5 text-primary" />
         <span className="font-semibold tracking-tight text-foreground">Checkbox</span>
-        {!online && (
-          <span
-            title={`Offline${pending > 0 ? ` · ${pending} queued` : ""}`}
-            className="ml-auto rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning"
-          >
-            {pending > 0 ? `offline · ${pending}` : "offline"}
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-1">
+          {!online && (
+            <span
+              title={`Offline${pending > 0 ? ` · ${pending} queued` : ""}`}
+              className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning"
+            >
+              {pending > 0 ? `offline · ${pending}` : "offline"}
+            </span>
+          )}
+          {/* Desktop rail only; the mobile top bar carries its own toggle. */}
+          <ThemeToggle className="hidden h-7 w-7 md:grid" />
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">

@@ -3,12 +3,18 @@
 @import "react-day-picker/style.css";
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Design tokens — refined dark, single indigo accent.
+   Design tokens — dual theme, single indigo accent.
    Single source of truth for color; JS mirror lives in lib/colors.ts.
    shadcn/ui (added in T2) consumes these same CSS variables, so the whole
    app — rows, cards, drawer, board, AND calendar — themes from one place.
+
+   Dark is the default (:root). Light is a "warm stone" ramp: an off-white,
+   paper-toned surface with a warm near-black text, applied via
+   [data-theme="light"]. The theme attribute is set pre-paint by the inline
+   script in index.html and reconciled by ThemeProvider; keep the three in sync.
    ───────────────────────────────────────────────────────────────────────── */
-:root {
+:root,
+:root[data-theme="dark"] {
   color-scheme: dark;
 
   /* neutral surfaces (slate ramp) */
@@ -53,6 +59,47 @@
   --area-slate: #94a3b8;
 
   --radius: 0.5rem;
+}
+
+/* Light — "warm stone": a sophisticated off-white with a faint paper/warm
+   undertone (not clinical slate-50, not stark pure white) and a warm near-black
+   text. State + priority + area hues step down to 500/600 so they keep contrast
+   on the light surface instead of washing out at their dark 400 levels. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --background: #faf9f6; /* warm off-white app background */
+  --surface: #ffffff;    /* cards / panels sit slightly brighter than the bg */
+  --surface-2: #f1efea;  /* warm raised / hover */
+  --foreground: #1c1b19; /* warm near-black primary text */
+  --muted: #6f6a62;      /* warm gray secondary text */
+  --subtle: #9a938a;     /* warm tertiary text */
+  --border: #e8e3da;     /* warm hairline */
+  --input: #d9d3c8;      /* warm control border */
+
+  --primary: #6366f1;         /* indigo-500 keeps brand continuity */
+  --primary-hover: #4f46e5;   /* indigo-600 darkens on hover for light */
+  --primary-foreground: #ffffff;
+  --ring: #6366f1;
+
+  --success: #059669; /* emerald-600 */
+  --warning: #d97706; /* amber-600 */
+  --danger: #dc2626;  /* red-600 */
+
+  --pri-1: #dc2626; /* red-600     urgent */
+  --pri-2: #ea580c; /* orange-600  high   */
+  --pri-3: #d97706; /* amber-600   medium */
+  --pri-4: #78716c; /* stone-500   low    */
+
+  --area-indigo: #6366f1;
+  --area-sky: #0284c7;
+  --area-emerald: #059669;
+  --area-amber: #d97706;
+  --area-rose: #e11d48;
+  --area-violet: #7c3aed;
+  --area-teal: #0d9488;
+  --area-orange: #ea580c;
+  --area-slate: #64748b;
 }
 
 /* Expose tokens as Tailwind v4 utilities: bg-primary, text-muted, border-border,
