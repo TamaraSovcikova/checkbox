@@ -34,9 +34,14 @@ export function AttachmentList({ taskId }: { taskId: string }) {
       await api.uploadAttachment(taskId, file);
       invalidate();
     } catch (ex) {
+      const s = String(ex);
       setErr(
-        String(ex).includes("501")
+        s.includes("501")
           ? "File storage isn't set up — attach a link instead."
+          : s.includes("507")
+          ? "Storage limit reached (free-tier guard) — delete some files or attach a link."
+          : s.includes("413")
+          ? "File too large (max 25 MB)."
           : "Upload failed."
       );
     } finally {

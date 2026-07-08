@@ -29,6 +29,11 @@
   "kv_namespaces": [
     { "binding": "SESSIONS", "id": "9297e85a77544ebfb68bc57963df97a7" }
   ],
+  // R2 bucket for file attachments. Usage is capped in-app (see FREE_TIER_STORAGE_CAP
+  // in routes/attachments.ts) well under R2's 10 GB free tier so it never bills.
+  "r2_buckets": [
+    { "binding": "ATTACHMENTS", "bucket_name": "checkbox-attachments" }
+  ],
   // 15-min tick = calendar sync + watch renewal; 06:00 = morning brief (Phase 4)
   "triggers": { "crons": ["*/15 * * * *", "0 6 * * *"] },
   // Local dev base URL — override with the real workers.dev URL after deploy.

@@ -3,6 +3,26 @@ import { type Bindings, getUserId, uuid } from "../db";
 
 export const attachments = new Hono<{ Bindings: Bindings }>();
 
+// Per-file and total-storage caps. R2's free tier is 10 GB; we stop well short so
+// attachments can NEVER push the account into paid territory. Uploads past the
+// total cap are rejected (link attachments still work). Bump these only if you
+// deliberately accept R2 storage charges past 10 GB.
+const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 MB per file
+const FREE_TIER_STORAGE_CAP = 5 * 1024 * 1024 * 1024; // 5 GB total (half the free tier)
+
+// Sum of bytes this user already has stored in R2.
+async function usedBytes(db: D1Database, userId: string): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(a.size_bytes), 0) AS used
+         FROM attachments a JOIN tasks t ON t.id = a.task_id
+        WHERE t.user_id = ? AND a.kind = 'file'`
+    )
+    .bind(userId)
+    .first<{ used: number }>();
+  return Number(row?.used ?? 0);
+}
+
 async function ownsTask(db: D1Database, userId: string, taskId: string) {
   const row = await db
     .prepare("SELECT 1 FROM tasks WHERE id = ? AND user_id = ?")
@@ -58,8 +78,20 @@ attachments.post("/:taskId/file", async (c) => {
   const filename = c.req.query("filename") || "file";
   const body = await c.req.arrayBuffer();
   if (body.byteLength === 0) return c.json({ error: "empty body" }, 400);
-  if (body.byteLength > 25 * 1024 * 1024)
+  if (body.byteLength > MAX_FILE_BYTES)
     return c.json({ error: "file too large (max 25MB)" }, 413);
+
+  // Free-tier guard: never let total stored bytes cross the cap (stays under R2's
+  // 10 GB free tier, so uploads can't incur charges).
+  const used = await usedBytes(c.env.DB, userId);
+  if (used + body.byteLength > FREE_TIER_STORAGE_CAP)
+    return c.json(
+      {
+        error:
+          "storage limit reached (free-tier guard) — delete some files or attach a link instead",
+      },
+      507
+    );
 
   const id = uuid();
   const key = `att/${userId}/${taskId}/${id}`;
@@ -69,9 +101,9 @@ attachments.post("/:taskId/file", async (c) => {
     },
   });
   await c.env.DB.prepare(
-    "INSERT INTO attachments (id, task_id, kind, url, filename) VALUES (?, ?, 'file', ?, ?)"
+    "INSERT INTO attachments (id, task_id, kind, url, filename, size_bytes) VALUES (?, ?, 'file', ?, ?, ?)"
   )
-    .bind(id, taskId, key, filename)
+    .bind(id, taskId, key, filename, body.byteLength)
     .run();
   const row = await c.env.DB.prepare("SELECT * FROM attachments WHERE id = ?")
     .bind(id)
