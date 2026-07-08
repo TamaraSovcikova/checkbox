@@ -1,6 +1,12 @@
 // Checkbox MCP server — JSON-RPC 2.0 over HTTP (MCP streamable-HTTP transport).
-// Mount at /mcp. Auth via Authorization: Bearer <MCP_AUTH_TOKEN>.
-// Add to Claude: Settings > MCP Servers > HTTP, URL = https://<worker>/mcp, token = <secret>.
+// Mount at /mcp. Auth via Authorization: Bearer <token> (per-user or legacy).
+//
+// Two ways to authenticate, since different clients pass auth differently:
+//   • Header — Authorization: Bearer <token>. Used by the local mcp-remote bridge
+//     (Claude Desktop / Claude Code claude_desktop_config.json).
+//   • Query  — ?token=<token>. Used by cloud-brokered connectors (Cowork /
+//     claude.ai "Add custom connector"), whose UI only takes a URL + OAuth and
+//     has no header field. The token rides in the registered URL instead.
 
 import { Hono } from "hono";
 import type { Bindings } from "../db";
@@ -18,6 +24,15 @@ export const mcp = new Hono<{ Bindings: Bindings }>();
 // mcp_tokens, or the legacy MCP_AUTH_TOKEN -> owner). Returns null when the token
 // is missing/unknown. Dev-open fallback: if nothing is configured at all (no
 // MCP_AUTH_TOKEN and no per-user tokens), map to the owner for local development.
+// Effective Authorization header for a request: the real header if present, else
+// a synthetic one built from a ?token= query param (cloud connectors can't set
+// headers). Header wins so an explicit bearer is never overridden.
+function authHeaderFor(header: string | undefined, queryToken: string | undefined): string | undefined {
+  if (header) return header;
+  if (queryToken) return `Bearer ${queryToken}`;
+  return undefined;
+}
+
 async function mcpUser(
   env: Bindings,
   header: string | undefined
@@ -804,7 +819,10 @@ async function handleTool(
 // ── Route: POST /mcp ──────────────────────────────────────────────────────────
 
 mcp.post("/", async (c) => {
-  const userId = await mcpUser(c.env, c.req.header("Authorization"));
+  const userId = await mcpUser(
+    c.env,
+    authHeaderFor(c.req.header("Authorization"), c.req.query("token"))
+  );
   if (!userId) {
     return c.json(err(null, -32000, "Unauthorized"), 401);
   }
