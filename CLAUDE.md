@@ -26,15 +26,21 @@ Personal task manager. This is the operational file that lives with the code. Na
   Morning brief cron at 06:00 Brussels (0 6 * * *). Resend email digest gated on RESEND_API_KEY.
 - MCP: JSON-RPC 2.0 over HTTP at `/mcp`. Bearer token auth. 16 tools.
 
-## Current state (2026-07-01)
+## Current state (2026-07-08)
 
-**All phases 0-4 are live.** Deployed at https://checkbox.tamara-sovcik.workers.dev.
+**Phases 0-4 + Tier 1 + Tier 2 + the Tier 4 moat (ambient planner #30, note
+extraction #31) are all live**, plus full activation (push, email, R2) and an
+installable/auto-updating PWA. Deployed at https://checkbox.tamara-sovcik.workers.dev.
 
 ```
-Last commit: f01d9b7
-Health:      GET /api/health → { status: "ok", phase: 4 }
-MCP:         GET /mcp → { tools: [...] (16 tools), auth: "bearer" }
+Health: GET /api/health → { ok: true, phase: 8 }
+MCP:    /mcp → 18 tools, bearer auth (per-user tokens in mcp_tokens)
+D1:     all migrations 0001-0009 applied local + remote
 ```
+
+Migrations: 0001 init · 0002 cal-unique · 0003 push-unique · 0004 auth-multiuser ·
+0005 recurrence · 0006 tier2 (snooze/time/deps/templates) · 0007 day_plans ·
+0008 note_candidates · 0009 attachment_size.
 
 ## Wrangler secrets in production
 
