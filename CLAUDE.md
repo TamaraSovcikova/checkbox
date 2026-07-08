@@ -40,13 +40,18 @@ MCP:         GET /mcp → { tools: [...] (16 tools), auth: "bearer" }
 
 | Secret | Purpose | Status |
 |---|---|---|
-| `MCP_AUTH_TOKEN` | Bearer token for /mcp | Set: `6y06F6xDZsJXxi78Ri1Pxlq8u6CL8j2J` |
-| `CALENDAR_ENCRYPTION_KEY` | AES-GCM key for GCal refresh tokens | Set (random 32-byte hex) |
-| `GOOGLE_CLIENT_ID` | GCal OAuth | NOT SET — needs Google Cloud Console setup |
-| `GOOGLE_CLIENT_SECRET` | GCal OAuth | NOT SET — needs Google Cloud Console setup |
-| `VAPID_PUBLIC_KEY` | Web Push | NOT SET — run `node scripts/gen-vapid.mjs` |
-| `VAPID_PRIVATE_KEY_JWK` | Web Push | NOT SET — run `node scripts/gen-vapid.mjs` |
-| `RESEND_API_KEY` | Email digest (optional) | NOT SET — only needed for email |
+| `MCP_AUTH_TOKEN` | Bearer token for /mcp (legacy; per-user tokens in `mcp_tokens`) | Set |
+| `CALENDAR_ENCRYPTION_KEY` | AES-GCM key for GCal refresh tokens | Set |
+| `GOOGLE_CLIENT_ID` | GCal OAuth | Set (2026-07-02) |
+| `GOOGLE_CLIENT_SECRET` | GCal OAuth | Set (2026-07-02) |
+| `VAPID_PUBLIC_KEY` | Web Push | Set (2026-07-08) |
+| `VAPID_PRIVATE_KEY_JWK` | Web Push | Set (2026-07-08) |
+| `RESEND_API_KEY` | Email digest | Set (2026-07-08) |
+
+R2 bucket `checkbox-attachments` is live (binding `ATTACHMENTS`, enabled 2026-07-08).
+File uploads are capped in-app at 5 GB total (see `FREE_TIER_STORAGE_CAP` in
+`routes/attachments.ts`) so they never cross R2's 10 GB free tier. All prod secrets
+are now set; remaining user-side steps are browser/UI only (enable push in Settings).
 
 ## Layout
 
