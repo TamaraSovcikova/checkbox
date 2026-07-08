@@ -18,6 +18,7 @@ export {
   Check as CheckIcon,
   Plus as AddIcon,
   X as CloseIcon,
+  Menu as MenuIcon,
   CheckSquare as LogoIcon,
   GripVertical as DragIcon,
   ChevronLeft as ChevronLeftIcon,

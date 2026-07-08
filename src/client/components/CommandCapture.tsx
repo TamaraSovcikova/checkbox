@@ -65,8 +65,14 @@ export function CommandCapture() {
         setOpen((o) => !o);
       }
     };
+    // Touch clients have no Cmd-K; the mobile add button dispatches this instead.
+    const onCapture = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("checkbox:capture", onCapture);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("checkbox:capture", onCapture);
+    };
   }, []);
 
   const parsed = useMemo(() => parseCapture(text), [text]);

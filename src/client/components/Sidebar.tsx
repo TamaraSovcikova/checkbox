@@ -1,4 +1,9 @@
-import { useState, type ComponentType } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  type ComponentType,
+} from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useDroppable } from "@dnd-kit/core";
 import type { Area } from "../../shared/types";
@@ -42,9 +47,15 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
+import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
 
 type IconType = ComponentType<{ className?: string }>;
 type NavDef = { to: string; label: string; icon: IconType };
+
+// When the sidebar renders inside the mobile drawer, tapping any nav link should
+// close the drawer. Desktop renders with a no-op. Every NavLink calls this.
+const SidebarNavContext = createContext<() => void>(() => {});
+const useSidebarNav = () => useContext(SidebarNavContext);
 
 // Regrouped: task filters live under "Tasks"; the calendar is its own tool under
 // "Plan" (no longer a peer of "Overdue"). Settings is gone from the nav — it
@@ -90,11 +101,13 @@ function NavItem({
   onHide?: () => void;
 }) {
   const Icon = def.icon;
+  const closeNav = useSidebarNav();
   const { ref, isOver } = useDrop(dropForView(def.to));
   return (
     <div ref={ref} className="group flex items-center">
       <NavLink
         to={def.to}
+        onClick={closeNav}
         className={({ isActive }) =>
           cn(
             "flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
@@ -124,6 +137,7 @@ function NavItem({
 
 function AreaNode({ area }: { area: Area }) {
   const { id, name } = area;
+  const closeNav = useSidebarNav();
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState(false);
   const { data: projects = [] } = useProjects(id);
@@ -150,6 +164,7 @@ function AreaNode({ area }: { area: Area }) {
         <NavLink
           ref={ref}
           to={`/area/${id}`}
+          onClick={closeNav}
           className={({ isActive }) =>
             cn(
               "flex flex-1 items-center gap-2 truncate rounded-md px-2 py-1 text-sm transition-colors",
@@ -205,6 +220,7 @@ function ProjectItem({
   projectId: string;
   areaId: string;
 }) {
+  const closeNav = useSidebarNav();
   const { ref, isOver } = useDrop({
     id: `project:${projectId}`,
     data: { type: "project", projectId, areaId },
@@ -213,6 +229,7 @@ function ProjectItem({
     <div ref={ref}>
       <NavLink
         to={to}
+        onClick={closeNav}
         className={({ isActive }) =>
           cn(
             "block truncate rounded-md px-2 py-1 text-sm transition-colors",
@@ -251,6 +268,7 @@ function SectionHeader({
 function ProfileCard() {
   const me = useMe();
   const navigate = useNavigate();
+  const closeNav = useSidebarNav();
   const [busy, setBusy] = useState(false);
   const initial = (me?.name || me?.email || "?").trim().charAt(0).toUpperCase();
 
@@ -291,7 +309,12 @@ function ProfileCard() {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-[13.5rem]">
-          <DropdownMenuItem onSelect={() => navigate("/settings")}>
+          <DropdownMenuItem
+            onSelect={() => {
+              navigate("/settings");
+              closeNav();
+            }}
+          >
             <SettingsIcon className="h-4 w-4" />
             Settings
           </DropdownMenuItem>
@@ -311,12 +334,16 @@ function ProfileCard() {
   );
 }
 
-export function Sidebar() {
+// The sidebar body — header, scrollable nav, profile card. Rendered inside the
+// desktop rail (Sidebar) and inside the mobile drawer (MobileSidebar), so it must
+// stretch to fill a flex-column parent (both provide h-full).
+function SidebarInner() {
   const { data: areas = [] } = useAreas();
   const { data: labels = [] } = useLabels();
   const { data: savedFilters = [] } = useSavedFilters();
   const { online, pending } = useOnlineStatus();
   const { hide, show, isHidden } = useViewPrefs();
+  const closeNav = useSidebarNav();
   const [manage, setManage] = useState(false);
   const [filterDialog, setFilterDialog] = useState(false);
   const [areaDialog, setAreaDialog] = useState(false);
@@ -325,7 +352,7 @@ export function Sidebar() {
   const visible = (items: NavDef[]) => items.filter((s) => !isHidden(s.to));
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-surface/60 p-3">
+    <>
       <div className="mb-3 flex items-center gap-2 px-1">
         <LogoIcon className="h-5 w-5 text-primary" />
         <span className="font-semibold tracking-tight text-foreground">Checkbox</span>
@@ -445,6 +472,7 @@ export function Sidebar() {
             <NavLink
               key={f.id}
               to={`/filter/${f.id}`}
+              onClick={closeNav}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
@@ -473,6 +501,7 @@ export function Sidebar() {
                 <NavLink
                   key={l.id}
                   to={`/label/${encodeURIComponent(l.name)}`}
+                  onClick={closeNav}
                   className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:bg-surface-2/70 hover:text-foreground"
                 >
                   @{l.name}
@@ -486,6 +515,39 @@ export function Sidebar() {
       <ProfileCard />
       <FilterDialog open={filterDialog} onOpenChange={setFilterDialog} />
       <AreaDialog open={areaDialog} onOpenChange={setAreaDialog} />
+    </>
+  );
+}
+
+// Desktop rail: persistent, hidden below md where the drawer takes over.
+export function Sidebar() {
+  return (
+    <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-surface/60 p-3 md:flex">
+      <SidebarInner />
     </aside>
+  );
+}
+
+// Mobile drawer: same content in a left slide-over. Tapping any nav link (or the
+// overlay) closes it via SidebarNavContext.
+export function MobileSidebar({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="left"
+        className="flex w-[17rem] max-w-[85vw] flex-col gap-0 bg-surface p-3"
+      >
+        <SheetTitle className="sr-only">Menu</SheetTitle>
+        <SidebarNavContext.Provider value={() => onOpenChange(false)}>
+          <SidebarInner />
+        </SidebarNavContext.Provider>
+      </SheetContent>
+    </Sheet>
   );
 }

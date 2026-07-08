@@ -19,8 +19,18 @@ import {
 // initial bundle (capture-first PWA).
 const CalendarPage = lazy(() => import("./CalendarPage"));
 
+// refetchOnWindowFocus is on so switching back to a browser tab (or reopening the
+// PWA) pulls anything added on another device without a manual reload — the whole
+// point of "add on phone, see it on web". staleTime keeps it from refetching on
+// every trivial focus. reconnect refetch covers waking from sleep / regaining net.
 const qc = new QueryClient({
-  defaultOptions: { queries: { staleTime: 10_000, refetchOnWindowFocus: false } },
+  defaultOptions: {
+    queries: {
+      staleTime: 10_000,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+    },
+  },
 });
 
 function SignIn() {

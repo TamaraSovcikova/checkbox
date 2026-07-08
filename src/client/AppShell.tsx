@@ -11,10 +11,17 @@ import {
 import type { Task } from "../shared/types";
 import { api } from "./lib/api";
 import { resolveDrop, type DragData, type DropData } from "./lib/dnd";
-import { Sidebar } from "./components/Sidebar";
+import { Sidebar, MobileSidebar } from "./components/Sidebar";
 import { TaskSheet } from "./components/TaskSheet";
 import { CommandCapture } from "./components/CommandCapture";
 import { TaskUIContext } from "./lib/ui-context";
+import { MenuIcon, AddIcon, LogoIcon } from "./lib/icons";
+
+// Fire the global capture surface (CommandCapture listens). Touch clients have no
+// Cmd-K, so the mobile header button and the FAB both dispatch this.
+function openCapture() {
+  window.dispatchEvent(new Event("checkbox:capture"));
+}
 
 // Brussels-local today as YYYY-MM-DD (matches the server's day boundary).
 function todayStr(): string {
@@ -38,6 +45,7 @@ function todayStr(): string {
 //                     └── "view:backlog" -> clear area_id + project_id
 export function AppShell() {
   const [task, setTask] = useState<Task | null>(null);
+  const [drawer, setDrawer] = useState(false);
   const client = useQueryClient();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
@@ -64,12 +72,56 @@ export function AppShell() {
     <TaskUIContext.Provider value={{ open: setTask }}>
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <div className="flex h-dvh">
+          {/* Desktop rail (hidden < md); the drawer takes over on mobile. */}
           <Sidebar />
-          <main className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          <MobileSidebar open={drawer} onOpenChange={setDrawer} />
+
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {/* Mobile-only top app bar: hamburger + wordmark + quick add.
+                Non-scrolling; the per-view TopBar sticks below it inside the
+                scroll region and keeps its title/tabs/actions. */}
+            <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-surface/60 px-3 md:hidden">
+              <button
+                type="button"
+                aria-label="Open menu"
+                onClick={() => setDrawer(true)}
+                className="grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+              >
+                <MenuIcon className="h-5 w-5" />
+              </button>
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <LogoIcon className="h-5 w-5 shrink-0 text-primary" />
+                <span className="font-semibold tracking-tight text-foreground">
+                  Checkbox
+                </span>
+              </div>
+              <button
+                type="button"
+                aria-label="Add task"
+                onClick={openCapture}
+                className="grid h-9 w-9 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+              >
+                <AddIcon className="h-5 w-5" />
+              </button>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
               <Outlet />
             </div>
           </main>
+
+          {/* Capture FAB — thumb-reachable on mobile (capture-first PWA).
+              Hidden on desktop where Cmd-K / the header input suffice. */}
+          <button
+            type="button"
+            aria-label="Add task"
+            onClick={openCapture}
+            className="fixed bottom-6 right-5 z-30 grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-black/30 transition-transform active:scale-95 md:hidden"
+            style={{ marginBottom: "env(safe-area-inset-bottom)" }}
+          >
+            <AddIcon className="h-6 w-6" />
+          </button>
+
           <TaskSheet task={task} onClose={() => setTask(null)} />
           <CommandCapture />
         </div>
