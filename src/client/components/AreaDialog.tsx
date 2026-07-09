@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Area } from "../../shared/types";
@@ -20,18 +21,38 @@ export function AreaDialog({
   existing?: Area;
 }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [name, setName] = useState("");
   const [color, setColor] = useState<string | null>(null);
   const [icon, setIcon] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (open) {
       setName(existing?.name ?? "");
       setColor(existing?.color ?? "indigo");
       setIcon(existing?.icon ?? null);
+      setConfirmDelete(false);
     }
   }, [open, existing]);
+
+  async function remove() {
+    if (!existing) return;
+    setBusy(true);
+    try {
+      await api.deleteArea(existing.id);
+      // Deleting an area unfiles (does not delete) its tasks and projects.
+      qc.invalidateQueries({ queryKey: ["areas"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["view"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      onOpenChange(false);
+      if (window.location.pathname === `/area/${existing.id}`) navigate("/today");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit() {
     if (!name.trim()) return;
@@ -136,14 +157,42 @@ export function AreaDialog({
             </div>
           </div>
 
-          <div className="mt-5 flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={submit} disabled={!name.trim() || busy}>
-              {existing ? "Save" : "Create area"}
-            </Button>
-          </div>
+          {confirmDelete ? (
+            <div className="mt-5 rounded-lg border border-danger/40 bg-danger/5 p-3">
+              <p className="text-sm text-foreground">Delete this area?</p>
+              <p className="mt-0.5 text-xs text-subtle">
+                Its tasks and projects are kept and become unfiled (moved to Backlog).
+              </p>
+              <div className="mt-3 flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setConfirmDelete(false)} disabled={busy}>
+                  Cancel
+                </Button>
+                <Button variant="danger" onClick={remove} disabled={busy}>
+                  {busy ? "Deleting…" : "Delete area"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-5 flex items-center gap-2">
+              {existing && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="text-sm text-danger transition-colors hover:text-danger/80"
+                >
+                  Delete
+                </button>
+              )}
+              <div className="ml-auto flex gap-2">
+                <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={submit} disabled={!name.trim() || busy}>
+                  {existing ? "Save" : "Create area"}
+                </Button>
+              </div>
+            </div>
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

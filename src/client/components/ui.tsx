@@ -10,7 +10,7 @@ export function cx(...parts: (string | false | null | undefined)[]) {
 }
 
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "ghost" | "subtle";
+  variant?: "primary" | "ghost" | "subtle" | "danger";
 };
 export const Button = forwardRef<HTMLButtonElement, BtnProps>(
   ({ variant = "subtle", className, ...rest }, ref) => {
@@ -20,6 +20,7 @@ export const Button = forwardRef<HTMLButtonElement, BtnProps>(
       primary: "bg-primary text-primary-foreground hover:bg-primary-hover",
       ghost: "text-foreground hover:bg-surface-2",
       subtle: "bg-surface-2 text-foreground hover:bg-surface-2/80",
+      danger: "bg-danger text-white hover:bg-danger/90",
     };
     return (
       <button ref={ref} className={cx(base, variants[variant], className)} {...rest} />

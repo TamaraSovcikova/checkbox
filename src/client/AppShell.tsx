@@ -107,7 +107,11 @@ export function AppShell() {
               </button>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+            {/* No top padding: the sticky TopBar bleeds flush to the top of the
+                scroll region and supplies its own top padding. A top padding here
+                would collapse with the header's margins and push content under the
+                pinned bar (header-less pages add their own pt). */}
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-6 md:pb-6">
               <Outlet />
             </div>
           </main>

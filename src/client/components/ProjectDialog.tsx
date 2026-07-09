@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Project } from "../../shared/types";
@@ -22,12 +23,14 @@ export function ProjectDialog({
   areaId?: string | null;
 }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [name, setName] = useState("");
   const [goal, setGoal] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [columns, setColumns] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -36,8 +39,27 @@ export function ProjectDialog({
       setDescription(existing?.description ?? "");
       setDueDate(existing?.due_date ?? "");
       setColumns((existing?.board_columns ?? ["To do", "Doing", "Done"]).join(", "));
+      setConfirmDelete(false);
     }
   }, [open, existing]);
+
+  async function remove() {
+    if (!existing) return;
+    setBusy(true);
+    try {
+      await api.deleteProject(existing.id);
+      // Deleting a project keeps its tasks; they become loose (unfiled).
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["view"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      onOpenChange(false);
+      if (window.location.pathname === `/project/${existing.id}`) {
+        navigate(existing.area_id ? `/area/${existing.area_id}` : "/today");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit() {
     if (!name.trim()) return;
@@ -138,14 +160,42 @@ export function ProjectDialog({
             </label>
           </div>
 
-          <div className="mt-5 flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={submit} disabled={!name.trim() || busy}>
-              {existing ? "Save" : "Create project"}
-            </Button>
-          </div>
+          {confirmDelete ? (
+            <div className="mt-5 rounded-lg border border-danger/40 bg-danger/5 p-3">
+              <p className="text-sm text-foreground">Delete this project?</p>
+              <p className="mt-0.5 text-xs text-subtle">
+                Its tasks are kept and become loose (moved to Backlog).
+              </p>
+              <div className="mt-3 flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setConfirmDelete(false)} disabled={busy}>
+                  Cancel
+                </Button>
+                <Button variant="danger" onClick={remove} disabled={busy}>
+                  {busy ? "Deleting…" : "Delete project"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-5 flex items-center gap-2">
+              {existing && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="text-sm text-danger transition-colors hover:text-danger/80"
+                >
+                  Delete
+                </button>
+              )}
+              <div className="ml-auto flex gap-2">
+                <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={submit} disabled={!name.trim() || busy}>
+                  {existing ? "Save" : "Create project"}
+                </Button>
+              </div>
+            </div>
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

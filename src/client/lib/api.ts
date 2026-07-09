@@ -90,6 +90,8 @@ export const api = {
     }),
   completeProject: (id: string) =>
     http(`/api/projects/${id}/complete`, { method: "POST" }),
+  deleteProject: (id: string) =>
+    http(`/api/projects/${id}`, { method: "DELETE" }),
 
   // tasks
   listTasks: (params: Record<string, string> = {}) =>

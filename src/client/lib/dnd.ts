@@ -54,7 +54,16 @@ export function resolveDrop(
     case "slot": {
       if (!target.date || !target.time) return null;
       const start = `${target.date}T${target.time}:00`;
-      const dur = task.time_estimate_min ?? 60;
+      // Moving an already-scheduled block keeps its duration; scheduling a fresh
+      // task uses its estimate (or a 60-min default).
+      let dur = task.time_estimate_min ?? 60;
+      if (task.scheduled_start && task.scheduled_end) {
+        const mins =
+          (parseISO(task.scheduled_end).getTime() -
+            parseISO(task.scheduled_start).getTime()) /
+          60000;
+        if (mins > 0) dur = Math.round(mins);
+      }
       const endD = addMinutes(parseISO(start), dur);
       const end = `${format(endD, "yyyy-MM-dd")}T${format(endD, "HH:mm")}:00`;
       return { kind: "update", id, body: { scheduled_start: start, scheduled_end: end } };

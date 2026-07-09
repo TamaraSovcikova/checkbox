@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { format, addDays } from "date-fns";
+import { useState, type PointerEvent as ReactPointerEvent } from "react";
+import { format, addDays, addMinutes, parseISO } from "date-fns";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import { useQueryClient } from "@tanstack/react-query";
 import type { CalendarEvent, Task } from "../shared/types";
+import { api } from "./lib/api";
 import {
   useCalendarStatus,
   useCalendarEvents,
@@ -112,26 +114,100 @@ function ExternalEventBlock({ event }: { event: CalendarEvent }) {
   );
 }
 
-// ── Checkbox task time-block ──────────────────────────────────────────────────
+// ── Checkbox task time-block (draggable to move, resize handle to re-time) ─────
+
+const SNAP_PX = PX_PER_HOUR / 4; // 15-minute snap for resize
+const MIN_PX = PX_PER_HOUR / 4; // min 15-minute block
 
 function TaskBlock({ task }: { task: Task }) {
   const { open } = useTaskUI();
+  const qc = useQueryClient();
+  // Live height override while resizing (null = use the stored duration).
+  const [resizeH, setResizeH] = useState<number | null>(null);
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({ id: task.id, data: { type: "task", task } });
+
   if (!task.scheduled_start || !task.scheduled_end) return null;
   const top = timeToPx(task.scheduled_start);
-  const height = durationPx(task.scheduled_start, task.scheduled_end);
+  const baseH = durationPx(task.scheduled_start, task.scheduled_end);
+  const height = resizeH ?? baseH;
   if (top < 0 || top > GRID_HEIGHT) return null;
+
+  // Bottom-edge resize: a raw pointer drag (kept off the dnd-kit listeners via
+  // stopPropagation) that snaps the end time to 15 minutes and commits on release.
+  function onResizeDown(e: ReactPointerEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = baseH;
+    const clamp = (h: number) =>
+      Math.max(MIN_PX, Math.round(h / SNAP_PX) * SNAP_PX);
+    const move = (ev: PointerEvent) => setResizeH(clamp(startH + (ev.clientY - startY)));
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      const finalH = clamp(startH + (ev.clientY - startY));
+      setResizeH(null);
+      const minutes = Math.round((finalH / PX_PER_HOUR) * 60);
+      const end = addMinutes(parseISO(task.scheduled_start!), minutes);
+      api
+        .updateTask(task.id, {
+          scheduled_end: `${format(end, "yyyy-MM-dd")}T${format(end, "HH:mm")}:00`,
+        })
+        .then(() => {
+          qc.invalidateQueries({ queryKey: ["tasks"] });
+          qc.invalidateQueries({ queryKey: ["view"] });
+        });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  const endLabel = resizeH
+    ? fmtTime(
+        addMinutes(
+          parseISO(task.scheduled_start),
+          Math.round((height / PX_PER_HOUR) * 60)
+        ).toISOString()
+      )
+    : fmtTime(task.scheduled_end);
+
   return (
-    <button
-      onClick={() => open(task)}
-      className="absolute left-0 right-1 overflow-hidden rounded border-l-2 bg-surface-2/90 px-1.5 py-0.5 text-left text-xs text-foreground"
-      style={{ top, height: Math.max(20, height), borderLeftColor: PRIORITY_VAR[task.priority] }}
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "absolute left-0 right-1 rounded border-l-2 bg-surface-2/90 text-xs text-foreground",
+        isDragging ? "z-20 opacity-80 shadow-lg" : "z-0"
+      )}
+      style={{
+        top,
+        height: Math.max(20, height),
+        borderLeftColor: PRIORITY_VAR[task.priority],
+        transform: transform ? CSS.Translate.toString(transform) : undefined,
+      }}
       title={task.title}
     >
-      <div className="truncate font-medium">{task.title}</div>
-      <div className="text-subtle">
-        {fmtTime(task.scheduled_start)} – {fmtTime(task.scheduled_end)}
+      {/* Body: click opens the task; press-and-drag (>6px) moves the block. */}
+      <button
+        {...attributes}
+        {...listeners}
+        onClick={() => open(task)}
+        className="flex h-full w-full cursor-grab flex-col overflow-hidden px-1.5 py-0.5 text-left active:cursor-grabbing"
+      >
+        <div className="truncate font-medium">{task.title}</div>
+        <div className="text-subtle">
+          {fmtTime(task.scheduled_start)} – {endLabel}
+        </div>
+      </button>
+      {/* Bottom resize handle. */}
+      <div
+        onPointerDown={onResizeDown}
+        className="absolute inset-x-0 bottom-0 flex h-2 cursor-ns-resize items-center justify-center"
+        title="Drag to resize"
+      >
+        <div className="h-0.5 w-4 rounded-full bg-foreground/30" />
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -242,7 +318,7 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full flex-col gap-3 pt-4 md:pt-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <button

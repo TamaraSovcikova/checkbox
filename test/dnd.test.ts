@@ -84,6 +84,24 @@ describe("resolveDrop", () => {
     });
   });
 
+  it("moving an already-scheduled block preserves its duration", () => {
+    const scheduled = task({
+      scheduled_start: "2026-07-03T09:00:00",
+      scheduled_end: "2026-07-03T10:30:00", // 90-minute block
+      time_estimate_min: 30, // must be ignored in favour of the real duration
+    });
+    const action = resolveDrop(
+      { type: "task", task: scheduled },
+      { type: "slot", date: "2026-07-03", time: "13:00" },
+      TODAY
+    );
+    expect(action).toEqual({
+      kind: "update",
+      id: "t1",
+      body: { scheduled_start: "2026-07-03T13:00:00", scheduled_end: "2026-07-03T14:30:00" },
+    });
+  });
+
   it("view:today reschedules to today; view:backlog clears area+project", () => {
     expect(resolveDrop(drag, { type: "view", view: "today" }, TODAY)).toEqual({
       kind: "reschedule",
