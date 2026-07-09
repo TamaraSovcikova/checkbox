@@ -14,6 +14,7 @@ import {
   useOnlineStatus,
   useViewPrefs,
   useSavedFilters,
+  useView,
 } from "../lib/queries";
 import { FilterDialog } from "./FilterDialog";
 import { AreaDialog } from "./AreaDialog";
@@ -97,9 +98,15 @@ function dropForView(to: string): DropSpec | undefined {
 function NavItem({
   def,
   onHide,
+  alert,
+  count,
 }: {
   def: NavDef;
   onHide?: () => void;
+  // `alert` tints the row orange (used by Overdue when it has tasks); `count`
+  // shows a trailing pill.
+  alert?: boolean;
+  count?: number;
 }) {
   const Icon = def.icon;
   const closeNav = useSidebarNav();
@@ -109,6 +116,9 @@ function NavItem({
       <NavLink
         to={def.to}
         onClick={closeNav}
+        // Inline color wins over the text-muted class, so the orange applies in
+        // every state (active/hover included) without extra conditionals.
+        style={alert ? { color: "var(--area-orange)" } : undefined}
         className={({ isActive }) =>
           cn(
             "flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
@@ -121,6 +131,17 @@ function NavItem({
       >
         <Icon className="h-4 w-4 shrink-0" />
         <span className="truncate">{def.label}</span>
+        {alert && count != null && count > 0 && (
+          <span
+            className="ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-medium tabular-nums"
+            style={{
+              color: "var(--area-orange)",
+              background: "color-mix(in oklab, var(--area-orange) 16%, transparent)",
+            }}
+          >
+            {count}
+          </span>
+        )}
       </NavLink>
       {onHide && (
         <button
@@ -342,9 +363,11 @@ function SidebarInner() {
   const { data: areas = [] } = useAreas();
   const { data: labels = [] } = useLabels();
   const { data: savedFilters = [] } = useSavedFilters();
+  const { data: overdue = [] } = useView("overdue");
   const { online, pending } = useOnlineStatus();
   const { hide, show, isHidden } = useViewPrefs();
   const closeNav = useSidebarNav();
+  const overdueCount = overdue.length;
   const [manage, setManage] = useState(false);
   const [filterDialog, setFilterDialog] = useState(false);
   const [areaDialog, setAreaDialog] = useState(false);
@@ -386,9 +409,19 @@ function SidebarInner() {
           }
         />
         <nav className="space-y-0.5">
-          {visible(TASK_VIEWS).map((s) => (
-            <NavItem key={s.to} def={s} onHide={manage ? () => hide(s.to) : undefined} />
-          ))}
+          {visible(TASK_VIEWS)
+            // Overdue only earns a slot when something is actually overdue (unless
+            // you're in manage mode, where every view stays visible to toggle).
+            .filter((s) => s.to !== "/overdue" || manage || overdueCount > 0)
+            .map((s) => (
+              <NavItem
+                key={s.to}
+                def={s}
+                onHide={manage ? () => hide(s.to) : undefined}
+                alert={s.to === "/overdue" && overdueCount > 0}
+                count={s.to === "/overdue" ? overdueCount : undefined}
+              />
+            ))}
         </nav>
 
         {/* Plan */}

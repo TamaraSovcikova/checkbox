@@ -280,11 +280,40 @@ export async function pushTaskToGcal(
     .first<TaskRow>();
 
   if (!task) return;
-  if (task.status === "done") return;
-  if (!task.scheduled_start && !task.due_date) return;
+
+  // An event is wanted whenever the task has a time-block or a due date.
+  const wantEvent = !!(task.scheduled_start || task.due_date);
+
+  // Nothing to reconcile: no event wanted and none exists.
+  if (!wantEvent && !task.gcal_event_id) return;
+  // A completed task keeps whatever event it already has (a record of what was
+  // done): never create or update an event for a done task. Unscheduling below
+  // still removes one.
+  if (wantEvent && task.status === "done") return;
 
   const accessToken = await getValidAccessToken(env, account);
   const calendarId = account.primary_calendar_id ?? "primary";
+
+  // Unscheduled (both time-block and due date cleared): delete the owned event
+  // and drop the link so a later re-schedule creates a fresh one.
+  if (!wantEvent) {
+    if (task.gcal_event_id) {
+      await deleteEvent(
+        accessToken,
+        task.gcal_calendar_id ?? calendarId,
+        task.gcal_event_id
+      ).catch((e) => console.error("gcal delete on unschedule:", e));
+      await env.DB.batch([
+        env.DB.prepare(
+          "UPDATE tasks SET gcal_event_id = NULL, gcal_calendar_id = NULL WHERE id = ?"
+        ).bind(task.id),
+        env.DB.prepare(
+          "DELETE FROM calendar_events_cache WHERE gcal_event_id = ? AND calendar_id = ?"
+        ).bind(task.gcal_event_id, task.gcal_calendar_id ?? calendarId),
+      ]);
+    }
+    return;
+  }
 
   // Build a minimal Task-compatible object for the converter.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

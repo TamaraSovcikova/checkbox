@@ -18,6 +18,7 @@ import {
 } from "./lib/queries";
 import { FilterDialog } from "./components/FilterDialog";
 import { AreaDialog } from "./components/AreaDialog";
+import { ProjectDialog } from "./components/ProjectDialog";
 import { PlanMyDay } from "./components/PlanMyDay";
 import { StatsWidget } from "./components/StatsWidget";
 import { CheatSheet } from "./components/CheatSheet";
@@ -46,13 +47,13 @@ import {
   OverdueIcon,
   BacklogIcon,
   LogbookIcon,
+  ChevronRightIcon,
   ICON_SIZE,
 } from "./lib/icons";
 import { PRIORITY_VAR } from "./lib/colors";
 import { useViewPrefs } from "./lib/queries";
 import { Button, cx } from "./components/ui";
 import { api } from "./lib/api";
-import { useQueryClient } from "@tanstack/react-query";
 import type { ComponentType, ReactNode } from "react";
 
 function Header<T extends string>(props: {
@@ -361,6 +362,39 @@ export function ViewPage({ name }: { name: string }) {
         body
       )}
       {view === "list" && <BulkActionBar controls={controls} />}
+      {name === "today" && <CompletedToday />}
+    </div>
+  );
+}
+
+// A same-day history strip under Today: the tasks you ticked off today. It resets
+// at midnight (keyed off today's date server-side) and each row stays un-checkable
+// — clicking the circle restores the task to the active list. The full archive
+// lives in the Logbook.
+function CompletedToday() {
+  const { data: done = [] } = useView("completed-today");
+  const { open } = useTaskUI();
+  const [expanded, setExpanded] = useState(true);
+  if (done.length === 0) return null;
+  return (
+    <div className="mt-8 max-w-2xl">
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        className="mb-1 flex w-full items-center gap-1.5 px-2 text-xs font-semibold uppercase tracking-wide text-subtle transition-colors hover:text-foreground"
+      >
+        <ChevronRightIcon
+          className={cx("h-3.5 w-3.5 transition-transform", expanded && "rotate-90")}
+        />
+        Completed
+        <span className="font-normal text-subtle">{done.length}</span>
+      </button>
+      {expanded && (
+        <div className="opacity-75">
+          {done.map((t) => (
+            <TaskRow key={t.id} task={t} onOpen={open} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -500,17 +534,10 @@ export function AreaPage() {
   const { data: areas = [] } = useAreas();
   const { data: projects = [] } = useProjects(id);
   const { data: tasks = [] } = useTasks({ area_id: id });
-  const qc = useQueryClient();
   const area = areas.find((a) => a.id === id);
   const [editArea, setEditArea] = useState(false);
+  const [newProject, setNewProject] = useState(false);
   const AreaIcon = areaIcon(area?.icon);
-
-  async function addProject() {
-    const name = prompt("New project (sprint) name");
-    if (!name) return;
-    await api.createProject({ name, area_id: id });
-    qc.invalidateQueries({ queryKey: ["projects"] });
-  }
 
   return (
     <div>
@@ -531,13 +558,14 @@ export function AreaPage() {
       {area && (
         <AreaDialog open={editArea} onOpenChange={setEditArea} existing={area} />
       )}
+      <ProjectDialog open={newProject} onOpenChange={setNewProject} areaId={id} />
 
       <div className="mb-5">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-xs uppercase tracking-wide text-subtle">
             Projects
           </span>
-          <button onClick={addProject} className="text-sm text-primary">
+          <button onClick={() => setNewProject(true)} className="text-sm text-primary">
             + New project
           </button>
         </div>
@@ -576,6 +604,7 @@ export function ProjectPage() {
   const { viewDefault, setViewDefault } = useViewPrefs();
   const view = (viewDefault(`project:${id}`).mode ?? "grid") as "grid" | "list";
   const setView = (m: "grid" | "list") => setViewDefault(`project:${id}`, { mode: m });
+  const [edit, setEdit] = useState(false);
   const project = projects.find((p) => p.id === id);
   if (!project) return <p className="text-subtle">Loading project...</p>;
   return (
@@ -585,12 +614,14 @@ export function ProjectPage() {
         tabs={VIEW_TABS}
         activeTab={view}
         onTab={setView}
+        menu={[{ label: "Edit project", onSelect: () => setEdit(true) }]}
         below={
           <div className="max-w-2xl">
             <QuickCapture defaultProjectId={project.id} defaultAreaId={project.area_id} />
           </div>
         }
       />
+      <ProjectDialog open={edit} onOpenChange={setEdit} existing={project} />
       <ProjectBoard project={project} view={view} onOpen={open} />
     </div>
   );

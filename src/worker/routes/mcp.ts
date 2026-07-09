@@ -16,6 +16,7 @@ import { generateDayPlan } from "../lib/planner";
 import { extractNoteTasks } from "../../shared/notes";
 import { insertCandidates, type CandidateInput } from "./notes";
 import { nextDueDate } from "../../shared/recurrence";
+import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 
 export const mcp = new Hono<{ Bindings: Bindings }>();
 
@@ -649,6 +650,16 @@ const TOOLS = [
 
 // ── Tool handlers ──────────────────────────────────────────────────────────────
 
+// Fields whose change means the Google Calendar event must be reconciled.
+const GCAL_FIELDS = ["scheduled_start", "scheduled_end", "due_date", "due_time", "title"];
+
+// Best-effort GCal reconcile after a task write. Awaited (MCP has no waitUntil)
+// but wrapped so a Google hiccup never fails the tool call. pushTaskToGcal now
+// also removes the event when a task is unscheduled.
+async function gcalSync(env: Bindings, userId: string, id: string): Promise<void> {
+  await pushTaskToGcal(env, id, userId).catch((e) => console.error("mcp gcal sync:", e));
+}
+
 async function handleTool(
   name: string,
   args: Record<string, unknown>,
@@ -714,6 +725,7 @@ async function handleTool(
     // ── create_task ─────────────────────────────────────────────────────────
     case "create_task": {
       const id = await createOneTask(db, userId, args);
+      await gcalSync(env, userId, id);
       const row = await db.prepare("SELECT * FROM tasks WHERE id = ?").bind(id).first();
       const [task] = await hydrateTasks(db, [row as Record<string, unknown>]);
       return text(
@@ -730,6 +742,7 @@ async function handleTool(
         if (!it || typeof it.title !== "string" || !it.title.trim()) continue;
         ids.push(await createOneTask(db, userId, it));
       }
+      for (const id of ids) await gcalSync(env, userId, id);
       return json({ created: ids.length, ids });
     }
 
@@ -758,6 +771,7 @@ async function handleTool(
       if (Array.isArray(args.label_names)) {
         await syncLabels(db, userId, id, args.label_names as unknown[], true);
       }
+      if (fields.some((f) => GCAL_FIELDS.includes(f))) await gcalSync(env, userId, id);
       return text(`Updated task ${id}.`);
     }
 
@@ -789,6 +803,7 @@ async function handleTool(
               "UPDATE tasks SET due_date = ?, status = 'todo', completed_at = NULL, updated_at = ? WHERE id = ? AND user_id = ?"
             ).bind(next, now(), id, userId).run();
             await db.prepare("UPDATE subtasks SET done = 0 WHERE task_id = ?").bind(id).run();
+            await gcalSync(env, userId, id);
             return text(`Task ${id} recurred: next due ${next}.`);
           }
         }
@@ -797,14 +812,31 @@ async function handleTool(
       await db.prepare(
         "UPDATE tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ? AND user_id = ?"
       ).bind(done ? "done" : "todo", done ? now() : null, now(), id, userId).run();
+      // Re-completing keeps the event; un-completing re-pushes it.
+      await gcalSync(env, userId, id);
       return text(`Task ${id} marked ${done ? "done" : "todo"}.`);
     }
 
     // ── delete_task ──────────────────────────────────────────────────────────
     case "delete_task": {
+      const id = args.id as string;
+      // Capture GCal linkage before deletion so we can remove the event too.
+      const linked = await db.prepare(
+        "SELECT gcal_event_id, gcal_calendar_id FROM tasks WHERE id = ? AND user_id = ?"
+      )
+        .bind(id, userId)
+        .first<{ gcal_event_id: string | null; gcal_calendar_id: string | null }>();
       await db.prepare("DELETE FROM tasks WHERE id = ? AND user_id = ?")
-        .bind(args.id, userId).run();
-      return text(`Task ${args.id} deleted.`);
+        .bind(id, userId).run();
+      if (linked?.gcal_event_id) {
+        await deleteTaskGcalEvent(
+          env,
+          linked.gcal_event_id,
+          linked.gcal_calendar_id,
+          userId
+        ).catch((e) => console.error("mcp gcal delete:", e));
+      }
+      return text(`Task ${id} deleted.`);
     }
 
     // ── reschedule_task ──────────────────────────────────────────────────────
@@ -812,6 +844,7 @@ async function handleTool(
       await db.prepare(
         "UPDATE tasks SET due_date = ?, due_time = ?, updated_at = ? WHERE id = ? AND user_id = ?"
       ).bind(args.due_date ?? null, args.due_time ?? null, now(), args.id, userId).run();
+      await gcalSync(env, userId, args.id as string);
       return text(`Rescheduled task ${args.id} to ${args.due_date ?? "no date"}.`);
     }
 
@@ -820,6 +853,7 @@ async function handleTool(
       await db.prepare(
         "UPDATE tasks SET scheduled_start = ?, scheduled_end = ?, updated_at = ? WHERE id = ? AND user_id = ?"
       ).bind(args.scheduled_start, args.scheduled_end, now(), args.id, userId).run();
+      await gcalSync(env, userId, args.id as string);
       return text(
         `Blocked task ${args.id} from ${args.scheduled_start} to ${args.scheduled_end}.`
       );
