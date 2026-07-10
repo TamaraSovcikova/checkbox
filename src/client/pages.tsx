@@ -1140,6 +1140,29 @@ export function SettingsPage() {
       </Section>
 
       <Section title="Google Calendar">
+        {cal?.connected && cal.needs_reconnect && (
+          <div className="mb-4 rounded-lg border border-danger/40 bg-danger/5 p-3">
+            <p className="text-sm font-medium text-foreground">
+              Sync is broken — reconnect required
+            </p>
+            <p className="mt-0.5 text-xs text-muted">
+              Google reports the saved access token is expired or revoked, so no
+              time-blocks are reaching your calendar and no events are coming back.
+              Reconnecting fixes it immediately. If it breaks again about every 7
+              days, publish the OAuth consent screen in Google Cloud Console (apps
+              in "Testing" have 7-day token expiry).
+            </p>
+            <Button
+              variant="primary"
+              className="mt-2 h-8 text-xs"
+              onClick={() => {
+                window.location.href = "/api/calendar/connect";
+              }}
+            >
+              Reconnect Google Calendar
+            </Button>
+          </div>
+        )}
         {cal?.connected ? (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">

@@ -30,6 +30,8 @@ export type CalendarAccount = {
   sync_token: string | null;
   watch_channel_id: string | null;
   watch_expiry: string | null;
+  last_error: string | null;
+  last_error_at: string | null;
 };
 
 // ── Account helpers ────────────────────────────────────────────────────────────
@@ -63,14 +65,29 @@ export async function getValidAccessToken(
     env.CALENDAR_ENCRYPTION_KEY,
     account.refresh_token_enc
   );
-  const tokens = await refreshAccessToken(
-    env.GOOGLE_CLIENT_ID,
-    env.GOOGLE_CLIENT_SECRET,
-    refreshToken
-  );
+
+  let tokens;
+  try {
+    tokens = await refreshAccessToken(
+      env.GOOGLE_CLIENT_ID,
+      env.GOOGLE_CLIENT_SECRET,
+      refreshToken
+    );
+  } catch (e) {
+    // A revoked/expired refresh token kills both push and pull. Record it so the
+    // app can ask for a reconnect instead of failing silently forever.
+    await env.DB.prepare(
+      "UPDATE calendar_accounts SET last_error = ?, last_error_at = ? WHERE id = ?"
+    )
+      .bind(String((e as Error).message).slice(0, 500), new Date().toISOString(), account.id)
+      .run()
+      .catch(() => {});
+    throw e;
+  }
+
   const expiry = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
   await env.DB.prepare(
-    "UPDATE calendar_accounts SET access_token = ?, token_expiry = ? WHERE id = ?"
+    "UPDATE calendar_accounts SET access_token = ?, token_expiry = ?, last_error = NULL, last_error_at = NULL WHERE id = ?"
   )
     .bind(tokens.access_token, expiry, account.id)
     .run();

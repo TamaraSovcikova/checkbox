@@ -23,6 +23,11 @@ calendar.get("/status", async (c) => {
     connected: !!account,
     google_email: account?.google_email ?? null,
     primary_calendar_id: account?.primary_calendar_id ?? null,
+    // An expired/revoked refresh token leaves the row in place but breaks both
+    // push and pull. Tell the UI to ask for a reconnect.
+    needs_reconnect: !!account?.last_error,
+    last_error: account?.last_error ?? null,
+    last_error_at: account?.last_error_at ?? null,
   });
 });
 

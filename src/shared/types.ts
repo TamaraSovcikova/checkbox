@@ -117,6 +117,11 @@ export interface CalendarStatus {
   connected: boolean;
   google_email: string | null;
   primary_calendar_id: string | null;
+  // True when the stored refresh token was expired or revoked: the row still
+  // exists but nothing syncs until the user reconnects.
+  needs_reconnect?: boolean;
+  last_error?: string | null;
+  last_error_at?: string | null;
 }
 
 export interface TriageSuggestion {
