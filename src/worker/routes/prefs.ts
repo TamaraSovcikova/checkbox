@@ -14,6 +14,9 @@ function cleanViewDefaults(v: unknown): UserPrefs["viewDefaults"] {
     : {};
 }
 
+const cleanFallback = (v: unknown): string | null =>
+  typeof v === "string" && v ? v : null;
+
 function parsePrefs(raw: unknown): UserPrefs {
   if (typeof raw !== "string") return { ...EMPTY };
   try {
@@ -22,6 +25,7 @@ function parsePrefs(raw: unknown): UserPrefs {
       hiddenViews: Array.isArray(p.hiddenViews) ? p.hiddenViews : [],
       viewOrder: Array.isArray(p.viewOrder) ? p.viewOrder : [],
       viewDefaults: cleanViewDefaults(p.viewDefaults),
+      triageFallbackAreaId: cleanFallback(p.triageFallbackAreaId),
     };
   } catch {
     return { ...EMPTY };
@@ -43,6 +47,7 @@ prefs.put("/", async (c) => {
     hiddenViews: Array.isArray(body.hiddenViews) ? body.hiddenViews : [],
     viewOrder: Array.isArray(body.viewOrder) ? body.viewOrder : [],
     viewDefaults: cleanViewDefaults(body.viewDefaults),
+    triageFallbackAreaId: cleanFallback(body.triageFallbackAreaId),
   };
   await c.env.DB.prepare("UPDATE users SET prefs = ? WHERE id = ?")
     .bind(JSON.stringify(clean), userId)

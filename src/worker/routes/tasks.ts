@@ -34,6 +34,7 @@ const WRITABLE = [
   "recurrence",
   "recurrence_mode",
   "snoozed_until",
+  "planned_date",
 ];
 
 // Does this task belong to this user? Used to gate subtask + label mutations.

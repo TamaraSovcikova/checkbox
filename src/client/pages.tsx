@@ -401,18 +401,37 @@ function CompletedToday() {
 
 // ── Backlog with triage panel ─────────────────────────────────────────────────
 
+// A triage card always offers a destination picker, pre-selected to the
+// suggestion. Even a "no match" is one click from being filed, instead of the
+// dead end a disabled Accept button used to be.
+type TriageDest = { area_id: string | null; project_id: string | null };
+
+function encodeDest(d: TriageDest): string {
+  return d.project_id ? `p:${d.project_id}` : d.area_id ? `a:${d.area_id}` : "";
+}
+function decodeDest(v: string): TriageDest {
+  if (v.startsWith("p:")) return { area_id: null, project_id: v.slice(2) };
+  if (v.startsWith("a:")) return { area_id: v.slice(2), project_id: null };
+  return { area_id: null, project_id: null };
+}
+
 function TriageCard({
   sug,
   onAccept,
   onReject,
 }: {
   sug: TriageSuggestion;
-  onAccept: (id: string) => void;
+  onAccept: (id: string, dest: TriageDest) => void;
   onReject: (id: string) => void;
 }) {
-  const dest = sug.project_name
-    ? `${sug.area_name ? sug.area_name + " › " : ""}${sug.project_name}`
-    : sug.area_name ?? "Unassigned";
+  const { data: areas = [] } = useAreas();
+  const { data: projects = [] } = useProjects();
+  const [choice, setChoice] = useState(
+    encodeDest({
+      area_id: sug.suggested_area_id,
+      project_id: sug.suggested_project_id,
+    })
+  );
 
   const confidenceCls =
     sug.confidence >= 0.5
@@ -424,19 +443,39 @@ function TriageCard({
   return (
     <div className="rounded-lg border border-border bg-surface/60 p-3">
       <p className="mb-1 text-sm font-medium leading-snug">{sug.task_title}</p>
-      <p className="mb-2 text-xs text-muted">
-        → <span className="text-foreground">{dest}</span>
-        <span className={cx("ml-2 text-[11px]", confidenceCls)}>
+      <p className="mb-2 text-[11px]">
+        <span className={confidenceCls}>
           {sug.confidence > 0 ? `${Math.round(sug.confidence * 100)}% match` : "no match"}
         </span>
+        <span className="ml-2 text-subtle">{sug.reason}</span>
       </p>
-      <p className="mb-3 text-[11px] text-subtle">{sug.reason}</p>
+
+      <select
+        value={choice}
+        onChange={(e) => setChoice(e.target.value)}
+        className="mb-3 w-full rounded-md border border-input bg-surface px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary"
+      >
+        <option value="">Choose a destination…</option>
+        {areas.map((a) => (
+          <optgroup key={a.id} label={a.name}>
+            <option value={`a:${a.id}`}>{a.name} (loose task)</option>
+            {projects
+              .filter((p) => p.area_id === a.id)
+              .map((p) => (
+                <option key={p.id} value={`p:${p.id}`}>
+                  {a.name} › {p.name}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </select>
+
       <div className="flex gap-2">
         <Button
           variant="primary"
           className="h-7 px-3 text-xs"
-          onClick={() => onAccept(sug.id)}
-          disabled={!sug.area_name && !sug.project_name}
+          onClick={() => onAccept(sug.id, decodeDest(choice))}
+          disabled={!choice}
         >
           Accept
         </Button>
@@ -506,7 +545,7 @@ function BacklogBody({ tasks, list }: { tasks: Task[]; list: ReactNode }) {
                   <TriageCard
                     key={s.id}
                     sug={s}
-                    onAccept={(id) => accept.mutate(id)}
+                    onAccept={(id, dest) => accept.mutate({ id, dest })}
                     onReject={(id) => reject.mutate(id)}
                   />
                 ))}
@@ -853,6 +892,38 @@ function Section({
   );
 }
 
+// Catch-all area for backlog tasks triage cannot confidently place. Without one,
+// an unmatched ad-hoc task has no home and triage just shrugs.
+function TriageSection() {
+  const { data: areas = [] } = useAreas();
+  const { prefs, setTriageFallbackArea } = useViewPrefs();
+  const current = prefs.triageFallbackAreaId ?? "";
+
+  return (
+    <Section title="Triage">
+      <label className="block text-sm text-foreground">
+        Catch-all area
+        <p className="mt-0.5 mb-2 text-xs text-subtle">
+          When triage cannot confidently match a backlog task (an ad-hoc task, say),
+          it suggests this area instead of giving up.
+        </p>
+        <select
+          value={current}
+          onChange={(e) => setTriageFallbackArea(e.target.value || null)}
+          className="w-full max-w-sm rounded-md border border-input bg-surface px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+        >
+          <option value="">None (leave unmatched)</option>
+          {areas.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+      </label>
+    </Section>
+  );
+}
+
 // System / Light / Dark segmented control. Writes through useTheme (persists to
 // localStorage + applies to the DOM immediately). "System" follows the OS.
 function AppearanceSection() {
@@ -1020,6 +1091,8 @@ export function SettingsPage() {
       </Section>
 
       <AppearanceSection />
+
+      <TriageSection />
 
       <Section title="Notifications">
         {!swReady ? (

@@ -29,17 +29,18 @@ async function run(
 // until its day arrives. Appended to each active view's WHERE clause.
 const NOT_SNOOZED = "AND (snoozed_until IS NULL OR snoozed_until <= ?)";
 
-// Today: due today OR scheduled today OR overdue, not done, not snoozed.
+// Today: due today OR overdue OR scheduled today OR explicitly planned for today
+// ("Add to Today"), not done, not snoozed.
 views.get("/today", async (c) => {
   const userId = await getUserId(c);
   const today = todayStr();
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
-       AND (due_date = ? OR due_date < ? OR substr(scheduled_start,1,10) = ?)
+       AND (due_date = ? OR due_date < ? OR substr(scheduled_start,1,10) = ? OR planned_date = ?)
        ${NOT_SNOOZED}
      ORDER BY due_time IS NULL, due_time, priority`,
-    [userId, today, today, today, today]
+    [userId, today, today, today, today, today]
   );
 });
 

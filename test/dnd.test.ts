@@ -102,11 +102,11 @@ describe("resolveDrop", () => {
     });
   });
 
-  it("view:today reschedules to today; view:backlog clears area+project", () => {
+  it("view:today plans for today (not a deadline); view:backlog clears area+project", () => {
     expect(resolveDrop(drag, { type: "view", view: "today" }, TODAY)).toEqual({
-      kind: "reschedule",
+      kind: "update",
       id: "t1",
-      dueDate: TODAY,
+      body: { planned_date: TODAY },
     });
     expect(resolveDrop(drag, { type: "view", view: "backlog" }, TODAY)).toEqual({
       kind: "update",

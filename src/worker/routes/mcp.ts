@@ -136,7 +136,7 @@ const TASK_WRITABLE = [
   "title", "notes", "priority", "due_date", "due_time",
   "time_estimate_min", "scheduled_start", "scheduled_end",
   "area_id", "project_id", "parent_task_id", "section_id", "board_column",
-  "status", "recurrence", "recurrence_mode",
+  "status", "recurrence", "recurrence_mode", "planned_date",
 ] as const;
 
 // Insert one task from a create-shaped args object and attach any label_names.
@@ -660,6 +660,20 @@ async function gcalSync(env: Bindings, userId: string, id: string): Promise<void
   await pushTaskToGcal(env, id, userId).catch((e) => console.error("mcp gcal sync:", e));
 }
 
+// Has this user linked a Google Calendar? Used to tell the caller when a block
+// was stored but NOT pushed, instead of failing silently.
+async function calendarConnected(env: Bindings, userId: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    "SELECT 1 FROM calendar_accounts WHERE user_id = ? LIMIT 1"
+  )
+    .bind(userId)
+    .first();
+  return !!row;
+}
+
+const NO_CALENDAR_NOTE =
+  " NOTE: no Google Calendar is connected, so this block was NOT pushed to Google. Connect one in Checkbox under Settings > Google Calendar.";
+
 async function handleTool(
   name: string,
   args: Record<string, unknown>,
@@ -854,8 +868,10 @@ async function handleTool(
         "UPDATE tasks SET scheduled_start = ?, scheduled_end = ?, updated_at = ? WHERE id = ? AND user_id = ?"
       ).bind(args.scheduled_start, args.scheduled_end, now(), args.id, userId).run();
       await gcalSync(env, userId, args.id as string);
+      const connected = await calendarConnected(env, userId);
       return text(
-        `Blocked task ${args.id} from ${args.scheduled_start} to ${args.scheduled_end}.`
+        `Blocked task ${args.id} from ${args.scheduled_start} to ${args.scheduled_end}.` +
+          (connected ? "" : NO_CALENDAR_NOTE)
       );
     }
 

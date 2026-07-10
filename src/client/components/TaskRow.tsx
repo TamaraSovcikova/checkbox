@@ -1,16 +1,17 @@
 import { useDraggable } from "@dnd-kit/core";
 import type { Task } from "../../shared/types";
-import { useCompleteTask } from "../lib/queries";
+import { useCompleteTask, useUpdateTask } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import { recurrenceLabel } from "../../shared/recurrence";
 import { PRIORITY_VAR } from "../lib/colors";
-import { cn } from "@/lib/utils";
+import { cn, todayStr } from "@/lib/utils";
 import {
   DragIcon,
   CheckIcon,
   RepeatIcon,
   BlockedIcon,
   TimerIcon,
+  TodayIcon,
 } from "../lib/icons";
 import type { RowSelection } from "./TaskListControls";
 
@@ -24,8 +25,10 @@ export function TaskRow({
   selection?: RowSelection;
 }) {
   const complete = useCompleteTask();
+  const update = useUpdateTask();
   const { toast } = useToast();
   const done = task.status === "done";
+  const plannedToday = task.planned_date === todayStr();
   const openBlockers = (task.depends_on ?? []).filter(
     (d) => d.status !== "done"
   ).length;
@@ -35,6 +38,16 @@ export function TaskRow({
     id: task.id,
     data: { type: "task", task },
   });
+
+  // "Add to Today": marks intent to work on it today without touching the
+  // deadline or moving it out of its area/project.
+  function onToggleToday() {
+    update.mutate({
+      id: task.id,
+      body: { planned_date: plannedToday ? null : todayStr() },
+    });
+    toast(plannedToday ? "Removed from Today" : "Added to Today");
+  }
 
   async function onComplete() {
     const res = await complete.mutateAsync({ id: task.id, done: !done });
@@ -100,6 +113,25 @@ export function TaskRow({
       >
         {done && <CheckIcon className="h-2.5 w-2.5" />}
       </button>
+
+      {!done && (
+        <button
+          aria-label={plannedToday ? "Remove from Today" : "Add to Today"}
+          title={plannedToday ? "Remove from Today" : "Add to Today"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleToday();
+          }}
+          className={cn(
+            "order-last mt-0.5 h-5 w-5 shrink-0 place-items-center rounded transition-colors",
+            plannedToday
+              ? "grid text-primary hover:text-primary/80"
+              : "hidden text-subtle hover:text-foreground group-hover:grid"
+          )}
+        >
+          <TodayIcon className="h-3.5 w-3.5" />
+        </button>
+      )}
 
       <button
         onClick={(e) => (selection ? selection.onRowClick(e) : onOpen(task))}

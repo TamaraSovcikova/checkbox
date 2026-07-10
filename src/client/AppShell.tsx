@@ -16,22 +16,13 @@ import { TaskSheet } from "./components/TaskSheet";
 import { CommandCapture } from "./components/CommandCapture";
 import { TaskUIContext } from "./lib/ui-context";
 import { MenuIcon, AddIcon, LogoIcon } from "./lib/icons";
+import { todayStr } from "./lib/utils";
 import { ThemeToggle } from "./components/ThemeToggle";
 
 // Fire the global capture surface (CommandCapture listens). Touch clients have no
 // Cmd-K, so the mobile header button and the FAB both dispatch this.
 function openCapture() {
   window.dispatchEvent(new Event("checkbox:capture"));
-}
-
-// Brussels-local today as YYYY-MM-DD (matches the server's day boundary).
-function todayStr(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Brussels",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
 }
 
 // The app shell: sidebar + scrollable content region + ONE app-level DndContext.
@@ -42,7 +33,7 @@ function todayStr(): string {
 //   drag a task ──▶ over droppable.data.type
 //                     ├── "area"    -> set area_id, clear project_id
 //                     ├── "project" -> set project_id + its area_id
-//                     ├── "view:today"   -> schedule for today
+//                     ├── "view:today"   -> plan it for today (planned_date)
 //                     └── "view:backlog" -> clear area_id + project_id
 export function AppShell() {
   const [task, setTask] = useState<Task | null>(null);
@@ -60,9 +51,7 @@ export function AppShell() {
     );
     if (!action) return;
     try {
-      if (action.kind === "reschedule")
-        await api.rescheduleTask(action.id, action.dueDate);
-      else await api.updateTask(action.id, action.body);
+      await api.updateTask(action.id, action.body);
     } finally {
       client.invalidateQueries({ queryKey: ["view"] });
       client.invalidateQueries({ queryKey: ["tasks"] });

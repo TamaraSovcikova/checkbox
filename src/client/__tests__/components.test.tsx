@@ -34,6 +34,7 @@ const sample: Task = {
   time_spent_min: 0,
   timer_started_at: null,
   snoozed_until: null,
+  planned_date: null,
   scheduled_start: null,
   scheduled_end: null,
   board_column: null,

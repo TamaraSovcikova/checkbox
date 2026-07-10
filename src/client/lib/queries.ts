@@ -267,7 +267,13 @@ export function useTriageAccept() {
   const qc = useQueryClient();
   const invalidate = useTaskInvalidate();
   return useMutation({
-    mutationFn: (id: string) => api.triageAccept(id),
+    mutationFn: ({
+      id,
+      dest,
+    }: {
+      id: string;
+      dest?: { area_id?: string | null; project_id?: string | null };
+    }) => api.triageAccept(id, dest),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["triage"] });
       invalidate();
@@ -379,7 +385,19 @@ export function useViewPrefs() {
     });
   };
 
-  return { prefs, hide, show, isHidden, viewDefault, setViewDefault };
+  // Catch-all area used by backlog triage when nothing matches confidently.
+  const setTriageFallbackArea = (areaId: string | null) =>
+    save.mutate({ ...prefs, triageFallbackAreaId: areaId });
+
+  return {
+    prefs,
+    hide,
+    show,
+    isHidden,
+    viewDefault,
+    setViewDefault,
+    setTriageFallbackArea,
+  };
 }
 
 // ── Calendar ──────────────────────────────────────────────────────────────────

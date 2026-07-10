@@ -21,7 +21,6 @@ export type DropData =
 
 export type DropAction =
   | { kind: "update"; id: string; body: Record<string, unknown> }
-  | { kind: "reschedule"; id: string; dueDate: string }
   | null;
 
 // Resolve a drop into the mutation it should trigger, or null for a no-op.
@@ -69,7 +68,10 @@ export function resolveDrop(
       return { kind: "update", id, body: { scheduled_start: start, scheduled_end: end } };
     }
     case "view":
-      if (target.view === "today") return { kind: "reschedule", id, dueDate: todayStr };
+      // Dropping on Today marks intent to work on it today. It keeps the task's
+      // area/project and does NOT invent a deadline (that is due_date's job).
+      if (target.view === "today")
+        return { kind: "update", id, body: { planned_date: todayStr } };
       if (target.view === "backlog")
         return { kind: "update", id, body: { area_id: null, project_id: null } };
       return null;

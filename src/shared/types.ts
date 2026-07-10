@@ -54,6 +54,7 @@ export interface Task {
   time_spent_min: number; // accumulated actual minutes
   timer_started_at: string | null; // ISO instant a running timer began
   snoozed_until: string | null; // YYYY-MM-DD; hidden from views until this day
+  planned_date: string | null; // YYYY-MM-DD; "I intend to work on this today" (not a deadline)
   scheduled_start: string | null;
   scheduled_end: string | null;
   board_column: string | null;
@@ -143,6 +144,8 @@ export interface UserPrefs {
   hiddenViews: string[]; // view keys the user has hidden from the sidebar
   viewOrder: string[]; // optional custom ordering of view keys
   viewDefaults?: Record<string, ViewDefault>; // per-view grid/sort/group memory
+  // Catch-all area for backlog tasks triage cannot confidently place.
+  triageFallbackAreaId?: string | null;
 }
 
 // ── Attachments ────────────────────────────────────────────────────────────

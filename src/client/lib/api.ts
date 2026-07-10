@@ -165,8 +165,12 @@ export const api = {
   triageGenerate: () =>
     http<TriageSuggestion[]>("/api/triage/generate", { method: "POST" }),
   triageList: () => http<TriageSuggestion[]>("/api/triage"),
-  triageAccept: (id: string) =>
-    http(`/api/triage/${id}/accept`, { method: "POST" }),
+  // Pass a destination to override the suggestion (the card's picker).
+  triageAccept: (id: string, dest?: { area_id?: string | null; project_id?: string | null }) =>
+    http(`/api/triage/${id}/accept`, {
+      method: "POST",
+      ...(dest ? { body: JSON.stringify(dest) } : {}),
+    }),
   triageReject: (id: string) =>
     http(`/api/triage/${id}/reject`, { method: "POST" }),
 
