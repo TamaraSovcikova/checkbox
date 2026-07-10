@@ -47,6 +47,37 @@ export async function getCalendarAccount(
     .first<CalendarAccount>();
 }
 
+// ── Sync health ───────────────────────────────────────────────────────────────
+//
+// Any Google API failure (expired token, API not enabled, revoked scope) breaks
+// sync in both directions. Record it on the account so the app can show it,
+// instead of only console.error'ing it into the void.
+
+export async function noteCalendarError(
+  env: Bindings,
+  accountId: string,
+  message: string
+): Promise<void> {
+  await env.DB.prepare(
+    "UPDATE calendar_accounts SET last_error = ?, last_error_at = ? WHERE id = ?"
+  )
+    .bind(message.slice(0, 800), new Date().toISOString(), accountId)
+    .run()
+    .catch(() => {});
+}
+
+export async function clearCalendarError(
+  env: Bindings,
+  accountId: string
+): Promise<void> {
+  await env.DB.prepare(
+    "UPDATE calendar_accounts SET last_error = NULL, last_error_at = NULL WHERE id = ?"
+  )
+    .bind(accountId)
+    .run()
+    .catch(() => {});
+}
+
 export async function getValidAccessToken(
   env: Bindings,
   account: CalendarAccount
@@ -76,12 +107,7 @@ export async function getValidAccessToken(
   } catch (e) {
     // A revoked/expired refresh token kills both push and pull. Record it so the
     // app can ask for a reconnect instead of failing silently forever.
-    await env.DB.prepare(
-      "UPDATE calendar_accounts SET last_error = ?, last_error_at = ? WHERE id = ?"
-    )
-      .bind(String((e as Error).message).slice(0, 500), new Date().toISOString(), account.id)
-      .run()
-      .catch(() => {});
+    await noteCalendarError(env, account.id, String((e as Error).message));
     throw e;
   }
 
@@ -172,7 +198,20 @@ export async function syncCalendar(
 ): Promise<void> {
   const account = await getCalendarAccount(env, userId);
   if (!account) return;
+  try {
+    await syncCalendarInner(env, userId, account);
+  } catch (e) {
+    await noteCalendarError(env, account.id, String((e as Error).message));
+    throw e;
+  }
+  if (account.last_error) await clearCalendarError(env, account.id);
+}
 
+async function syncCalendarInner(
+  env: Bindings,
+  userId: string,
+  account: CalendarAccount
+): Promise<void> {
   const accessToken = await getValidAccessToken(env, account);
   const calendarId = account.primary_calendar_id ?? "primary";
   const syncToken = account.sync_token ?? undefined;
@@ -337,44 +376,54 @@ export async function pushTaskToGcal(
   const taskLike = task as any;
   const eventBody = taskToGCalEvent(taskLike);
 
-  if (task.gcal_event_id) {
-    await updateEvent(
-      accessToken,
-      task.gcal_calendar_id ?? calendarId,
-      task.gcal_event_id,
-      eventBody
-    );
-  } else {
-    const ev = await createEvent(accessToken, calendarId, eventBody);
-    const start = ev.start.dateTime
-      ? new Date(ev.start.dateTime).toISOString()
-      : (ev.start.date ?? "");
-    const end = ev.end?.dateTime
-      ? new Date(ev.end.dateTime).toISOString()
-      : (ev.end?.date ?? "");
-    await env.DB.batch([
-      env.DB.prepare(
-        "UPDATE tasks SET gcal_event_id = ?, gcal_calendar_id = ? WHERE id = ?"
-      ).bind(ev.id, calendarId, task.id),
-      env.DB.prepare(
-        `INSERT INTO calendar_events_cache
-           (id, user_id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-         ON CONFLICT(gcal_event_id, calendar_id) DO UPDATE SET
-           title = excluded.title, start = excluded.start, end = excluded.end`
-      ).bind(
-        uuid(),
-        userId,
-        ev.id,
-        calendarId,
-        task.title,
-        start,
-        end,
-        ev.start.date ? 1 : 0,
-        task.id
-      ),
-    ]);
+  try {
+    if (task.gcal_event_id) {
+      await updateEvent(
+        accessToken,
+        task.gcal_calendar_id ?? calendarId,
+        task.gcal_event_id,
+        eventBody
+      );
+    } else {
+      const ev = await createEvent(accessToken, calendarId, eventBody);
+      const start = ev.start.dateTime
+        ? new Date(ev.start.dateTime).toISOString()
+        : (ev.start.date ?? "");
+      const end = ev.end?.dateTime
+        ? new Date(ev.end.dateTime).toISOString()
+        : (ev.end?.date ?? "");
+      await env.DB.batch([
+        env.DB.prepare(
+          "UPDATE tasks SET gcal_event_id = ?, gcal_calendar_id = ? WHERE id = ?"
+        ).bind(ev.id, calendarId, task.id),
+        env.DB.prepare(
+          `INSERT INTO calendar_events_cache
+             (id, user_id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+           ON CONFLICT(gcal_event_id, calendar_id) DO UPDATE SET
+             title = excluded.title, start = excluded.start, end = excluded.end`
+        ).bind(
+          uuid(),
+          userId,
+          ev.id,
+          calendarId,
+          task.title,
+          start,
+          end,
+          ev.start.date ? 1 : 0,
+          task.id
+        ),
+      ]);
+    }
+  } catch (e) {
+    // e.g. 403 "Google Calendar API has not been used in project ... or it is
+    // disabled". Record it so the UI can show the real reason.
+    await noteCalendarError(env, account.id, String((e as Error).message));
+    throw e;
   }
+
+  // A write got through: whatever was wrong is fixed.
+  if (account.last_error) await clearCalendarError(env, account.id);
 }
 
 // ── Delete a GCal event when a task is removed or unscheduled ─────────────────

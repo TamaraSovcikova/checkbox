@@ -94,6 +94,17 @@ projects.patch("/:id", async (c) => {
   )
     .bind(...allowed.map((f) => body[f]), now(), id, userId)
     .run();
+
+  // A task inside a project also carries that project's area_id, so moving the
+  // project between areas has to re-home its tasks or they stay under the old one.
+  if ("area_id" in body) {
+    await c.env.DB.prepare(
+      "UPDATE tasks SET area_id = ?, updated_at = ? WHERE project_id = ? AND user_id = ?"
+    )
+      .bind((body.area_id as string | null) ?? null, now(), id, userId)
+      .run();
+  }
+
   const row = await c.env.DB.prepare("SELECT * FROM projects WHERE id = ?")
     .bind(id)
     .first();

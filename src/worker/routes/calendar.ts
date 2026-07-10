@@ -16,16 +16,36 @@ function redirectUri(env: Bindings): string {
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
+// Two very different failures both leave the account row in place and break sync:
+// an expired/revoked token (fix: reconnect) and the Calendar API not being enabled
+// on the Google Cloud project (fix: enable it, reconnecting will not help).
+// Classify so the UI can give the right instruction instead of a generic error.
+function classifyCalendarError(err: string | null) {
+  if (!err) return { kind: null as null | string, activation_url: null as string | null };
+  if (/invalid_grant|expired or revoked|unauthorized|401/i.test(err)) {
+    return { kind: "auth", activation_url: null };
+  }
+  if (/has not been used in project|accessNotConfigured|is disabled/i.test(err)) {
+    const m = err.match(
+      /https:\/\/console\.developers\.google\.com\/apis\/api\/calendar-json\.googleapis\.com\/overview\?project=\d+/
+    );
+    return { kind: "api_disabled", activation_url: m ? m[0] : null };
+  }
+  return { kind: "other", activation_url: null };
+}
+
 calendar.get("/status", async (c) => {
   const userId = await getUserId(c);
   const account = await getCalendarAccount(c.env, userId);
+  const { kind, activation_url } = classifyCalendarError(account?.last_error ?? null);
   return c.json({
     connected: !!account,
     google_email: account?.google_email ?? null,
     primary_calendar_id: account?.primary_calendar_id ?? null,
-    // An expired/revoked refresh token leaves the row in place but breaks both
-    // push and pull. Tell the UI to ask for a reconnect.
-    needs_reconnect: !!account?.last_error,
+    // Sync is broken while last_error is set, whatever the cause.
+    sync_broken: !!account?.last_error,
+    error_kind: kind,
+    activation_url,
     last_error: account?.last_error ?? null,
     last_error_at: account?.last_error_at ?? null,
   });

@@ -117,9 +117,12 @@ export interface CalendarStatus {
   connected: boolean;
   google_email: string | null;
   primary_calendar_id: string | null;
-  // True when the stored refresh token was expired or revoked: the row still
-  // exists but nothing syncs until the user reconnects.
-  needs_reconnect?: boolean;
+  // Set while the last Google call failed: the row still exists but nothing syncs.
+  // error_kind: "auth" (reconnect), "api_disabled" (enable the Calendar API on the
+  // Google Cloud project), or "other".
+  sync_broken?: boolean;
+  error_kind?: "auth" | "api_disabled" | "other" | null;
+  activation_url?: string | null;
   last_error?: string | null;
   last_error_at?: string | null;
 }

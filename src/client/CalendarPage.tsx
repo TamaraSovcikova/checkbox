@@ -15,6 +15,7 @@ import { useTaskUI } from "./lib/ui-context";
 import { PRIORITY_VAR } from "./lib/colors";
 import { cn } from "@/lib/utils";
 import { Button } from "./components/ui/button";
+import { CalendarSyncBanner } from "./components/CalendarSyncBanner";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -266,25 +267,7 @@ function ConnectCalendar() {
   );
 }
 
-// ── Reconnect banner (expired/revoked refresh token) ──────────────────────────
-
-function ReconnectBanner() {
-  return (
-    <div className="rounded-lg border border-danger/40 bg-danger/5 p-3">
-      <p className="text-sm font-medium text-foreground">
-        Google Calendar needs reconnecting
-      </p>
-      <p className="mt-0.5 text-xs text-muted">
-        Google expired the access token, so nothing is syncing in either direction.
-        If this keeps happening every week, publish the app's OAuth consent screen
-        in Google Cloud Console (apps left in "Testing" expire tokens after 7 days).
-      </p>
-      <Button asChild size="sm" className="mt-2">
-        <a href="/api/calendar/connect">Reconnect</a>
-      </Button>
-    </div>
-  );
-}
+// ── Sync-broken banner ────────────────────────────────────────────────────────
 
 // ── All-day event strip ───────────────────────────────────────────────────────
 
@@ -374,7 +357,7 @@ export default function CalendarPage() {
         <span className="text-xs text-subtle">{status.google_email}</span>
       </div>
 
-      {status.needs_reconnect && <ReconnectBanner />}
+      <CalendarSyncBanner status={status} />
 
       {/* All-day strip */}
       <AllDayStrip events={allDayEvents} />

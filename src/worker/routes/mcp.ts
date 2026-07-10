@@ -1258,6 +1258,12 @@ async function handleTool(
         `UPDATE projects SET ${set}, updated_at = ? WHERE id = ? AND user_id = ?`
       ).bind(...fields.map((f) => patch[f]), now(), args.id, userId).run();
       if (!res.meta.changes) return text(`Project ${args.id} not found.`);
+      // Tasks in a project carry its area_id too; re-home them on a move.
+      if ("area_id" in patch) {
+        await db.prepare(
+          "UPDATE tasks SET area_id = ?, updated_at = ? WHERE project_id = ? AND user_id = ?"
+        ).bind(patch.area_id ?? null, now(), args.id, userId).run();
+      }
       return text(`Updated project ${args.id}.`);
     }
 

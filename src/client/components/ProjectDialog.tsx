@@ -4,6 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Project } from "../../shared/types";
 import { api } from "../lib/api";
+import { useAreas } from "../lib/queries";
 import { CloseIcon } from "../lib/icons";
 import { Button, Input } from "./ui";
 
@@ -24,11 +25,13 @@ export function ProjectDialog({
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { data: areas = [] } = useAreas();
   const [name, setName] = useState("");
   const [goal, setGoal] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [columns, setColumns] = useState("");
+  const [area, setArea] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -39,9 +42,10 @@ export function ProjectDialog({
       setDescription(existing?.description ?? "");
       setDueDate(existing?.due_date ?? "");
       setColumns((existing?.board_columns ?? ["To do", "Doing", "Done"]).join(", "));
+      setArea(existing?.area_id ?? areaId ?? "");
       setConfirmDelete(false);
     }
-  }, [open, existing]);
+  }, [open, existing, areaId]);
 
   async function remove() {
     if (!existing) return;
@@ -77,11 +81,15 @@ export function ProjectDialog({
         goal: goal.trim() || null,
         description: description.trim() || null,
         due_date: dueDate.trim() || null,
+        area_id: area || null,
         ...(board_columns.length ? { board_columns } : {}),
       };
       if (existing) await api.updateProject(existing.id, body);
-      else await api.createProject({ ...body, area_id: areaId ?? null });
+      else await api.createProject(body);
       qc.invalidateQueries({ queryKey: ["projects"] });
+      // Moving a project between areas re-homes its tasks, so refresh task views.
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["view"] });
       onOpenChange(false);
     } finally {
       setBusy(false);
@@ -113,6 +121,22 @@ export function ProjectDialog({
                 autoFocus
               />
             </div>
+          </label>
+
+          <label className="mt-3 block text-xs text-muted">
+            Area
+            <select
+              value={area}
+              onChange={(e) => setArea(e.target.value)}
+              className="mt-1 w-full rounded-md border border-input bg-surface px-2.5 py-2 text-sm text-foreground outline-none focus:border-primary"
+            >
+              <option value="">No area</option>
+              {areas.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className="mt-3 block text-xs text-muted">
