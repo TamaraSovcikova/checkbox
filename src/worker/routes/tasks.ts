@@ -500,6 +500,29 @@ tasks.delete("/:id/dependencies/:depId", async (c) => {
 });
 
 // --- subtasks ---
+//
+// Subtask progress promotes the parent out of `todo`:
+//
+//   parent: todo ──(a subtask is ticked)──> doing ──(user completes)──> done
+//              ^                              │
+//              └────────── never auto ────────┘
+//
+// Only the todo -> doing edge is automatic. Un-ticking the last subtask does not
+// demote the parent: once work has started, that is a claim about the world the
+// app should not silently retract.
+async function promoteParentToDoing(
+  db: D1Database,
+  userId: string,
+  taskId: string
+): Promise<void> {
+  await db
+    .prepare(
+      "UPDATE tasks SET status = 'doing', updated_at = ? WHERE id = ? AND user_id = ? AND status = 'todo'"
+    )
+    .bind(now(), taskId, userId)
+    .run();
+}
+
 // Every subtask mutation first verifies the parent task belongs to the user.
 tasks.post("/:id/subtasks", async (c) => {
   const userId = await getUserId(c);
@@ -540,7 +563,24 @@ tasks.patch("/:id/subtasks/:subId", async (c) => {
       .bind(...binds)
       .run();
   }
+  if (b.done === true) await promoteParentToDoing(c.env.DB, userId, taskId);
   return c.json({ ok: true });
+});
+
+// Tick every remaining subtask at once. Backs the "complete them all" branch of
+// the unfinished-subtasks warning, so finishing a parent is one round trip
+// instead of one PATCH per subtask.
+tasks.post("/:id/subtasks/complete-all", async (c) => {
+  const userId = await getUserId(c);
+  const taskId = c.req.param("id");
+  if (!(await ownsTask(c.env.DB, userId, taskId)))
+    return c.json({ error: "not found" }, 404);
+  const res = await c.env.DB.prepare(
+    "UPDATE subtasks SET done = 1 WHERE task_id = ? AND done = 0"
+  )
+    .bind(taskId)
+    .run();
+  return c.json({ ok: true, completed: res.meta.changes ?? 0 });
 });
 
 tasks.delete("/:id/subtasks/:subId", async (c) => {

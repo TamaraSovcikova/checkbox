@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import type { Task, TriageSuggestion } from "../shared/types";
+import { useDroppable } from "@dnd-kit/core";
+import type { Project, Task, TriageSuggestion } from "../shared/types";
 import {
   useAreas,
   useProjects,
@@ -49,6 +50,7 @@ import {
   BacklogIcon,
   LogbookIcon,
   ChevronRightIcon,
+  BackIcon,
   ICON_SIZE,
 } from "./lib/icons";
 import { PRIORITY_VAR } from "./lib/colors";
@@ -603,6 +605,36 @@ function BacklogBody({ tasks, list }: { tasks: Task[]; list: ReactNode }) {
   );
 }
 
+// A project card on the area page doubles as a drop target: drag a loose task
+// onto it to file the task into that project. `resolveDrop` turns the drop into
+// { project_id, area_id }, so the task lands filed rather than merely re-homed.
+function ProjectCard({ project }: { project: Project }) {
+  // The sidebar already registers `project:<id>`; dnd-kit ids are global, so a
+  // second droppable under that key would silently shadow one of the two.
+  const { setNodeRef, isOver } = useDroppable({
+    id: `area-card:project:${project.id}`,
+    data: { type: "project", projectId: project.id, areaId: project.area_id },
+  });
+  return (
+    <a
+      ref={setNodeRef}
+      href={`/project/${project.id}`}
+      className={cx(
+        "rounded-lg border bg-surface p-3 transition-colors",
+        isOver
+          ? "border-primary ring-1 ring-primary/50"
+          : "border-border hover:border-primary/40"
+      )}
+    >
+      <div className="font-medium">{project.name}</div>
+      {project.goal && <div className="text-xs text-subtle">{project.goal}</div>}
+      {isOver && (
+        <div className="mt-1 text-[11px] text-primary">Drop to file here</div>
+      )}
+    </a>
+  );
+}
+
 export function AreaPage() {
   const { id = "" } = useParams();
   const { data: areas = [] } = useAreas();
@@ -653,14 +685,7 @@ export function AreaPage() {
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
           {projects.map((p) => (
-            <a
-              key={p.id}
-              href={`/project/${p.id}`}
-              className="rounded-lg border border-border bg-surface p-3 hover:border-primary/40"
-            >
-              <div className="font-medium">{p.name}</div>
-              {p.goal && <div className="text-xs text-subtle">{p.goal}</div>}
-            </a>
+            <ProjectCard key={p.id} project={p} />
           ))}
           {projects.length === 0 && (
             <p className="text-sm text-subtle">No projects yet.</p>
@@ -684,6 +709,7 @@ export function ProjectPage() {
   const { id = "" } = useParams();
   const { open } = useTaskUI();
   const { data: projects = [] } = useProjects();
+  const { data: areas = [] } = useAreas();
   const { viewDefault, setViewDefault } = useViewPrefs();
   const vd = viewDefault(`project:${id}`);
   const view = (vd.mode ?? "grid") as "grid" | "list";
@@ -693,6 +719,7 @@ export function ProjectPage() {
   const [edit, setEdit] = useState(false);
   const project = projects.find((p) => p.id === id);
   if (!project) return <p className="text-subtle">Loading project...</p>;
+  const parentArea = areas.find((a) => a.id === project.area_id);
 
   const sortMenu: MenuChoice[] = (Object.keys(SORT_LABEL) as SortKey[]).map((k) => ({
     label: SORT_LABEL[k],
@@ -716,7 +743,17 @@ export function ProjectPage() {
         filter={filterMenu}
         menu={[{ label: "Edit project", onSelect: () => setEdit(true) }]}
         below={
-          <div className="max-w-2xl">
+          <div className="max-w-2xl space-y-2">
+            {/* Projects are always reached through an area, so give the way back. */}
+            {parentArea && (
+              <a
+                href={`/area/${parentArea.id}`}
+                className="inline-flex items-center gap-1 text-xs text-subtle transition-colors hover:text-foreground"
+              >
+                <BackIcon className="h-3.5 w-3.5" />
+                {parentArea.name}
+              </a>
+            )}
             <QuickCapture defaultProjectId={project.id} defaultAreaId={project.area_id} />
           </div>
         }

@@ -140,6 +140,11 @@ export const api = {
     httpMutate("PATCH", `/api/tasks/${taskId}/subtasks/${subId}`, b),
   deleteSubtask: (taskId: string, subId: string) =>
     httpMutate("DELETE", `/api/tasks/${taskId}/subtasks/${subId}`),
+  completeAllSubtasks: (taskId: string) =>
+    httpMutate<{ ok: true; completed: number }>(
+      "POST",
+      `/api/tasks/${taskId}/subtasks/complete-all`
+    ),
 
   // labels
   listLabels: () => http<Label[]>("/api/labels"),

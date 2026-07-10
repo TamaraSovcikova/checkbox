@@ -81,6 +81,33 @@ export function useDeleteTask() {
   });
 }
 
+// Tick a subtask from anywhere (the task row's inline list, or the sheet).
+// Ticking one promotes the parent todo -> doing server-side, so invalidate the
+// task lists rather than patching a single row.
+export function useToggleSubtask() {
+  const invalidate = useTaskInvalidate();
+  return useMutation({
+    mutationFn: ({
+      taskId,
+      subId,
+      done,
+    }: {
+      taskId: string;
+      subId: string;
+      done: boolean;
+    }) => api.updateSubtask(taskId, subId, { done }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useCompleteAllSubtasks() {
+  const invalidate = useTaskInvalidate();
+  return useMutation({
+    mutationFn: (taskId: string) => api.completeAllSubtasks(taskId),
+    onSuccess: invalidate,
+  });
+}
+
 export function useSnoozeTask() {
   const invalidate = useTaskInvalidate();
   return useMutation({

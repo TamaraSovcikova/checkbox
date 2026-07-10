@@ -49,6 +49,9 @@ export {
   ExternalLink as ExternalLinkIcon,
   Pencil as EditIcon,
   FileText as NotesIcon,
+  ListChecks as SubtaskIcon,
+  CircleDot as DoingIcon,
+  CornerUpLeft as BackIcon,
 } from "lucide-react";
 
 // Curated icon set an area can be tagged with (the picker offers these by name;

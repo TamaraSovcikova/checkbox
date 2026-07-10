@@ -43,11 +43,21 @@ export function resolveDrop(
         body: { project_id: target.projectId, area_id: target.areaId ?? null },
       };
     case "column":
+      // Dropping on the final column completes the task. Dropping anywhere else
+      // only revives a done task; it must not clobber `doing`, which subtask
+      // progress sets. Moving Doing -> Backlog keeps the task doing.
       return target.column
         ? {
             kind: "update",
             id,
-            body: { board_column: target.column, status: target.done ? "done" : "todo" },
+            body: {
+              board_column: target.column,
+              status: target.done
+                ? "done"
+                : task.status === "done"
+                ? "todo"
+                : task.status,
+            },
           }
         : null;
     case "slot": {

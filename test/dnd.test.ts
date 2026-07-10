@@ -64,6 +64,28 @@ describe("resolveDrop", () => {
     ).toEqual({ kind: "update", id: "t1", body: { board_column: "Done", status: "done" } });
   });
 
+  it("column drop preserves `doing`, which subtask progress sets", () => {
+    const doingDrag = { type: "task", task: task({ status: "doing" }) };
+    expect(
+      resolveDrop(doingDrag, { type: "column", column: "Backlog", done: false }, TODAY)
+    ).toEqual({
+      kind: "update",
+      id: "t1",
+      body: { board_column: "Backlog", status: "doing" },
+    });
+  });
+
+  it("dragging a done task out of the done column revives it as todo", () => {
+    const doneDrag = { type: "task", task: task({ status: "done" }) };
+    expect(
+      resolveDrop(doneDrag, { type: "column", column: "Doing", done: false }, TODAY)
+    ).toEqual({
+      kind: "update",
+      id: "t1",
+      body: { board_column: "Doing", status: "todo" },
+    });
+  });
+
   it("slot drop schedules using the task's estimate (default 60m)", () => {
     const action = resolveDrop(
       { type: "task", task: task({ time_estimate_min: 90 }) },
