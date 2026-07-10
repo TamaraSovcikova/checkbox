@@ -54,6 +54,7 @@ import {
 import { PRIORITY_VAR } from "./lib/colors";
 import { useViewPrefs } from "./lib/queries";
 import { Button, cx } from "./components/ui";
+import { todayStr } from "./lib/utils";
 import { api } from "./lib/api";
 import type { ComponentType, ReactNode } from "react";
 
@@ -65,6 +66,7 @@ function Header<T extends string>(props: {
   onTab?: (id: T) => void;
   sort?: MenuChoice[];
   group?: MenuChoice[];
+  filter?: MenuChoice[];
   menu?: MenuChoice[];
   actions?: ReactNode;
   below?: ReactNode;
@@ -137,16 +139,6 @@ const GROUP_LABEL: Record<GroupKey, string> = {
   project: "Project",
 };
 
-// Today (Europe/Brussels) as YYYY-MM-DD, matching the server's day boundary.
-function todayStr() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Brussels",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
 // Bucket a task by due date into a fixed, chronological set of groups.
 const DUE_ORDER = ["Overdue", "Today", "This week", "Later", "No date"];
 function dueBucket(due: string | null, today: string): string {
@@ -213,6 +205,114 @@ function groupTasks(
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
+// ── Filtering ────────────────────────────────────────────────────────────────
+
+type FilterKey = "all" | "p1" | "p2" | "p3" | "p4" | "overdue" | "planned";
+
+const FILTER_LABEL: Record<FilterKey, string> = {
+  all: "All tasks",
+  p1: "Priority 1",
+  p2: "Priority 2",
+  p3: "Priority 3",
+  p4: "Priority 4",
+  overdue: "Overdue",
+  planned: "Planned for today",
+};
+
+function filterTasks(tasks: Task[], key: FilterKey): Task[] {
+  if (key === "all") return tasks;
+  const today = todayStr();
+  if (key === "overdue")
+    return tasks.filter((t) => t.due_date != null && t.due_date < today);
+  if (key === "planned") return tasks.filter((t) => t.planned_date === today);
+  const p = Number(key.slice(1));
+  return tasks.filter((t) => t.priority === p);
+}
+
+// ── Shared task-collection controls ──────────────────────────────────────────
+//
+// Filter -> sort -> group -> render, plus the header menus and the keyboard/
+// multi-select controls. ViewPage, AreaPage and ProjectPage all use this so the
+// three surfaces behave identically and each remembers its own preferences
+// (persisted per `prefsKey` in UserPrefs.viewDefaults).
+function useTaskCollection(prefsKey: string, tasks: Task[], empty: string) {
+  const { data: areas = [] } = useAreas();
+  const { data: projects = [] } = useProjects();
+  const { viewDefault, setViewDefault } = useViewPrefs();
+  const { open } = useTaskUI();
+
+  const vd = viewDefault(prefsKey);
+  const view = (vd.mode ?? "list") as "grid" | "list";
+  const sort = (vd.sort as SortKey) ?? "manual";
+  const group = (vd.group as GroupKey) ?? "none";
+  const filter = (vd.filter as FilterKey) ?? "all";
+
+  const setView = (m: "grid" | "list") => setViewDefault(prefsKey, { mode: m });
+
+  const names = {
+    area: (id: string | null) => areas.find((a) => a.id === id)?.name ?? "No area",
+    project: (id: string | null) =>
+      projects.find((p) => p.id === id)?.name ?? "No project",
+  };
+
+  const groups = groupTasks(sortTasks(filterTasks(tasks, filter), sort), group, names);
+
+  const menu = <K extends string>(
+    labels: Record<K, string>,
+    active: K,
+    key: "sort" | "group" | "filter"
+  ): MenuChoice[] =>
+    (Object.keys(labels) as K[]).map((k) => ({
+      label: labels[k],
+      active: active === k,
+      onSelect: () => setViewDefault(prefsKey, { [key]: k }),
+    }));
+
+  // Selection + keyboard nav run over the flattened, grouped order — only in list
+  // view (grid keeps plain click-to-open). The running offset keeps each group's
+  // rows in one continuous cursor sequence.
+  const flat = groups.flatMap((g) => g.tasks);
+  const controls = useTaskSelection(flat, open, view === "list");
+
+  function renderBody(list: Task[], offset: number) {
+    if (view === "grid") return <TaskGrid tasks={list} empty={empty} />;
+    return (
+      <TaskList tasks={list} empty={empty} controls={controls} indexOffset={offset} />
+    );
+  }
+
+  let running = 0;
+  const body =
+    group === "none" ? (
+      renderBody(groups[0].tasks, 0)
+    ) : (
+      <div className="space-y-6">
+        {groups.map((g) => {
+          const offset = running;
+          running += g.tasks.length;
+          return (
+            <section key={g.label}>
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
+                {g.label} <span className="text-subtle">{g.tasks.length}</span>
+              </h2>
+              {renderBody(g.tasks, offset)}
+            </section>
+          );
+        })}
+      </div>
+    );
+
+  return {
+    view,
+    setView,
+    controls,
+    body,
+    sortMenu: menu(SORT_LABEL, sort, "sort"),
+    groupMenu: menu(GROUP_LABEL, group, "group"),
+    filterMenu: menu(FILTER_LABEL, filter, "filter"),
+  };
+}
+
 function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
   const done = task.status === "done";
   return (
@@ -256,79 +356,10 @@ const VIEW_TABS: Tab<"grid" | "list">[] = [
 
 export function ViewPage({ name }: { name: string }) {
   const { data: tasks = [] } = useView(name);
-  const { data: areas = [] } = useAreas();
-  const { data: projects = [] } = useProjects();
   const meta = VIEW_META[name];
-  const { hide, viewDefault, setViewDefault } = useViewPrefs();
-
-  const vd = viewDefault(`/${name}`);
-  const view = (vd.mode ?? "list") as "grid" | "list";
-  const sort = (vd.sort as SortKey) ?? "manual";
-  const group = (vd.group as GroupKey) ?? "none";
-  const setView = (m: "grid" | "list") => setViewDefault(`/${name}`, { mode: m });
-  const setSort = (s: SortKey) => setViewDefault(`/${name}`, { sort: s });
-  const setGroup = (g: GroupKey) => setViewDefault(`/${name}`, { group: g });
-
-  const names = {
-    area: (id: string | null) =>
-      areas.find((a) => a.id === id)?.name ?? "No area",
-    project: (id: string | null) =>
-      projects.find((p) => p.id === id)?.name ?? "No project",
-  };
-
-  const sorted = sortTasks(tasks, sort);
-  const groups = groupTasks(sorted, group, names);
-
-  const sortMenu: MenuChoice[] = (Object.keys(SORT_LABEL) as SortKey[]).map((k) => ({
-    label: SORT_LABEL[k],
-    active: sort === k,
-    onSelect: () => setSort(k),
-  }));
-  const groupMenu: MenuChoice[] = (Object.keys(GROUP_LABEL) as GroupKey[]).map((k) => ({
-    label: GROUP_LABEL[k],
-    active: group === k,
-    onSelect: () => setGroup(k),
-  }));
-
-  // Selection + keyboard nav run over the flattened, grouped order — only in list
-  // view (grid keeps plain click-to-open). The running offset keeps each group's
-  // rows in one continuous cursor sequence.
-  const { open } = useTaskUI();
-  const flat = groups.flatMap((g) => g.tasks);
-  const controls = useTaskSelection(flat, open, view === "list");
-
-  function renderBody(list: Task[], offset: number) {
-    if (view === "grid") return <TaskGrid tasks={list} empty={meta.empty} />;
-    return (
-      <TaskList
-        tasks={list}
-        empty={meta.empty}
-        controls={controls}
-        indexOffset={offset}
-      />
-    );
-  }
-
-  let running = 0;
-  const body =
-    group === "none" ? (
-      renderBody(groups[0].tasks, 0)
-    ) : (
-      <div className="space-y-6">
-        {groups.map((g) => {
-          const offset = running;
-          running += g.tasks.length;
-          return (
-            <section key={g.label}>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
-                {g.label} <span className="text-subtle">{g.tasks.length}</span>
-              </h2>
-              {renderBody(g.tasks, offset)}
-            </section>
-          );
-        })}
-      </div>
-    );
+  const { hide } = useViewPrefs();
+  const { view, setView, controls, body, sortMenu, groupMenu, filterMenu } =
+    useTaskCollection(`/${name}`, tasks, meta.empty);
 
   return (
     <div>
@@ -340,11 +371,15 @@ export function ViewPage({ name }: { name: string }) {
         onTab={setView}
         sort={sortMenu}
         group={groupMenu}
+        filter={filterMenu}
         menu={[{ label: "Hide this view", onSelect: () => hide(`/${name}`) }]}
         below={
           name !== "logbook" ? (
             <div className="max-w-2xl">
-              <QuickCapture />
+              {/* Captured on Today -> planned for today, not dumped in Backlog. */}
+              <QuickCapture
+                defaultPlannedDate={name === "today" ? todayStr() : undefined}
+              />
             </div>
           ) : undefined
         }
@@ -353,7 +388,6 @@ export function ViewPage({ name }: { name: string }) {
         <>
           <InstallHint />
           <CheatSheet />
-          <StatsWidget />
           <PlanMyDay tasks={tasks} />
         </>
       )}
@@ -578,6 +612,8 @@ export function AreaPage() {
   const [editArea, setEditArea] = useState(false);
   const [newProject, setNewProject] = useState(false);
   const AreaIcon = areaIcon(area?.icon);
+  const { view, setView, controls, body, sortMenu, groupMenu, filterMenu } =
+    useTaskCollection(`area:${id}`, tasks, "No loose tasks in this area.");
 
   return (
     <div>
@@ -593,6 +629,12 @@ export function AreaPage() {
             />
           )
         }
+        tabs={VIEW_TABS}
+        activeTab={view}
+        onTab={setView}
+        sort={sortMenu}
+        group={groupMenu}
+        filter={filterMenu}
         menu={[{ label: "Edit area", onSelect: () => setEditArea(true) }]}
       />
       {area && (
@@ -632,7 +674,8 @@ export function AreaPage() {
       <div className="mb-3 max-w-2xl">
         <QuickCapture defaultAreaId={id} />
       </div>
-      <TaskList tasks={tasks} empty="No loose tasks in this area." />
+      {body}
+      {view === "list" && <BulkActionBar controls={controls} />}
     </div>
   );
 }
@@ -642,11 +685,26 @@ export function ProjectPage() {
   const { open } = useTaskUI();
   const { data: projects = [] } = useProjects();
   const { viewDefault, setViewDefault } = useViewPrefs();
-  const view = (viewDefault(`project:${id}`).mode ?? "grid") as "grid" | "list";
+  const vd = viewDefault(`project:${id}`);
+  const view = (vd.mode ?? "grid") as "grid" | "list";
+  const sort = (vd.sort as SortKey) ?? "manual";
+  const filter = (vd.filter as FilterKey) ?? "all";
   const setView = (m: "grid" | "list") => setViewDefault(`project:${id}`, { mode: m });
   const [edit, setEdit] = useState(false);
   const project = projects.find((p) => p.id === id);
   if (!project) return <p className="text-subtle">Loading project...</p>;
+
+  const sortMenu: MenuChoice[] = (Object.keys(SORT_LABEL) as SortKey[]).map((k) => ({
+    label: SORT_LABEL[k],
+    active: sort === k,
+    onSelect: () => setViewDefault(`project:${id}`, { sort: k }),
+  }));
+  const filterMenu: MenuChoice[] = (Object.keys(FILTER_LABEL) as FilterKey[]).map((k) => ({
+    label: FILTER_LABEL[k],
+    active: filter === k,
+    onSelect: () => setViewDefault(`project:${id}`, { filter: k }),
+  }));
+
   return (
     <div>
       <Header
@@ -654,6 +712,8 @@ export function ProjectPage() {
         tabs={VIEW_TABS}
         activeTab={view}
         onTab={setView}
+        sort={sortMenu}
+        filter={filterMenu}
         menu={[{ label: "Edit project", onSelect: () => setEdit(true) }]}
         below={
           <div className="max-w-2xl">
@@ -662,7 +722,12 @@ export function ProjectPage() {
         }
       />
       <ProjectDialog open={edit} onOpenChange={setEdit} existing={project} />
-      <ProjectBoard project={project} view={view} onOpen={open} />
+      <ProjectBoard
+        project={project}
+        view={view}
+        onOpen={open}
+        transform={(ts) => sortTasks(filterTasks(ts, filter), sort)}
+      />
     </div>
   );
 }
@@ -747,6 +812,13 @@ export function ReviewPage() {
             <ReviewStat value={data.stats.upcoming} label="Next 7 days" tone="primary" />
             <ReviewStat value={data.stats.created} label="Created" tone="muted" />
           </div>
+
+          <section>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
+              Progress
+            </h2>
+            <StatsWidget />
+          </section>
 
           {data.by_area.length > 0 && (
             <section>

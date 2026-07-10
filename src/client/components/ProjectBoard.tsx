@@ -79,12 +79,18 @@ export function ProjectBoard({
   project,
   view = "grid",
   onOpen,
+  transform,
 }: {
   project: Project;
   view?: "grid" | "list";
   onOpen: (t: Task) => void;
+  // Applied after fetch so the page's Filter/Sort menus affect both the board
+  // columns and the list. The board still groups by column, so grouping is the
+  // page's job only in list mode.
+  transform?: (tasks: Task[]) => Task[];
 }) {
-  const { data: tasks = [] } = useTasks({ project_id: project.id });
+  const { data: raw = [] } = useTasks({ project_id: project.id });
+  const tasks = transform ? transform(raw) : raw;
   const columns = project.board_columns;
 
   function colOf(t: Task) {

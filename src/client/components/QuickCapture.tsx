@@ -14,9 +14,13 @@ const CHIP_STYLE: Record<string, string> = {
 export function QuickCapture({
   defaultAreaId,
   defaultProjectId,
+  defaultPlannedDate,
 }: {
   defaultAreaId?: string | null;
   defaultProjectId?: string | null;
+  // Capturing while on Today should land the task in Today, not silently in the
+  // Backlog. planned_date does that without inventing a due date.
+  defaultPlannedDate?: string | null;
 }) {
   const [text, setText] = useState("");
   const create = useCreateTask();
@@ -51,6 +55,7 @@ export function QuickCapture({
       recurrence: parsed.recurrence,
       area_id,
       project_id,
+      planned_date: defaultPlannedDate ?? null,
     });
     setText("");
   }

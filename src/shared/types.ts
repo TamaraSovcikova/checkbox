@@ -145,6 +145,7 @@ export interface ViewDefault {
   mode?: "grid" | "list";
   sort?: string;
   group?: string;
+  filter?: string; // "all" | "p1".."p4" | "overdue" | "planned"
 }
 
 // Per-user view preferences (stored as JSON on the users row).

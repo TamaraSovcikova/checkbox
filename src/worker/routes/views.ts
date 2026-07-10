@@ -70,6 +70,10 @@ views.get("/overdue", async (c) => {
   );
 });
 
+// Backlog: unfiled and not done. A task you have planned for today is actively
+// being worked, so it does not sit in the Backlog as well (capturing from Today
+// should land in Today, not the Backlog). It reappears here once the day passes,
+// if it is still unfiled.
 views.get("/backlog", async (c) => {
   const userId = await getUserId(c);
   const today = todayStr();
@@ -77,9 +81,10 @@ views.get("/backlog", async (c) => {
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
        AND area_id IS NULL AND project_id IS NULL
+       AND (planned_date IS NULL OR planned_date <> ?)
        ${NOT_SNOOZED}
      ORDER BY created_at DESC`,
-    [userId, today]
+    [userId, today, today]
   );
 });
 

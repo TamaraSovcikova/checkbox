@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { MoreIcon, SortIcon, GroupIcon, ICON_SIZE } from "../lib/icons";
+import { MoreIcon, SortIcon, GroupIcon, FilterIcon, ICON_SIZE } from "../lib/icons";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -31,6 +31,7 @@ export function TopBar<T extends string>({
   onTab,
   sort,
   group,
+  filter,
   menu,
   actions,
   below,
@@ -42,6 +43,7 @@ export function TopBar<T extends string>({
   onTab?: (id: T) => void;
   sort?: MenuChoice[];
   group?: MenuChoice[];
+  filter?: MenuChoice[];
   menu?: MenuChoice[];
   actions?: ReactNode;
   // Optional content pinned inside the same opaque sticky bar (e.g. the
@@ -101,6 +103,13 @@ export function TopBar<T extends string>({
       )}
 
       <div className="ml-auto flex items-center gap-1">
+        {filter && filter.length > 0 && (
+          <LabeledMenu
+            icon={<FilterIcon className={ICON_SIZE} />}
+            label="Filter"
+            items={filter}
+          />
+        )}
         {sort && sort.length > 0 && (
           <LabeledMenu
             icon={<SortIcon className={ICON_SIZE} />}
