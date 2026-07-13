@@ -22,6 +22,7 @@ import { AreaDialog } from "./components/AreaDialog";
 import { ProjectDialog } from "./components/ProjectDialog";
 import { CalendarSyncBanner } from "./components/CalendarSyncBanner";
 import { PlanMyDay } from "./components/PlanMyDay";
+import { SuggestToday } from "./components/SuggestToday";
 import { StatsWidget } from "./components/StatsWidget";
 import { CheatSheet } from "./components/CheatSheet";
 import { NotesInbox } from "./components/NotesInbox";
@@ -390,6 +391,7 @@ export function ViewPage({ name }: { name: string }) {
         <>
           <InstallHint />
           <CheatSheet />
+          <SuggestToday />
           <PlanMyDay tasks={tasks} />
         </>
       )}
