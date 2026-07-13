@@ -24,6 +24,9 @@ import {
   SnoozeIcon,
   TodayIcon,
   ChevronRightIcon,
+  MailIcon,
+  ExternalLinkIcon,
+  PlanIcon,
 } from "../lib/icons";
 import { TimeTracker } from "./TimeTracker";
 import { DependencyEditor } from "./DependencyEditor";
@@ -280,6 +283,30 @@ export function TaskSheet({
       .filter(Boolean)
       .join(" · ") || "None";
 
+  // Gmail thread handles (present only for email-derived tasks).
+  const gmailThread = task?.gmail_thread_id ?? null;
+  const gmailUrl =
+    task?.gmail_permalink ||
+    (gmailThread ? `https://mail.google.com/mail/u/0/#all/${gmailThread}` : null);
+  // Draft reply and Mark Awaiting are Claude-mediated in Phase A: the Worker
+  // holds no Gmail credential, so a deep-link hands the job to a Claude session
+  // that has the Gmail + Checkbox connectors. Zero API cost; needs those
+  // connectors attached.
+  const draftReplyUrl = gmailThread
+    ? `https://claude.ai/new?q=${encodeURIComponent(
+        `Draft a reply to my Gmail thread ${gmailThread} (for my Checkbox task "${task?.title}"). ` +
+          "Use the Gmail MCP: get_thread to read it, then create_draft with a reply " +
+          "that fits how I usually respond in that context. Leave it as a DRAFT in " +
+          "Gmail for me to review and send. Do NOT send it."
+      )}`
+    : null;
+  const awaitingUrl = gmailThread
+    ? `https://claude.ai/new?q=${encodeURIComponent(
+        `Apply my "Awaiting" label to Gmail thread ${gmailThread} (Gmail MCP label_thread) — ` +
+          "I'm waiting on a reply. Do not send anything."
+      )}`
+    : null;
+
   return (
     <Sheet
       open={!!task}
@@ -431,6 +458,62 @@ export function TaskSheet({
                 </Button>
               </div>
             </div>
+
+            {/* From Gmail: thread handles, only for email-derived tasks. Open in
+                Gmail is a plain link; Draft reply and Mark Awaiting hand off to a
+                Claude session (the Worker holds no Gmail credential in Phase A). */}
+            {gmailThread && (
+              <div className="rounded-md border border-border bg-surface-2/40 p-2.5">
+                <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
+                  <MailIcon className="h-3.5 w-3.5" /> From Gmail
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {gmailUrl && (
+                    <a
+                      href={gmailUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+                    >
+                      <ExternalLinkIcon className="h-3.5 w-3.5" /> Open in Gmail
+                    </a>
+                  )}
+                  {draftReplyUrl && (
+                    <a
+                      href={draftReplyUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Opens a Claude chat that drafts a reply via your Gmail + Checkbox connectors. Runs on your subscription; needs those connectors attached."
+                      className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+                    >
+                      <PlanIcon className="h-3.5 w-3.5 text-primary" /> Draft reply
+                    </a>
+                  )}
+                  {awaitingUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Local snooze lands immediately (no credential); the
+                        // Gmail label is best-effort via Claude.
+                        snooze.mutate({
+                          id: task.id,
+                          until: format(addDays(new Date(), 7), "yyyy-MM-dd"),
+                        });
+                        window.open(awaitingUrl, "_blank", "noopener");
+                      }}
+                      title="Snoozes the task a week and asks Claude to apply your Awaiting label in Gmail."
+                      className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+                    >
+                      <SnoozeIcon className="h-3.5 w-3.5" /> Mark Awaiting
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1.5 text-[10px] text-subtle">
+                  Draft reply and Mark Awaiting open Claude (needs your Gmail +
+                  Checkbox connectors). Checkbox never sends mail.
+                </p>
+              </div>
+            )}
 
             {/* ── Set-once, folded away but self-reporting ──────────────── */}
             <Section title="Schedule" summary={scheduleSummary}>

@@ -66,6 +66,10 @@ export interface Task {
   position: number;
   status: TaskStatus;
   completed_at: string | null;
+  // If this task came from an email, the handle back to the Gmail thread.
+  gmail_thread_id: string | null;
+  gmail_message_id: string | null;
+  gmail_permalink: string | null;
   created_at: string;
   updated_at: string;
   // joined
