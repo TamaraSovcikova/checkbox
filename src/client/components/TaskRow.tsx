@@ -2,15 +2,17 @@ import { useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { Task } from "../../shared/types";
 import {
+  useAreas,
   useCompleteAllSubtasks,
   useCompleteTask,
+  useProjects,
   useToggleSubtask,
   useUpdateTask,
   useViewPrefs,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import { recurrenceLabel } from "../../shared/recurrence";
-import { PRIORITY_VAR } from "../lib/colors";
+import { PRIORITY_VAR, areaColorVar } from "../lib/colors";
 import { cn, todayStr, monthAheadStr } from "@/lib/utils";
 import {
   DragIcon,
@@ -41,7 +43,13 @@ export function TaskRow({
   const toggleSub = useToggleSubtask();
   const completeAll = useCompleteAllSubtasks();
   const { dimDistantTasks } = useViewPrefs();
+  const { data: areas = [] } = useAreas();
+  const { data: projects = [] } = useProjects();
   const { toast } = useToast();
+  // Where the task lives, for an at-a-glance colour + a discreet project label
+  // (most useful in mixed views like Today). Cached queries, so cheap per row.
+  const area = areas.find((a) => a.id === task.area_id);
+  const project = projects.find((p) => p.id === task.project_id);
   const [expanded, setExpanded] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const done = task.status === "done";
@@ -196,6 +204,18 @@ export function TaskRow({
             {task.title}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-subtle">
+            {(area || project) && (
+              <span
+                className="inline-flex items-center gap-1"
+                title={[area?.name, project?.name].filter(Boolean).join(" › ")}
+              >
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ background: areaColorVar(area?.color) }}
+                />
+                {project && <span className="text-muted">{project.name}</span>}
+              </span>
+            )}
             {doing && (
               <span
                 className="inline-flex items-center gap-0.5 text-primary"

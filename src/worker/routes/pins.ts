@@ -11,6 +11,8 @@ type PinRow = {
   body: string | null;
   items: string | null;
   pinned_today: number;
+  placement: string;
+  color: string | null;
   position: number;
   created_at: string;
   updated_at: string;
@@ -46,7 +48,8 @@ pins.post("/", async (c) => {
     title?: string | null;
     body?: string | null;
     items?: unknown[];
-    pinned_today?: boolean;
+    placement?: string;
+    color?: string | null;
   }>();
   const id = uuid();
   // New pins go to the top (lowest position).
@@ -56,9 +59,11 @@ pins.post("/", async (c) => {
     .bind(userId)
     .first<{ m: number | null }>();
   const position = (min?.m ?? 0) - 1;
+  const placement =
+    b.placement === "top" || b.placement === "side" ? b.placement : "unpinned";
   await c.env.DB.prepare(
-    `INSERT INTO pins (id, user_id, kind, title, body, items, pinned_today, position)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO pins (id, user_id, kind, title, body, items, placement, color, pinned_today, position)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       id,
@@ -67,7 +72,9 @@ pins.post("/", async (c) => {
       b.title ?? null,
       b.body ?? null,
       b.items ? JSON.stringify(b.items) : null,
-      b.pinned_today ? 1 : 0,
+      placement,
+      b.color ?? null,
+      placement === "top" ? 1 : 0,
       position
     )
     .run();
@@ -77,7 +84,14 @@ pins.post("/", async (c) => {
   return c.json(hydrate(row as PinRow), 201);
 });
 
-const WRITABLE = ["kind", "title", "body", "pinned_today", "position"] as const;
+const WRITABLE = [
+  "kind",
+  "title",
+  "body",
+  "placement",
+  "color",
+  "position",
+] as const;
 
 pins.patch("/:id", async (c) => {
   const userId = await getUserId(c);
@@ -95,8 +109,13 @@ pins.patch("/:id", async (c) => {
   for (const f of WRITABLE) {
     if (f in b) {
       sets.push(`${f} = ?`);
-      binds.push(f === "pinned_today" ? (b[f] ? 1 : 0) : b[f]);
+      binds.push(b[f]);
     }
+  }
+  // Keep the legacy pinned_today boolean in step with placement.
+  if ("placement" in b) {
+    sets.push("pinned_today = ?");
+    binds.push(b.placement === "top" ? 1 : 0);
   }
   // items is stored as JSON text.
   if ("items" in b) {

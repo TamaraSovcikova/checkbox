@@ -23,7 +23,7 @@ import { ProjectDialog } from "./components/ProjectDialog";
 import { CalendarSyncBanner } from "./components/CalendarSyncBanner";
 import { PlanMyDay } from "./components/PlanMyDay";
 import { SuggestToday } from "./components/SuggestToday";
-import { PinsStrip } from "./components/Pins";
+import { PinsStrip, PinsSide } from "./components/Pins";
 import { StatsWidget } from "./components/StatsWidget";
 import { CheatSheet } from "./components/CheatSheet";
 import { NotesInbox } from "./components/NotesInbox";
@@ -388,22 +388,31 @@ export function ViewPage({ name }: { name: string }) {
           ) : undefined
         }
       />
-      {name === "today" && (
+      {name === "today" ? (
+        // Today can carry pins on the side, so it lays out as main column + rail.
+        <div className="lg:flex lg:gap-5">
+          <div className="min-w-0 lg:flex-1">
+            <InstallHint />
+            <PinsStrip />
+            <CheatSheet />
+            <SuggestToday />
+            <PlanMyDay tasks={tasks} />
+            {body}
+            {view === "list" && <BulkActionBar controls={controls} />}
+            <CompletedToday />
+          </div>
+          <PinsSide />
+        </div>
+      ) : (
         <>
-          <InstallHint />
-          <PinsStrip />
-          <CheatSheet />
-          <SuggestToday />
-          <PlanMyDay tasks={tasks} />
+          {name === "backlog" ? (
+            <BacklogBody tasks={tasks} list={body} />
+          ) : (
+            body
+          )}
+          {view === "list" && <BulkActionBar controls={controls} />}
         </>
       )}
-      {name === "backlog" ? (
-        <BacklogBody tasks={tasks} list={body} />
-      ) : (
-        body
-      )}
-      {view === "list" && <BulkActionBar controls={controls} />}
-      {name === "today" && <CompletedToday />}
     </div>
   );
 }

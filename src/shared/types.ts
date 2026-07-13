@@ -235,7 +235,9 @@ export interface Pin {
   title: string | null;
   body: string | null; // note text
   items: PinItem[]; // list lines
-  pinned_today: number; // 1 = shown in the Today strip
+  pinned_today: number; // legacy; use `placement`
+  placement: "unpinned" | "top" | "side";
+  color: string | null; // colour token (see lib/colors)
   position: number;
   created_at: string;
   updated_at: string;

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import type { Pin, PinItem } from "../../shared/types";
 import { usePins, useCreatePin, useUpdatePin, useDeletePin } from "../lib/queries";
+import { AREA_COLORS, areaColorVar } from "../lib/colors";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import {
-  PinIcon,
   PinsIcon,
   TrashIcon,
   AddIcon,
@@ -18,9 +18,93 @@ const newItem = (text: string): PinItem => ({
   done: false,
 });
 
-// One pin: a living checklist ('list') or a standing reminder ('note'). Used
-// both on the Pins page (full) and in the Today strip (compact). Item edits keep
-// local state for instant feedback and PATCH the whole items array behind it.
+type Placement = Pin["placement"];
+
+// Compact colour picker: a swatch that opens the area-colour palette inline.
+function ColorPicker({
+  color,
+  onPick,
+}: {
+  color: string | null;
+  onPick: (c: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title="Colour"
+        aria-label="Colour"
+        className="grid h-6 w-6 place-items-center rounded hover:bg-surface-2"
+      >
+        <span
+          className="h-3 w-3 rounded-full border border-border"
+          style={{ background: color ? areaColorVar(color) : "transparent" }}
+        />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 flex flex-wrap gap-1 rounded-md border border-border bg-surface p-1.5 shadow-lg">
+          <button
+            onClick={() => {
+              onPick(null);
+              setOpen(false);
+            }}
+            title="No colour"
+            className="h-4 w-4 rounded-full border border-border bg-transparent"
+          />
+          {AREA_COLORS.map((c) => (
+            <button
+              key={c.key}
+              onClick={() => {
+                onPick(c.key);
+                setOpen(false);
+              }}
+              title={c.label}
+              className={cn(
+                "h-4 w-4 rounded-full",
+                color === c.key && "ring-2 ring-offset-1 ring-offset-surface"
+              )}
+              style={{ background: c.var }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Top / Side placement toggle. Clicking the active one unpins.
+function PlacementToggle({
+  placement,
+  onSet,
+}: {
+  placement: Placement;
+  onSet: (p: Placement) => void;
+}) {
+  const opt = (p: Placement, label: string) => (
+    <button
+      onClick={() => onSet(placement === p ? "unpinned" : p)}
+      title={placement === p ? `On ${label} — click to unpin` : `Pin to ${label}`}
+      className={cn(
+        "px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide transition-colors",
+        placement === p
+          ? "bg-primary text-primary-foreground"
+          : "text-subtle hover:text-foreground"
+      )}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="flex overflow-hidden rounded border border-border">
+      {opt("top", "Top")}
+      {opt("side", "Side")}
+    </div>
+  );
+}
+
+// One pin: a living checklist ('list') or a standing reminder ('note'). Used on
+// the Pins page (full) and in the Today strip / side column (compact).
 function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
   const update = useUpdatePin();
   const del = useDeletePin();
@@ -30,7 +114,6 @@ function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
   const [editingBody, setEditingBody] = useState(false);
   const [newLine, setNewLine] = useState("");
 
-  // Re-sync when a refetch brings a newer version.
   useEffect(() => {
     setTitle(pin.title ?? "");
     setItems(pin.items ?? []);
@@ -55,50 +138,55 @@ function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
   }
 
   const done = items.filter((i) => i.done).length;
+  const accent = pin.color ? areaColorVar(pin.color) : null;
+  // In compact placements, an empty title just disappears (titles are optional).
+  const showTitle = !compact || title.trim().length > 0;
 
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-surface p-3",
+        "rounded-lg border bg-surface p-3",
         compact && "bg-surface/60"
       )}
+      style={
+        accent
+          ? { borderLeftColor: accent, borderLeftWidth: 3 }
+          : { borderColor: "var(--border)" }
+      }
     >
-      {/* Header: title + pin-to-today toggle + delete */}
       <div className="mb-1.5 flex items-center gap-2">
-        <span className="text-subtle">
+        <span className="shrink-0 text-subtle">
           {pin.kind === "list" ? (
             <SubtaskIcon className="h-3.5 w-3.5" />
           ) : (
             <NotesIcon className="h-3.5 w-3.5" />
           )}
         </span>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => title !== (pin.title ?? "") && update.mutate({ id: pin.id, body: { title } })}
-          placeholder={pin.kind === "list" ? "List title" : "Reminder title"}
-          className="min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-subtle"
-        />
+        {showTitle && (
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() =>
+              title !== (pin.title ?? "") && update.mutate({ id: pin.id, body: { title } })
+            }
+            placeholder="Title (optional)"
+            className="min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-subtle"
+          />
+        )}
+        {!showTitle && <span className="flex-1" />}
         {pin.kind === "list" && items.length > 0 && (
           <span className="shrink-0 text-[11px] text-subtle">
             {done}/{items.length}
           </span>
         )}
-        <button
-          onClick={() =>
-            update.mutate({ id: pin.id, body: { pinned_today: pin.pinned_today ? 0 : 1 } })
-          }
-          title={pin.pinned_today ? "Unpin from Today" : "Keep on Today"}
-          aria-label={pin.pinned_today ? "Unpin from Today" : "Keep on Today"}
-          className={cn(
-            "grid h-6 w-6 shrink-0 place-items-center rounded transition-colors",
-            pin.pinned_today
-              ? "text-primary hover:bg-primary/10"
-              : "text-subtle hover:bg-surface-2 hover:text-foreground"
-          )}
-        >
-          <PinIcon className="h-3.5 w-3.5" />
-        </button>
+        <PlacementToggle
+          placement={pin.placement}
+          onSet={(p) => update.mutate({ id: pin.id, body: { placement: p } })}
+        />
+        <ColorPicker
+          color={pin.color}
+          onPick={(c) => update.mutate({ id: pin.id, body: { color: c } })}
+        />
         {!compact && (
           <button
             onClick={() => del.mutate(pin.id)}
@@ -178,18 +266,31 @@ function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
   );
 }
 
-// The always-visible strip at the top of Today: pins the user chose to keep on
-// their eyes. Renders nothing when none are pinned.
+// Full-width strip at the top of Today: pins placed 'top'.
 export function PinsStrip() {
   const { data: pins = [] } = usePins();
-  const pinned = pins.filter((p) => p.pinned_today);
-  if (pinned.length === 0) return null;
+  const top = pins.filter((p) => p.placement === "top");
+  if (top.length === 0) return null;
   return (
     <div className="mb-4 grid max-w-2xl gap-2 sm:grid-cols-2">
-      {pinned.map((p) => (
+      {top.map((p) => (
         <PinCard key={p.id} pin={p} compact />
       ))}
     </div>
+  );
+}
+
+// Narrow right column on Today: pins placed 'side'.
+export function PinsSide() {
+  const { data: pins = [] } = usePins();
+  const side = pins.filter((p) => p.placement === "side");
+  if (side.length === 0) return null;
+  return (
+    <aside className="mt-4 space-y-2 lg:mt-0 lg:w-64 lg:shrink-0">
+      {side.map((p) => (
+        <PinCard key={p.id} pin={p} compact />
+      ))}
+    </aside>
   );
 }
 
@@ -205,22 +306,23 @@ export function PinsPage() {
         <h1 className="text-xl font-bold tracking-tight text-foreground">Pins</h1>
       </div>
       <p className="mb-4 text-sm text-subtle">
-        Lists you edit day to day and reminders you want on your eyes — kept beside
-        your tasks, never mixed in. Toggle the pin icon to keep one on Today.
+        Lists you edit day to day and reminders you want on your eyes, kept beside
+        your tasks. Use the Top / Side toggle to place each one on your Today page,
+        and colour them so they stand apart.
       </p>
 
       <div className="mb-4 flex gap-2">
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => create.mutate({ kind: "list", title: "" })}
+          onClick={() => create.mutate({ kind: "list", placement: "top" })}
         >
           <AddIcon className="h-4 w-4" /> New list
         </Button>
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => create.mutate({ kind: "note", title: "" })}
+          onClick={() => create.mutate({ kind: "note", placement: "top" })}
         >
           <AddIcon className="h-4 w-4" /> New reminder
         </Button>
