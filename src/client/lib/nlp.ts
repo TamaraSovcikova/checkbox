@@ -60,6 +60,26 @@ function extractRecurrence(text: string): { spec: string | null; rest: string } 
   return { spec: null, rest: text };
 }
 
+// chrono in casual mode is eager: a bare time-of-day or vague temporal word
+// mentioned in prose ("review the morning notes", "ask about this later") gets
+// read as a due date. These words, matched ALONE, are not a date — they are
+// almost always part of the title. Reject them, but keep every real phrase
+// ("tomorrow", "next tue", "in 2 weeks", "on friday", "3pm", "jan 5").
+const WEAK_DATE = new Set([
+  "morning", "afternoon", "evening", "night", "nights", "noon", "midday",
+  "midnight", "dawn", "dusk", "soon", "sometime", "some time", "someday",
+  "some day", "later", "early", "earlier", "lately", "recently", "now",
+]);
+
+// The first chrono match that is actually a date, skipping weak-word matches.
+function firstConfidentDate(text: string): chrono.ParsedResult | null {
+  const results = chrono.parse(text, new Date(), { forwardDate: true });
+  for (const r of results) {
+    if (!WEAK_DATE.has(r.text.trim().toLowerCase())) return r;
+  }
+  return null;
+}
+
 // Parse a quick-capture string like:
 //   "Call dentist tomorrow 3pm p2 @call #Belgium"
 // into structured fields, returning the cleaned title plus what was extracted.
@@ -94,15 +114,19 @@ export function parseCapture(input: string): CaptureParse {
     text = text.replace(projMatch[0], "");
   }
 
-  // date/time via chrono
+  // date/time via chrono (weak, prose-y matches rejected)
   let due_date: string | null = null;
   let due_time: string | null = null;
-  const results = chrono.parse(text, new Date(), { forwardDate: true });
-  if (results.length) {
-    const r = results[0];
+  let dateText: string | null = null;
+  // The title as it stands before the date is stripped — the fallback if the
+  // user dismisses the detected date.
+  const titleWithDate = text.replace(/\s{2,}/g, " ").trim();
+  const r = firstConfidentDate(text);
+  if (r) {
     const d = r.start.date();
     due_date = format(d, "yyyy-MM-dd");
     if (r.start.isCertain("hour")) due_time = format(d, "HH:mm");
+    dateText = r.text;
     text = (text.slice(0, r.index) + text.slice(r.index + r.text.length)).trim();
   }
 
@@ -114,7 +138,17 @@ export function parseCapture(input: string): CaptureParse {
   }
 
   const title = text.replace(/\s{2,}/g, " ").trim();
-  return { title, due_date, due_time, priority, labelNames, projectName, recurrence };
+  return {
+    title,
+    titleWithDate,
+    due_date,
+    due_time,
+    dateText,
+    priority,
+    labelNames,
+    projectName,
+    recurrence,
+  };
 }
 
 // Parse a free-text date phrase ("next tue", "tomorrow 3pm", "in 2 weeks") into
@@ -123,9 +157,8 @@ export function parseCapture(input: string): CaptureParse {
 export function parseDatePhrase(
   input: string
 ): { due_date: string | null; due_time: string | null } {
-  const results = chrono.parse(input, new Date(), { forwardDate: true });
-  if (!results.length) return { due_date: null, due_time: null };
-  const r = results[0];
+  const r = firstConfidentDate(input);
+  if (!r) return { due_date: null, due_time: null };
   const d = r.start.date();
   return {
     due_date: format(d, "yyyy-MM-dd"),

@@ -326,6 +326,27 @@ export function TaskSheet({
               </span>
             </div>
 
+            {/* Add to Today — one of the most-used actions, so it lives up top,
+                always visible, not buried in the Schedule section. Marks intent
+                to work on it today without touching the deadline. */}
+            {task.status !== "done" && (
+              <button
+                type="button"
+                onClick={() =>
+                  save({ planned_date: plannedToday ? null : todayStr() })
+                }
+                className={cn(
+                  "inline-flex w-fit items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm font-medium transition-colors",
+                  plannedToday
+                    ? "border-primary bg-primary/15 text-primary hover:bg-primary/10"
+                    : "border-border text-foreground hover:border-primary/50 hover:bg-surface-2"
+                )}
+              >
+                <TodayIcon className="h-4 w-4" />
+                {plannedToday ? "Planned for today" : "Add to Today"}
+              </button>
+            )}
+
             {/* Notes: rendered markdown when idle, textarea on click/focus.
                 Blur commits and returns to the rendered preview. */}
             {editingNotes || !notes.trim() ? (
@@ -447,23 +468,6 @@ export function TaskSheet({
                 placeholder="Type a date… e.g. next tue 3pm, in 2 weeks"
                 className="h-8 w-full rounded-md border border-dashed border-input bg-transparent px-3 text-sm text-foreground outline-none placeholder:text-subtle focus:border-primary"
               />
-
-              {/* Add to Today — intent to work on it today, no deadline change. */}
-              <button
-                type="button"
-                onClick={() =>
-                  save({ planned_date: plannedToday ? null : todayStr() })
-                }
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
-                  plannedToday
-                    ? "bg-primary/15 text-primary"
-                    : "bg-surface-2 text-foreground hover:bg-surface-2/70"
-                )}
-              >
-                <TodayIcon className="h-3.5 w-3.5" />
-                {plannedToday ? "Planned for today" : "Add to Today"}
-              </button>
 
               {/* Time block: set by dragging on the calendar; shown here so it is
                   visible and clearable from the task too. */}
