@@ -15,6 +15,7 @@ import { hydrateTasks } from "./_hydrate";
 import { generateDayPlan } from "../lib/planner";
 import { extractNoteTasks } from "../../shared/notes";
 import { insertCandidates, type CandidateInput } from "./notes";
+import { upsertMailCandidate, type MailCandidateInput } from "./mail";
 import { nextDueDate } from "../../shared/recurrence";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 
@@ -137,6 +138,7 @@ const TASK_WRITABLE = [
   "time_estimate_min", "scheduled_start", "scheduled_end",
   "area_id", "project_id", "parent_task_id", "section_id", "board_column",
   "status", "recurrence", "recurrence_mode", "planned_date",
+  "gmail_thread_id", "gmail_message_id", "gmail_permalink",
 ] as const;
 
 // Insert one task from a create-shaped args object and attach any label_names.
@@ -237,6 +239,16 @@ const TOOLS = [
           type: "array",
           items: { type: "string" },
           description: "Label names to attach (created if missing)",
+        },
+        gmail_thread_id: {
+          type: "string",
+          description:
+            "If this task came from an email, the Gmail thread id, so the task can link back to it.",
+        },
+        gmail_message_id: { type: "string" },
+        gmail_permalink: {
+          type: "string",
+          description: "Deep link to the Gmail thread (https://mail.google.com/...).",
         },
       },
       required: ["title"],
@@ -414,6 +426,41 @@ const TOOLS = [
     description:
       "Draft and persist a proposed time-blocked schedule for today (the ambient planner). Blocks today's open tasks around calendar meetings; the user accepts it with one tap in the app. Returns the proposed blocks.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "add_mail_candidates",
+    description:
+      "Gmail coverage: record a VERDICT for every email thread you reviewed, so the user can audit at a glance that nothing slipped. Call this once per planning run with one entry PER MESSAGE you looked at in the fetch window — including ones you deliberately skipped (pass verdict='skipped' with a one-line reason). This is what makes coverage provable: a thread with no row reads as 'never considered'. Set verdict='filed' and task_id when you created a task from it (also pass the same gmail_thread_id/message_id/permalink on create_task). Dedupe is on message_id and safe to re-run; a row a human has dismissed or filed is frozen and will not be overwritten.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        candidates: {
+          type: "array",
+          description: "One entry per message reviewed.",
+          items: {
+            type: "object",
+            properties: {
+              thread_id: { type: "string" },
+              message_id: { type: "string", description: "The specific message id (the dedupe key)." },
+              from_addr: { type: "string" },
+              subject: { type: "string" },
+              snippet: { type: "string", description: "Gmail's snippet. Do NOT send bodies." },
+              received_at: { type: "string", description: "ISO datetime." },
+              permalink: { type: "string", description: "https://mail.google.com/... link to the thread." },
+              verdict: {
+                type: "string",
+                enum: ["pending", "filed", "skipped"],
+                description: "filed = you made a task; skipped = not task-worthy (give a reason); pending = unsure.",
+              },
+              reason: { type: "string", description: "One line: why filed or skipped." },
+              task_id: { type: "string", description: "The task you created, when verdict='filed'." },
+            },
+            required: ["thread_id", "message_id"],
+          },
+        },
+      },
+      required: ["candidates"],
+    },
   },
   {
     name: "scan_notes_for_tasks",
@@ -1081,6 +1128,32 @@ async function handleTool(
         added,
         skipped_duplicates: candidates.length - added,
         note: "New candidates are pending in the app's Backlog → 'From your notes' inbox for the user to accept or reject.",
+      });
+    }
+
+    // ── add_mail_candidates ────────────────────────────────────────────────────
+    case "add_mail_candidates": {
+      const items = Array.isArray(args.candidates)
+        ? (args.candidates as MailCandidateInput[])
+        : [];
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      for (const it of items) {
+        if (!it || typeof it.thread_id !== "string" || typeof it.message_id !== "string") {
+          skipped++;
+          continue;
+        }
+        const r = await upsertMailCandidate(db, userId, { ...it, source: "planner" });
+        if (r.created) created++;
+        else updated++;
+      }
+      return json({
+        received: items.length,
+        created,
+        updated,
+        skipped_invalid: skipped,
+        note: "Coverage recorded. Rows a human has dismissed or filed were left frozen. The user reviews these in the app's Mail coverage panel.",
       });
     }
 
