@@ -7,6 +7,7 @@ import type {
   Label,
   NoteCandidateRow,
   MailCandidateRow,
+  Pin,
   Project,
   SavedFilter,
   Stats,
@@ -241,6 +242,14 @@ export const api = {
     http<Task>(`/api/mail/candidates/${id}/accept`, { method: "POST" }),
   mailDismiss: (id: string) =>
     httpMutate("POST", `/api/mail/candidates/${id}/dismiss`),
+
+  // Pins (non-task lists + reminders)
+  pins: () => http<Pin[]>("/api/pins"),
+  createPin: (b: Partial<Pin>) =>
+    http<Pin>("/api/pins", { method: "POST", body: JSON.stringify(b) }),
+  updatePin: (id: string, b: Partial<Pin>) =>
+    http<Pin>(`/api/pins/${id}`, { method: "PATCH", body: JSON.stringify(b) }),
+  deletePin: (id: string) => httpMutate("DELETE", `/api/pins/${id}`),
 
   // ambient day plan (#30)
   dayPlanToday: () => http<DayPlan | null>("/api/plans/today"),

@@ -54,6 +54,8 @@ export {
   CornerUpLeft as BackIcon,
   Mail as MailIcon,
   AlertCircle as AttentionIcon,
+  Pin as PinIcon,
+  StickyNote as PinsIcon,
 } from "lucide-react";
 
 // Curated icon set an area can be tagged with (the picker offers these by name;

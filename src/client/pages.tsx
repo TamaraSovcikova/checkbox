@@ -23,6 +23,7 @@ import { ProjectDialog } from "./components/ProjectDialog";
 import { CalendarSyncBanner } from "./components/CalendarSyncBanner";
 import { PlanMyDay } from "./components/PlanMyDay";
 import { SuggestToday } from "./components/SuggestToday";
+import { PinsStrip } from "./components/Pins";
 import { StatsWidget } from "./components/StatsWidget";
 import { CheatSheet } from "./components/CheatSheet";
 import { NotesInbox } from "./components/NotesInbox";
@@ -390,6 +391,7 @@ export function ViewPage({ name }: { name: string }) {
       {name === "today" && (
         <>
           <InstallHint />
+          <PinsStrip />
           <CheatSheet />
           <SuggestToday />
           <PlanMyDay tasks={tasks} />

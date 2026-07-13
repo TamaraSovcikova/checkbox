@@ -193,6 +193,41 @@ export function useMailDismiss() {
   });
 }
 
+// ── Pins ─────────────────────────────────────────────────────────────────────
+
+export const usePins = () =>
+  useQuery({ queryKey: ["pins"], queryFn: api.pins, staleTime: 30_000 });
+
+export function useCreatePin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: Partial<import("../../shared/types").Pin>) => api.createPin(b),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pins"] }),
+  });
+}
+
+export function useUpdatePin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: Partial<import("../../shared/types").Pin>;
+    }) => api.updatePin(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pins"] }),
+  });
+}
+
+export function useDeletePin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deletePin(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pins"] }),
+  });
+}
+
 // ── Ambient day plan (#30) ──────────────────────────────────────────────────
 
 export const useDayPlan = () =>

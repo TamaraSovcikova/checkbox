@@ -223,6 +223,24 @@ export interface NoteCandidateRow {
   created_at: string;
 }
 
+// ── Pins: non-task lists + standing reminders ───────────────────────────────
+export interface PinItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+export interface Pin {
+  id: string;
+  kind: "note" | "list";
+  title: string | null;
+  body: string | null; // note text
+  items: PinItem[]; // list lines
+  pinned_today: number; // 1 = shown in the Today strip
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Gmail coverage (Phase A) ────────────────────────────────────────────────
 export interface MailCandidateRow {
   id: string;
