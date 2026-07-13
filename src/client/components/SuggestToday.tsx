@@ -17,13 +17,16 @@ const CLAUDE_PROMPT =
   "or nothing looks urgent, still choose a solid set of tasks for me to work on.\n\n" +
   "1. Use the Checkbox MCP: call list_tasks to review ALL my open tasks across " +
   "every area, project and the backlog.\n" +
-  "2. Read my Obsidian vault for context — my goals, current projects and " +
-  "priorities — and weigh what actually matters right now, not just what has " +
-  "the nearest deadline.\n" +
+  "2. For context, read my Workspace Obsidian vault — specifically the `_Stats_` " +
+  "files at `Personal/_Stats_/` (Career, Property, Health, Mindset, Knowledge, " +
+  "People), which hold my goals and current priorities — and weigh what actually " +
+  "matters right now, not just what has the nearest deadline.\n" +
   "3. Choose roughly 5-10 tasks that make the best use of today, balancing " +
-  "deadlines, priority and my goals, and say in one line why each made the cut.\n" +
+  "deadlines, priority and my goals.\n" +
   "4. Add each chosen task to my Today view by setting planned_date to today " +
-  "via update_task.";
+  "via update_task.\n" +
+  "5. Finish with a short, plain-English explanation of why you chose what you " +
+  "chose — one simple line per task.";
 
 const CLAUDE_URL = `https://claude.ai/new?q=${encodeURIComponent(CLAUDE_PROMPT)}`;
 

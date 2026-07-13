@@ -105,14 +105,16 @@ function ExternalEventBlock({ event }: { event: CalendarEvent }) {
   if (top < 0 || top > GRID_HEIGHT) return null;
   return (
     <div
-      className="absolute left-0 right-1 overflow-hidden rounded border border-border bg-surface-2/70 px-1.5 py-0.5 text-xs"
+      // Google events are a read-only backdrop: flat, muted, no color, so the
+      // eye reads them as "external / already busy" versus my tinted blocks.
+      className="absolute left-0 right-1 overflow-hidden rounded border border-dashed border-border bg-surface-2/40 px-1.5 py-0.5 text-xs"
       style={{ top, height: Math.max(20, height) }}
       title={event.title ?? ""}
     >
-      <div className="truncate font-medium text-foreground">
+      <div className="truncate font-medium text-subtle">
         {event.title ?? "(no title)"}
       </div>
-      <div className="text-subtle">{fmtTime(event.start)}</div>
+      <div className="text-subtle/70">{fmtTime(event.start)}</div>
     </div>
   );
 }
@@ -179,12 +181,16 @@ function TaskBlock({ task }: { task: Task }) {
     <div
       ref={setNodeRef}
       className={cn(
-        "absolute left-0 right-1 rounded border-l-2 bg-surface-2/90 text-xs text-foreground",
+        "absolute left-0 right-1 rounded border border-l-2 text-xs text-foreground backdrop-blur-[1px]",
         isDragging ? "z-20 opacity-80 shadow-lg" : "z-0"
       )}
       style={{
         top,
         height: Math.max(20, height),
+        // Checkbox blocks are "mine": a priority-tinted fill + a solid priority
+        // left bar, so they read distinctly from the flat-grey Google backdrop.
+        backgroundColor: `color-mix(in oklab, ${PRIORITY_VAR[task.priority]} 22%, transparent)`,
+        borderColor: `color-mix(in oklab, ${PRIORITY_VAR[task.priority]} 35%, transparent)`,
         borderLeftColor: PRIORITY_VAR[task.priority],
         transform: transform ? CSS.Translate.toString(transform) : undefined,
       }}
@@ -358,6 +364,35 @@ function weekStart(d: Date): Date {
   return addDays(d, -offset);
 }
 
+// One labelled group of drag-to-schedule cards in the left planner pane.
+function PlannerGroup({
+  label,
+  tone,
+  tasks,
+}: {
+  label: string;
+  tone?: "overdue";
+  tasks: Task[];
+}) {
+  if (tasks.length === 0) return null;
+  return (
+    <div className="mb-3">
+      <div
+        className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wide"
+        style={tone === "overdue" ? { color: "var(--area-orange)" } : undefined}
+      >
+        <span className={tone === "overdue" ? "" : "text-subtle"}>{label}</span>
+        <span className="text-subtle/60">{tasks.length}</span>
+      </div>
+      <div className="space-y-1.5">
+        {tasks.map((t) => (
+          <RailCard key={t.id} task={t} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function CalendarPage() {
   const [date, setDate] = useState(() => new Date());
   const [view, setView] = useState<"day" | "week">("day");
@@ -378,14 +413,24 @@ export default function CalendarPage() {
 
   const dayStrs = days.map((d) => format(d, "yyyy-MM-dd"));
   const allDayEvents = calEvents.filter((e) => e.all_day);
-  // Rail: unscheduled open tasks due within the visible range.
-  const unscheduledTasks = allTasks.filter(
-    (t) =>
-      !t.scheduled_start &&
-      t.status !== "done" &&
-      t.due_date != null &&
-      dayStrs.includes(t.due_date)
+
+  // Left planner pane: unscheduled open tasks, grouped so it reads as a plan,
+  // not a dump. Overdue (past due) first, then what's due in view, then
+  // high-priority tasks with no date. Groups are disjoint.
+  const openUnscheduled = allTasks.filter(
+    (t) => !t.scheduled_start && t.status !== "done"
   );
+  const overdue = openUnscheduled.filter(
+    (t) => t.due_date != null && t.due_date < todayStr
+  );
+  const inRange = openUnscheduled.filter(
+    (t) => t.due_date != null && t.due_date >= todayStr && dayStrs.includes(t.due_date)
+  );
+  const noDate = openUnscheduled.filter(
+    (t) => t.due_date == null && t.priority <= 2
+  );
+  const nothingToSchedule =
+    overdue.length + inRange.length + noDate.length === 0;
 
   function step(dir: 1 | -1) {
     setDate((d) => addDays(d, dir * (view === "week" ? 7 : 1)));
@@ -469,8 +514,30 @@ export default function CalendarPage() {
       {/* All-day strip (across the visible range) */}
       <AllDayStrip events={allDayEvents} />
 
-      {/* Body: hour labels + one-or-seven day columns + unscheduled rail */}
+      {/* Body: left planner pane + hour labels + one-or-seven day columns */}
       <div className="flex flex-1 gap-3 overflow-auto">
+        {/* Left planner pane — the tasks you drag onto the calendar. */}
+        <div
+          className="w-52 shrink-0 overflow-y-auto border-r border-border pr-3"
+          style={{ marginTop: view === "week" ? 24 : 0 }}
+        >
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80">
+            To schedule
+          </div>
+          <PlannerGroup label="Overdue" tone="overdue" tasks={overdue} />
+          <PlannerGroup
+            label={view === "week" ? "This week" : "Due today"}
+            tasks={inRange}
+          />
+          <PlannerGroup label="No date · P1–P2" tasks={noDate} />
+          {nothingToSchedule && (
+            <p className="text-xs text-subtle">Nothing waiting to be scheduled.</p>
+          )}
+          <p className="mt-3 text-[10px] text-subtle">
+            Drag a task onto the timeline to schedule it.
+          </p>
+        </div>
+
         {/* Hour labels */}
         <div
           className="relative w-10 shrink-0"
@@ -512,29 +579,6 @@ export default function CalendarPage() {
               />
             );
           })}
-        </div>
-
-        {/* Unscheduled task rail */}
-        <div className="w-52 shrink-0" style={{ marginTop: view === "week" ? 24 : 0 }}>
-          <div className="mb-2 text-[11px] uppercase tracking-wide text-subtle">
-            {view === "week" ? "Unscheduled this week" : "Unscheduled today"}
-          </div>
-          {unscheduledTasks.length === 0 ? (
-            <p className="text-xs text-subtle">
-              {view === "week"
-                ? "Nothing due this week is unscheduled."
-                : "All tasks scheduled for today."}
-            </p>
-          ) : (
-            <div className="space-y-1.5">
-              {unscheduledTasks.map((t) => (
-                <RailCard key={t.id} task={t} />
-              ))}
-            </div>
-          )}
-          <p className="mt-3 text-[10px] text-subtle">
-            Drag a task onto the timeline to schedule it.
-          </p>
         </div>
       </div>
     </div>
