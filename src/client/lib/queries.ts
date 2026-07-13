@@ -445,6 +445,15 @@ export const useCalendarEvents = (dateStr: string) => {
   });
 };
 
+// Events across an arbitrary [start, endExclusive) range — powers the week view.
+// The API + route already accept start/end; this just widens the window.
+export const useCalendarRange = (startStr: string, endStr: string) =>
+  useQuery({
+    queryKey: ["calendar", "events", startStr, endStr],
+    queryFn: () => api.calendarEvents(startStr, endStr),
+    staleTime: 30_000,
+  });
+
 export function useCalendarSync() {
   const qc = useQueryClient();
   return useMutation({

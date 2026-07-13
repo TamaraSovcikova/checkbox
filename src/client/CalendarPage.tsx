@@ -7,7 +7,7 @@ import type { CalendarEvent, Task } from "../shared/types";
 import { api } from "./lib/api";
 import {
   useCalendarStatus,
-  useCalendarEvents,
+  useCalendarRange,
   useCalendarSync,
   useTasks,
 } from "./lib/queries";
@@ -77,8 +77,10 @@ function fmtTime(iso: string): string {
 // ── Droppable slot (resolves in the app-level DndContext) ─────────────────────
 
 function SlotRow({ date, time, top }: { date: string; time: string; top: number }) {
+  // Namespaced by date: in week view the same time exists in 7 columns, and
+  // dnd-kit droppable ids are global, so `slot:09:00` alone would collide.
   const { setNodeRef, isOver } = useDroppable({
-    id: `slot:${time}`,
+    id: `slot:${date}:${time}`,
     data: { type: "slot", date, time },
   });
   const isHour = time.endsWith(":00");
@@ -289,26 +291,105 @@ function AllDayStrip({ events }: { events: CalendarEvent[] }) {
 
 // ── Main CalendarPage ─────────────────────────────────────────────────────────
 
-export default function CalendarPage() {
-  const [date, setDate] = useState(() => new Date());
-  const dateStr = format(date, "yyyy-MM-dd");
-
-  const { data: status, isLoading: statusLoading } = useCalendarStatus();
-  const { data: calEvents = [] } = useCalendarEvents(dateStr);
-  const { data: allTasks = [] } = useTasks({});
-  const sync = useCalendarSync();
-
-  const scheduledTasks = allTasks.filter(
+// One day's grid: droppable slots, external events, task blocks, now-line. The
+// unit shared by day view (one of these) and week view (seven side by side).
+function DayColumn({
+  dateStr,
+  events,
+  tasks,
+  header,
+}: {
+  dateStr: string;
+  events: CalendarEvent[];
+  tasks: Task[];
+  header?: { weekday: string; day: string; isToday: boolean };
+}) {
+  // Bucket by local day: external event starts are stored UTC, so compare the
+  // local calendar day, not the UTC prefix.
+  const external = events.filter(
+    (e) =>
+      !e.all_day &&
+      !e.is_checkbox_owned &&
+      format(parseISO(e.start), "yyyy-MM-dd") === dateStr
+  );
+  const scheduled = tasks.filter(
     (t) => t.scheduled_start?.startsWith(dateStr) && t.status !== "done"
   );
+  return (
+    <div className="flex min-w-0 flex-1 flex-col">
+      {header && (
+        <div
+          className={cn(
+            "mb-1 flex items-baseline justify-center gap-1 text-center",
+            header.isToday ? "text-primary" : "text-subtle"
+          )}
+        >
+          <span className="text-[11px] uppercase tracking-wide">{header.weekday}</span>
+          <span className="text-sm font-semibold">{header.day}</span>
+        </div>
+      )}
+      <div
+        className="relative flex-1 border-l border-border"
+        style={{ height: GRID_HEIGHT }}
+      >
+        {SLOTS.map((slot, i) => (
+          <SlotRow
+            key={slot}
+            date={dateStr}
+            time={slot}
+            top={i * ((SLOT_MIN / 60) * PX_PER_HOUR)}
+          />
+        ))}
+        {external.map((e) => (
+          <ExternalEventBlock key={e.id} event={e} />
+        ))}
+        {scheduled.map((t) => (
+          <TaskBlock key={t.id} task={t} />
+        ))}
+        <NowLine dateStr={dateStr} />
+      </div>
+    </div>
+  );
+}
+
+// Monday-based start of the week containing `d`.
+function weekStart(d: Date): Date {
+  const offset = (d.getDay() + 6) % 7; // Mon=0 … Sun=6
+  return addDays(d, -offset);
+}
+
+export default function CalendarPage() {
+  const [date, setDate] = useState(() => new Date());
+  const [view, setView] = useState<"day" | "week">("day");
+
+  // The visible days, and the fetch window that covers them.
+  const days =
+    view === "day"
+      ? [date]
+      : Array.from({ length: 7 }, (_, i) => addDays(weekStart(date), i));
+  const rangeStart = format(days[0], "yyyy-MM-dd");
+  const rangeEndExclusive = format(addDays(days[days.length - 1], 1), "yyyy-MM-dd");
+
+  const { data: status, isLoading: statusLoading } = useCalendarStatus();
+  const { data: calEvents = [] } = useCalendarRange(rangeStart, rangeEndExclusive);
+  const { data: allTasks = [] } = useTasks({});
+  const sync = useCalendarSync();
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+
+  const dayStrs = days.map((d) => format(d, "yyyy-MM-dd"));
+  const allDayEvents = calEvents.filter((e) => e.all_day);
+  // Rail: unscheduled open tasks due within the visible range.
   const unscheduledTasks = allTasks.filter(
-    (t) => !t.scheduled_start && t.due_date === dateStr && t.status !== "done"
+    (t) =>
+      !t.scheduled_start &&
+      t.status !== "done" &&
+      t.due_date != null &&
+      dayStrs.includes(t.due_date)
   );
 
-  const externalEvents = calEvents.filter(
-    (e) => !e.all_day && !e.is_checkbox_owned
-  );
-  const allDayEvents = calEvents.filter((e) => e.all_day);
+  function step(dir: 1 | -1) {
+    setDate((d) => addDays(d, dir * (view === "week" ? 7 : 1)));
+  }
 
   if (statusLoading) {
     return (
@@ -320,30 +401,54 @@ export default function CalendarPage() {
     return <ConnectCalendar />;
   }
 
+  const title =
+    view === "day"
+      ? format(date, "EEEE, d MMMM yyyy")
+      : `${format(days[0], "d MMM")} – ${format(days[6], "d MMM yyyy")}`;
+
   return (
     <div className="flex h-full flex-col gap-3 pt-4 md:pt-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => setDate((d) => addDays(d, -1))}
+          onClick={() => step(-1)}
           className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-surface-2 hover:text-foreground"
-          aria-label="Previous day"
+          aria-label={view === "week" ? "Previous week" : "Previous day"}
         >
           <ChevronLeftIcon className="h-4 w-4" />
         </button>
-        <h1 className="text-base font-semibold text-foreground">
-          {format(date, "EEEE, d MMMM yyyy")}
+        <h1 className="min-w-0 truncate text-base font-semibold text-foreground">
+          {title}
         </h1>
         <button
-          onClick={() => setDate((d) => addDays(d, 1))}
+          onClick={() => step(1)}
           className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-surface-2 hover:text-foreground"
-          aria-label="Next day"
+          aria-label={view === "week" ? "Next week" : "Next day"}
         >
           <ChevronRightIcon className="h-4 w-4" />
         </button>
         <Button variant="outline" size="sm" onClick={() => setDate(new Date())}>
           Today
         </Button>
+
+        {/* Day / Week toggle */}
+        <div className="flex overflow-hidden rounded-md border border-border">
+          {(["day", "week"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={cn(
+                "px-2.5 py-1 text-xs font-medium capitalize transition-colors",
+                view === v
+                  ? "bg-surface-2 text-foreground"
+                  : "text-muted hover:bg-surface-2/60 hover:text-foreground"
+              )}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+
         <Button
           variant="ghost"
           size="sm"
@@ -354,18 +459,23 @@ export default function CalendarPage() {
           <RefreshIcon className={cn("h-4 w-4", sync.isPending && "animate-spin")} />
           {sync.isPending ? "Syncing…" : "Sync"}
         </Button>
-        <span className="text-xs text-subtle">{status.google_email}</span>
+        <span className="hidden text-xs text-subtle md:inline">
+          {status.google_email}
+        </span>
       </div>
 
       <CalendarSyncBanner status={status} />
 
-      {/* All-day strip */}
+      {/* All-day strip (across the visible range) */}
       <AllDayStrip events={allDayEvents} />
 
-      {/* Body: time grid + unscheduled rail */}
-      <div className="flex flex-1 gap-4 overflow-y-auto">
+      {/* Body: hour labels + one-or-seven day columns + unscheduled rail */}
+      <div className="flex flex-1 gap-3 overflow-auto">
         {/* Hour labels */}
-        <div className="relative w-10 shrink-0" style={{ height: GRID_HEIGHT }}>
+        <div
+          className="relative w-10 shrink-0"
+          style={{ height: GRID_HEIGHT, marginTop: view === "week" ? 24 : 0 }}
+        >
           {Array.from(
             { length: GRID_END - GRID_START },
             (_, i) => GRID_START + i
@@ -380,35 +490,41 @@ export default function CalendarPage() {
           ))}
         </div>
 
-        {/* Time grid */}
-        <div
-          className="relative flex-1 border-l border-border"
-          style={{ height: GRID_HEIGHT }}
-        >
-          {SLOTS.map((slot, i) => (
-            <SlotRow
-              key={slot}
-              date={dateStr}
-              time={slot}
-              top={i * ((SLOT_MIN / 60) * PX_PER_HOUR)}
-            />
-          ))}
-          {externalEvents.map((e) => (
-            <ExternalEventBlock key={e.id} event={e} />
-          ))}
-          {scheduledTasks.map((t) => (
-            <TaskBlock key={t.id} task={t} />
-          ))}
-          <NowLine dateStr={dateStr} />
+        {/* Day column(s) */}
+        <div className="flex min-w-0 flex-1 gap-1">
+          {days.map((d) => {
+            const ds = format(d, "yyyy-MM-dd");
+            return (
+              <DayColumn
+                key={ds}
+                dateStr={ds}
+                events={calEvents}
+                tasks={allTasks}
+                header={
+                  view === "week"
+                    ? {
+                        weekday: format(d, "EEE"),
+                        day: format(d, "d"),
+                        isToday: ds === todayStr,
+                      }
+                    : undefined
+                }
+              />
+            );
+          })}
         </div>
 
         {/* Unscheduled task rail */}
-        <div className="w-56 shrink-0">
+        <div className="w-52 shrink-0" style={{ marginTop: view === "week" ? 24 : 0 }}>
           <div className="mb-2 text-[11px] uppercase tracking-wide text-subtle">
-            Unscheduled today
+            {view === "week" ? "Unscheduled this week" : "Unscheduled today"}
           </div>
           {unscheduledTasks.length === 0 ? (
-            <p className="text-xs text-subtle">All tasks scheduled for today.</p>
+            <p className="text-xs text-subtle">
+              {view === "week"
+                ? "Nothing due this week is unscheduled."
+                : "All tasks scheduled for today."}
+            </p>
           ) : (
             <div className="space-y-1.5">
               {unscheduledTasks.map((t) => (
