@@ -1,10 +1,12 @@
 import { addMinutes, format, parseISO } from "date-fns";
-import type { Task } from "../../shared/types";
+import type { Project, Task } from "../../shared/types";
 
 // Drag-drop routing for the single app-level DndContext. Kept pure (no network,
 // no React) so every branch is unit-testable — see test/dnd.test.ts.
 
-export type DragData = { type?: string; task?: Task } | undefined;
+export type DragData =
+  | { type?: string; task?: Task; project?: Project }
+  | undefined;
 
 export type DropData =
   | {
@@ -21,6 +23,7 @@ export type DropData =
 
 export type DropAction =
   | { kind: "update"; id: string; body: Record<string, unknown> }
+  | { kind: "move-project"; id: string; areaId: string | null }
   | null;
 
 // Resolve a drop into the mutation it should trigger, or null for a no-op.
@@ -29,7 +32,20 @@ export function resolveDrop(
   target: DropData,
   todayStr: string
 ): DropAction {
-  if (!dragged?.task || !target) return null;
+  if (!dragged || !target) return null;
+
+  // Dragging a PROJECT: the only valid target is an area, and it re-homes the
+  // project (and its tasks) there. A drop on its own area is a no-op.
+  if (dragged.type === "move-project" && dragged.project) {
+    const project = dragged.project;
+    if (target.type === "area" && target.areaId) {
+      if (target.areaId === project.area_id) return null;
+      return { kind: "move-project", id: project.id, areaId: target.areaId };
+    }
+    return null;
+  }
+
+  if (!dragged.task) return null;
   const task = dragged.task;
   const id = task.id;
 

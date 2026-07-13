@@ -5,6 +5,7 @@ import {
   DndContext,
   type DragEndEvent,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -40,8 +41,15 @@ export function AppShell() {
   const [task, setTask] = useState<Task | null>(null);
   const [drawer, setDrawer] = useState(false);
   const client = useQueryClient();
+  // Mouse: a 6px move starts a drag, so a plain click still opens the task.
+  // Touch: press-and-hold ~180ms starts a drag, so a normal swipe scrolls the
+  // list instead of being hijacked. Without the TouchSensor, dragging was
+  // impossible on the phone — the app's primary surface.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 180, tolerance: 8 },
+    })
   );
 
   async function onDragEnd(e: DragEndEvent) {
@@ -52,10 +60,15 @@ export function AppShell() {
     );
     if (!action) return;
     try {
-      await api.updateTask(action.id, action.body);
+      if (action.kind === "move-project") {
+        await api.updateProject(action.id, { area_id: action.areaId });
+      } else {
+        await api.updateTask(action.id, action.body);
+      }
     } finally {
       client.invalidateQueries({ queryKey: ["view"] });
       client.invalidateQueries({ queryKey: ["tasks"] });
+      client.invalidateQueries({ queryKey: ["projects"] });
     }
   }
 

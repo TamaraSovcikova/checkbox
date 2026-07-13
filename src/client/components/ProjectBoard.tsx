@@ -20,8 +20,8 @@ function Card({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
       }
       onClick={() => onOpen(task)}
       className={cn(
-        "cursor-pointer rounded-md border border-border bg-surface p-2 transition-colors hover:border-primary/40",
-        isDragging && "opacity-50"
+        "touch-none rounded-md border border-border bg-surface p-2 transition-colors hover:border-primary/40",
+        isDragging ? "cursor-grabbing opacity-50" : "cursor-grab"
       )}
       {...attributes}
       {...listeners}

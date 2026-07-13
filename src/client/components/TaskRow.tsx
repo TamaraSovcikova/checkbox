@@ -96,9 +96,17 @@ export function TaskRow({
 
   return (
     <div className={cn(isDragging && "opacity-40")}>
+      {/* The whole row is the drag surface (grab anywhere, including on touch via
+          press-and-hold). A plain click still opens the task, because the sensor
+          only starts a drag past a movement/hold threshold. Action controls below
+          stop pointer-down from bubbling, so tapping them never starts a drag. */}
       <div
+        ref={setNodeRef}
+        {...attributes}
+        {...listeners}
         className={cn(
-          "group flex items-start gap-1 rounded-md px-2 py-1.5 transition-colors",
+          "group flex touch-none items-start gap-1 rounded-md px-2 py-1.5 transition-colors",
+          isDragging ? "cursor-grabbing" : "cursor-grab",
           selection?.cursor
             ? "bg-surface-2/70 ring-1 ring-primary/50"
             : selection?.selected
@@ -109,6 +117,7 @@ export function TaskRow({
         {/* multi-select checkbox — appears on hover or while a selection is active */}
         <button
           aria-label={selection?.selected ? "Deselect" : "Select"}
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
             selection?.onToggle();
@@ -125,18 +134,16 @@ export function TaskRow({
           {selection?.selected && <CheckIcon className="h-2.5 w-2.5" />}
         </button>
 
-        <button
-          ref={setNodeRef}
-          {...attributes}
-          {...listeners}
-          aria-label="Drag task"
-          title="Drag to an area, project, or view"
-          className="mt-0.5 hidden w-4 shrink-0 cursor-grab place-items-center text-subtle hover:text-foreground group-hover:grid"
+        {/* Drag affordance — a hint, not the only grab point; the row drags. */}
+        <span
+          aria-hidden
+          className="mt-0.5 hidden w-4 shrink-0 place-items-center text-subtle group-hover:grid"
         >
           <DragIcon className="h-3.5 w-3.5" />
-        </button>
+        </span>
         <button
           aria-label="Complete"
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={onComplete}
           className={cn(
             "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border transition-colors",
@@ -153,6 +160,7 @@ export function TaskRow({
           <button
             aria-label={plannedToday ? "Remove from Today" : "Add to Today"}
             title={plannedToday ? "Remove from Today" : "Add to Today"}
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onToggleToday();
@@ -236,6 +244,7 @@ export function TaskRow({
             aria-label={expanded ? "Hide subtasks" : "Show subtasks"}
             aria-expanded={expanded}
             title={`${subDone} of ${subtasks.length} subtasks done`}
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               setExpanded((v) => !v);

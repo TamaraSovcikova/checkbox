@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolveDrop } from "../src/client/lib/dnd";
-import type { Task } from "../src/shared/types";
+import type { Project, Task } from "../src/shared/types";
 
 const task = (over: Partial<Task> = {}): Task =>
   ({
@@ -135,5 +135,42 @@ describe("resolveDrop", () => {
       id: "t1",
       body: { area_id: null, project_id: null },
     });
+  });
+});
+
+describe("resolveDrop — dragging a project", () => {
+  const project = (over: Partial<Project> = {}): Project =>
+    ({
+      id: "p1",
+      area_id: "a1",
+      name: "Proj",
+      description: null,
+      goal: null,
+      status: "active",
+      start_date: null,
+      due_date: null,
+      board_columns: [],
+      position: 0,
+      completed_at: null,
+      ...over,
+    }) as Project;
+
+  const dragProject = { type: "move-project", project: project() };
+
+  it("dropping a project on a different area moves it there", () => {
+    expect(
+      resolveDrop(dragProject, { type: "area", areaId: "a2" }, TODAY)
+    ).toEqual({ kind: "move-project", id: "p1", areaId: "a2" });
+  });
+
+  it("dropping a project on its own area is a no-op", () => {
+    expect(resolveDrop(dragProject, { type: "area", areaId: "a1" }, TODAY)).toBeNull();
+  });
+
+  it("a project only drops on areas, never on views/projects/slots", () => {
+    expect(resolveDrop(dragProject, { type: "view", view: "today" }, TODAY)).toBeNull();
+    expect(
+      resolveDrop(dragProject, { type: "project", projectId: "p2", areaId: "a2" }, TODAY)
+    ).toBeNull();
   });
 });

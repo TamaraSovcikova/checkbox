@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useDroppable } from "@dnd-kit/core";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Project, Task, TriageSuggestion } from "../shared/types";
 import {
   useAreas,
@@ -605,30 +605,44 @@ function BacklogBody({ tasks, list }: { tasks: Task[]; list: ReactNode }) {
   );
 }
 
-// A project card on the area page doubles as a drop target: drag a loose task
-// onto it to file the task into that project. `resolveDrop` turns the drop into
-// { project_id, area_id }, so the task lands filed rather than merely re-homed.
+// A project card on the area page plays two DnD roles at once:
+//   - droppable: drag a loose task onto it to file the task into the project.
+//   - draggable: drag the card itself onto another area (in the sidebar) to
+//     move the whole project there.
+// One <a> is both; the two dnd-kit refs are merged onto it. Click still
+// navigates, because a drag only starts past the pointer-movement threshold.
 function ProjectCard({ project }: { project: Project }) {
   // The sidebar already registers `project:<id>`; dnd-kit ids are global, so a
   // second droppable under that key would silently shadow one of the two.
-  const { setNodeRef, isOver } = useDroppable({
+  const drop = useDroppable({
     id: `area-card:project:${project.id}`,
     data: { type: "project", projectId: project.id, areaId: project.area_id },
   });
+  const drag = useDraggable({
+    id: `drag-project:${project.id}`,
+    data: { type: "move-project", project },
+  });
+  const ref = (node: HTMLElement | null) => {
+    drop.setNodeRef(node);
+    drag.setNodeRef(node);
+  };
   return (
     <a
-      ref={setNodeRef}
+      ref={ref}
       href={`/project/${project.id}`}
+      {...drag.attributes}
+      {...drag.listeners}
       className={cx(
-        "rounded-lg border bg-surface p-3 transition-colors",
-        isOver
+        "touch-none rounded-lg border bg-surface p-3 transition-colors",
+        drag.isDragging ? "cursor-grabbing opacity-40" : "cursor-grab",
+        drop.isOver
           ? "border-primary ring-1 ring-primary/50"
           : "border-border hover:border-primary/40"
       )}
     >
       <div className="font-medium">{project.name}</div>
       {project.goal && <div className="text-xs text-subtle">{project.goal}</div>}
-      {isOver && (
+      {drop.isOver && (
         <div className="mt-1 text-[11px] text-primary">Drop to file here</div>
       )}
     </a>
