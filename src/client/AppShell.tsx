@@ -14,6 +14,7 @@ import { resolveDrop, type DragData, type DropData } from "./lib/dnd";
 import { Sidebar, MobileSidebar } from "./components/Sidebar";
 import { TaskSheet } from "./components/TaskSheet";
 import { CommandCapture } from "./components/CommandCapture";
+import { SearchIconButton } from "./components/SearchBox";
 import { TaskUIContext } from "./lib/ui-context";
 import { MenuIcon, AddIcon, LogoIcon } from "./lib/icons";
 import { todayStr } from "./lib/utils";
@@ -85,6 +86,7 @@ export function AppShell() {
                   Checkbox
                 </span>
               </div>
+              <SearchIconButton />
               <ThemeToggle />
               <button
                 type="button"

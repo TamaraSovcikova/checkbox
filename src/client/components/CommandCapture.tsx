@@ -66,12 +66,16 @@ export function CommandCapture() {
       }
     };
     // Touch clients have no Cmd-K; the mobile add button dispatches this instead.
+    // The header search box dispatches `checkbox:search` — same palette, which
+    // already searches whatever is typed, so the two entry points converge here.
     const onCapture = () => setOpen(true);
     window.addEventListener("keydown", onKey);
     window.addEventListener("checkbox:capture", onCapture);
+    window.addEventListener("checkbox:search", onCapture);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("checkbox:capture", onCapture);
+      window.removeEventListener("checkbox:search", onCapture);
     };
   }, []);
 
@@ -122,7 +126,7 @@ export function CommandCapture() {
       <CommandInput
         value={text}
         onValueChange={setText}
-        placeholder="Add a task, or jump to a view…"
+        placeholder="Search tasks, add one, or jump to a view…"
       />
       <CommandList>
         {q ? (

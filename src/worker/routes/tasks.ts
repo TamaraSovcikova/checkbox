@@ -242,8 +242,14 @@ tasks.post("/:id/complete", async (c) => {
           : t.due_date ?? todayStr();
       const next = nextDueDate(t.recurrence, anchor);
       if (next) {
+        // Roll forward to the next occurrence AND let go of today: clear the
+        // "work on it today" intent and today's time block, so ticking a
+        // recurring task drops it out of Today rather than having the next
+        // instance cling there. It reappears in Today on its next due day.
         await c.env.DB.prepare(
-          "UPDATE tasks SET due_date = ?, status = 'todo', completed_at = NULL, updated_at = ? WHERE id = ? AND user_id = ?"
+          `UPDATE tasks SET due_date = ?, status = 'todo', completed_at = NULL,
+             planned_date = NULL, scheduled_start = NULL, scheduled_end = NULL,
+             updated_at = ? WHERE id = ? AND user_id = ?`
         )
           .bind(next, now(), id, userId)
           .run();

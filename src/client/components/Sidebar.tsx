@@ -19,6 +19,7 @@ import {
 import { FilterDialog } from "./FilterDialog";
 import { AreaDialog } from "./AreaDialog";
 import { TemplatesSection } from "./TemplatesSection";
+import { SearchBox } from "./SearchBox";
 import { useMe } from "../lib/ui-context";
 import { cn } from "@/lib/utils";
 import { areaColorVar } from "../lib/colors";
@@ -393,6 +394,8 @@ function SidebarInner() {
           <ThemeToggle className="hidden h-7 w-7 md:grid" />
         </div>
       </div>
+
+      <SearchBox />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {/* Tasks */}
