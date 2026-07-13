@@ -624,6 +624,10 @@ function ProjectCard({ project }: { project: Project }) {
     id: `drag-project:${project.id}`,
     data: { type: "move-project", project },
   });
+  // Open task count, shown quietly top-right so you can gauge a project at a
+  // glance from the area view. useTasks(project_id) returns open tasks only.
+  const { data: projectTasks = [] } = useTasks({ project_id: project.id });
+  const openCount = projectTasks.length;
   const ref = (node: HTMLElement | null) => {
     drop.setNodeRef(node);
     drag.setNodeRef(node);
@@ -635,15 +639,23 @@ function ProjectCard({ project }: { project: Project }) {
       {...drag.attributes}
       {...drag.listeners}
       className={cx(
-        "touch-none rounded-lg border bg-surface p-3 transition-colors",
+        "relative touch-none rounded-lg border bg-surface p-3 transition-colors",
         drag.isDragging ? "cursor-grabbing opacity-40" : "cursor-grab",
         drop.isOver
           ? "border-primary ring-1 ring-primary/50"
           : "border-border hover:border-primary/40"
       )}
     >
-      <div className="font-medium">{project.name}</div>
-      {project.goal && <div className="text-xs text-subtle">{project.goal}</div>}
+      {openCount > 0 && (
+        <span
+          className="absolute right-2 top-2 text-xs tabular-nums text-subtle"
+          title={`${openCount} open task${openCount === 1 ? "" : "s"}`}
+        >
+          {openCount}
+        </span>
+      )}
+      <div className="pr-6 font-medium">{project.name}</div>
+      {project.goal && <div className="pr-6 text-xs text-subtle">{project.goal}</div>}
       {drop.isOver && (
         <div className="mt-1 text-[11px] text-primary">Drop to file here</div>
       )}
