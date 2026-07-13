@@ -416,6 +416,11 @@ export function useViewPrefs() {
   const setTriageFallbackArea = (areaId: string | null) =>
     save.mutate({ ...prefs, triageFallbackAreaId: areaId });
 
+  // Dim tasks due more than a month out. Default on (undefined ⇒ true).
+  const dimDistantTasks = prefs.dimDistantTasks !== false;
+  const setDimDistantTasks = (on: boolean) =>
+    save.mutate({ ...prefs, dimDistantTasks: on });
+
   return {
     prefs,
     hide,
@@ -424,6 +429,8 @@ export function useViewPrefs() {
     viewDefault,
     setViewDefault,
     setTriageFallbackArea,
+    dimDistantTasks,
+    setDimDistantTasks,
   };
 }
 

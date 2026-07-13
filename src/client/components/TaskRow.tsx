@@ -6,11 +6,12 @@ import {
   useCompleteTask,
   useToggleSubtask,
   useUpdateTask,
+  useViewPrefs,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import { recurrenceLabel } from "../../shared/recurrence";
 import { PRIORITY_VAR } from "../lib/colors";
-import { cn, todayStr } from "@/lib/utils";
+import { cn, todayStr, monthAheadStr } from "@/lib/utils";
 import {
   DragIcon,
   CheckIcon,
@@ -39,11 +40,16 @@ export function TaskRow({
   const update = useUpdateTask();
   const toggleSub = useToggleSubtask();
   const completeAll = useCompleteAllSubtasks();
+  const { dimDistantTasks } = useViewPrefs();
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const done = task.status === "done";
   const doing = task.status === "doing";
+  // Dim (but keep interactive) tasks due more than a month out, so the far
+  // future recedes. Toggle in Settings › Appearance.
+  const distant =
+    dimDistantTasks && !done && !!task.due_date && task.due_date > monthAheadStr();
   const plannedToday = task.planned_date === todayStr();
   const openBlockers = (task.depends_on ?? []).filter(
     (d) => d.status !== "done"
@@ -95,7 +101,13 @@ export function TaskRow({
   }
 
   return (
-    <div className={cn(isDragging && "opacity-40")}>
+    <div
+      className={cn(
+        isDragging && "opacity-40",
+        // Dim the far future; hover restores full opacity so it never feels lost.
+        distant && !isDragging && "opacity-45 transition-opacity hover:opacity-100"
+      )}
+    >
       {/* The whole row is the drag surface (grab anywhere, including on touch via
           press-and-hold). A plain click still opens the task, because the sensor
           only starts a drag past a movement/hold threshold. Action controls below

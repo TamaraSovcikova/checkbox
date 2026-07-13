@@ -155,6 +155,9 @@ export interface UserPrefs {
   viewDefaults?: Record<string, ViewDefault>; // per-view grid/sort/group memory
   // Catch-all area for backlog tasks triage cannot confidently place.
   triageFallbackAreaId?: string | null;
+  // Dim tasks due more than a month out so the far future doesn't pull the eye.
+  // Undefined is treated as on. Toggled in Settings › Appearance.
+  dimDistantTasks?: boolean;
 }
 
 // ── Attachments ────────────────────────────────────────────────────────────

@@ -1054,6 +1054,7 @@ function TriageSection() {
 // localStorage + applies to the DOM immediately). "System" follows the OS.
 function AppearanceSection() {
   const { pref, resolved, setPref } = useTheme();
+  const { dimDistantTasks, setDimDistantTasks } = useViewPrefs();
   const opts: { value: ThemePref; label: string }[] = [
     { value: "system", label: "System" },
     { value: "light", label: "Light" },
@@ -1087,6 +1088,34 @@ function AppearanceSection() {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between gap-4 border-t border-border pt-4">
+        <div className="min-w-0">
+          <div className="text-sm text-foreground">Dim distant tasks</div>
+          <div className="text-xs text-subtle">
+            Grey out tasks due more than a month away. They stay fully usable, just
+            quieter, so the far future doesn&apos;t pull your eye.
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={dimDistantTasks}
+          aria-label="Dim distant tasks"
+          onClick={() => setDimDistantTasks(!dimDistantTasks)}
+          className={cx(
+            "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+            dimDistantTasks ? "bg-primary" : "bg-surface-2"
+          )}
+        >
+          <span
+            className={cx(
+              "absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform",
+              dimDistantTasks ? "translate-x-[22px]" : "translate-x-0.5"
+            )}
+          />
+        </button>
       </div>
     </Section>
   );
