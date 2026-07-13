@@ -200,6 +200,11 @@ const TOOLS = [
         priority: { type: "number", enum: [1, 2, 3, 4] },
         due_date: { type: "string", description: "YYYY-MM-DD" },
         due_time: { type: "string", description: "HH:MM" },
+        planned_date: {
+          type: "string",
+          description:
+            "YYYY-MM-DD. 'I intend to work on this on this day.' Set to today's date to put the task in the Today view (this is how you 'add to Today'); it does NOT change the deadline.",
+        },
         scheduled_start: {
           type: "string",
           description: "ISO datetime for time-block start",
@@ -251,6 +256,11 @@ const TOOLS = [
         priority: { type: "number", enum: [1, 2, 3, 4] },
         due_date: { type: "string" },
         due_time: { type: "string" },
+        planned_date: {
+          type: "string",
+          description:
+            "YYYY-MM-DD. 'I intend to work on this on this day.' Set to today's date to put the task in the Today view (this is how you 'add to Today'); it does NOT change the deadline. Pass an empty string to remove it.",
+        },
         scheduled_start: { type: "string" },
         scheduled_end: { type: "string" },
         time_estimate_min: { type: "number" },
@@ -697,10 +707,15 @@ async function handleTool(
       const binds: unknown[] = [userId];
 
       if (args.view === "today") {
-        sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
-               AND (due_date = ? OR due_date < ? OR DATE(scheduled_start) = ?)
+        // Must match the app's Today view (routes/views.ts): due today or
+        // overdue, scheduled today, OR planned for today, excluding subtasks and
+        // snoozed tasks. planned_date is how "add to Today" works, so a plan set
+        // via update_task(planned_date) must be visible here.
+        sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
+               AND (due_date = ? OR due_date < ? OR substr(scheduled_start,1,10) = ? OR planned_date = ?)
+               AND (snoozed_until IS NULL OR snoozed_until <= ?)
                ORDER BY priority, position`;
-        binds.push(today, today, today);
+        binds.push(today, today, today, today, today);
       } else if (args.view === "upcoming") {
         sql = `SELECT * FROM tasks WHERE user_id = ? AND due_date > ? AND status != 'done'
                ORDER BY due_date, priority`;
