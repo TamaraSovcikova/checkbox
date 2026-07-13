@@ -65,8 +65,21 @@ describe("suggestForToday", () => {
     expect(s.reason).toBe("P1 · urgent");
   });
 
-  it("does not suggest low-priority, no-deadline backlog", () => {
-    expect(suggestForToday([task({ id: "p4", priority: 4 })], TODAY)).toHaveLength(0);
+  it("still suggests low-priority backlog when it is the best available", () => {
+    // The button exists for an empty Today — never come back empty-handed if
+    // there is anything workable.
+    const [s] = suggestForToday([task({ id: "p4", priority: 4 })], TODAY);
+    expect(s.task.id).toBe("p4");
+    expect(s.reason).toBe("P4 · no deadline");
+  });
+
+  it("returns empty only when nothing is eligible", () => {
+    const tasks = [
+      task({ id: "done", priority: 1, status: "done" }),
+      task({ id: "planned", priority: 1, planned_date: TODAY }),
+      task({ id: "snoozed", priority: 1, snoozed_until: "2026-07-20" }),
+    ];
+    expect(suggestForToday(tasks, TODAY)).toHaveLength(0);
   });
 
   it("suggests a due-soon task even at low priority, with a due reason", () => {
@@ -75,17 +88,19 @@ describe("suggestForToday", () => {
     expect(s.reason).toBe("Due tomorrow");
   });
 
-  it("ranks by deadline pressure then priority, and respects the limit", () => {
+  it("ranks deadline pressure over priority, priority over backlog, and respects the limit", () => {
     const tasks = [
       task({ id: "p2", priority: 2 }), //            score 30 (no deadline)
       task({ id: "p1-tomorrow", priority: 1, due_date: "2026-07-14" }), // 80
       task({ id: "p3-soon", priority: 3, due_date: "2026-07-15" }), //     50
+      task({ id: "p4-backlog", priority: 4 }), //    score 10 (still included)
     ];
-    // A P3 due in 2 days outranks a no-deadline P2: deadline pressure wins.
+    // Pressure first, then priority; the P4 backlog trails but is not dropped.
     expect(suggestForToday(tasks, TODAY).map((s) => s.task.id)).toEqual([
       "p1-tomorrow",
       "p3-soon",
       "p2",
+      "p4-backlog",
     ]);
     expect(suggestForToday(tasks, TODAY, 2).map((s) => s.task.id)).toEqual([
       "p1-tomorrow",

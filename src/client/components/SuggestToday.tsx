@@ -10,12 +10,20 @@ import { todayStr } from "@/lib/utils";
 
 // The prompt behind "Ask Claude to plan". Runs in a Claude chat under the user's
 // subscription (zero API cost), driving the Checkbox MCP to set planned_date.
+// It is deliberately proactive (never come back empty) and pulls in vault
+// context so the picks reflect goals, not just the nearest deadline.
 const CLAUDE_PROMPT =
-  "Plan my day in Checkbox. Use the Checkbox MCP tools: call list_tasks to " +
-  "review all my open tasks, then pick the ones I should realistically tackle " +
-  "today based on priority, due dates and what fits in a day (roughly 3-6). " +
-  "Add each chosen task to my Today view by setting planned_date to today via " +
-  "update_task, then give me a one-line rationale for the selection.";
+  "Plan my day in Checkbox, and be proactive: even if my Today list is empty " +
+  "or nothing looks urgent, still choose a solid set of tasks for me to work on.\n\n" +
+  "1. Use the Checkbox MCP: call list_tasks to review ALL my open tasks across " +
+  "every area, project and the backlog.\n" +
+  "2. Read my Obsidian vault for context — my goals, current projects and " +
+  "priorities — and weigh what actually matters right now, not just what has " +
+  "the nearest deadline.\n" +
+  "3. Choose roughly 5-10 tasks that make the best use of today, balancing " +
+  "deadlines, priority and my goals, and say in one line why each made the cut.\n" +
+  "4. Add each chosen task to my Today view by setting planned_date to today " +
+  "via update_task.";
 
 const CLAUDE_URL = `https://claude.ai/new?q=${encodeURIComponent(CLAUDE_PROMPT)}`;
 
@@ -94,8 +102,8 @@ export function SuggestToday() {
 
       {suggestions.length === 0 ? (
         <p className="text-sm text-subtle">
-          Nothing pressing outside Today right now — your deadlines and priorities
-          are already surfaced.
+          Nothing left to pull in — every open task is already in Today, done, or
+          waiting on something else. Try “Ask Claude to plan” for a goal-aware take.
         </p>
       ) : (
         <ul className="space-y-1.5">
@@ -130,8 +138,9 @@ export function SuggestToday() {
         {claudeLink}
       </div>
       <p className="mt-2 text-[11px] text-subtle">
-        “Ask Claude” opens a chat that plans via your Checkbox connector — needs
-        that connector enabled. Runs on your subscription, no API cost.
+        “Ask Claude” opens a chat that reviews everything and weighs your vault
+        goals, then plans via your Checkbox connector — needs that connector (and
+        vault access) enabled. Runs on your subscription, no API cost.
       </p>
     </div>
   );

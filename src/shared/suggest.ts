@@ -1,16 +1,20 @@
 import type { Task } from "./types";
 
-// "Suggest for today" — the zero-cost, no-AI half of plan-my-day. It ranks the
-// open tasks that are NOT already surfaced in Today by how much they deserve a
-// spot today: an approaching deadline or a high priority. Pure + deterministic
+// "Suggest for today" — the zero-cost, no-AI half of plan-my-day. You click it
+// when Today feels too empty, so it is deliberately NOT picky: it ranks EVERY
+// eligible open task and always returns the best available, even when nothing is
+// pressing. The score is what makes the ranking defensible (deadline pressure,
+// then priority); the reason string explains the pick. Pure + deterministic
 // (today is passed in) so it is unit-testable.
 //
-// Excluded, because they are already in Today or should not be pulled in:
+// Excluded only because they are already in Today or genuinely can't be worked:
 //   - done
 //   - planned for today, or time-blocked today  (already in Today)
 //   - due today or overdue                       (already in Today via due_date)
 //   - snoozed to a future day
 //   - blocked by an unfinished dependency
+// Everything else is a candidate, ranked. Empty result ⇒ there is truly nothing
+// left to pull in.
 
 export type Suggestion = { task: Task; score: number; reason: string };
 
@@ -43,23 +47,38 @@ export function suggestForToday(
     const dueIn = t.due_date ? daysBetween(todayStr, t.due_date) : null;
     if (dueIn !== null && dueIn <= 0) continue; // due today / overdue: already in Today
 
-    const dueSoon = dueIn !== null && dueIn <= HORIZON_DAYS;
-    const highPriority = t.priority <= 2;
-    if (!dueSoon && !highPriority) continue; // no reason to pull it into today
-
-    // Priority floor (P1=40 … P4=10) plus a deadline bump for anything due soon.
+    // Priority floor (P1=40 … P4=10). Everything eligible scores; no hard gate,
+    // so an empty Today still gets the best of the backlog.
     let score = (5 - t.priority) * 10;
     let reason: string;
-    if (dueSoon && dueIn !== null) {
+
+    if (dueIn !== null && dueIn <= HORIZON_DAYS) {
+      // Approaching deadline — the strongest signal.
       score += dueIn === 1 ? 40 : dueIn === 2 ? 30 : 20;
       reason = dueIn === 1 ? "Due tomorrow" : `Due in ${dueIn} days`;
-      if (highPriority) reason += ` · P${t.priority}`;
+      if (t.priority <= 2) reason += ` · P${t.priority}`;
+    } else if (dueIn !== null) {
+      // Has a deadline, just further out — a mild nudge over no-deadline tasks.
+      score += 5;
+      reason = `Due ${t.due_date}${t.priority <= 2 ? ` · P${t.priority}` : ""}`;
+    } else if (t.priority === 1) {
+      reason = "P1 · urgent";
+    } else if (t.priority === 2) {
+      reason = "P2 · high priority";
     } else {
-      reason = t.priority === 1 ? "P1 · urgent" : `P${t.priority}, no deadline`;
+      reason = `P${t.priority} · no deadline`;
     }
+
     out.push({ task: t, score, reason });
   }
 
-  out.sort((a, b) => b.score - a.score || a.task.priority - b.task.priority);
+  // Highest score first; ties break to higher priority, then sooner due date so
+  // the order is stable and sensible.
+  out.sort(
+    (a, b) =>
+      b.score - a.score ||
+      a.task.priority - b.task.priority ||
+      (a.task.due_date ?? "9999").localeCompare(b.task.due_date ?? "9999")
+  );
   return out.slice(0, limit);
 }
