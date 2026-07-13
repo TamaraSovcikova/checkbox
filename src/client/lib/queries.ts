@@ -164,6 +164,35 @@ export function useAddNoteCandidates() {
   });
 }
 
+// ── Gmail coverage (Phase A) ─────────────────────────────────────────────────
+
+export const useMailCandidates = (days = 7) =>
+  useQuery({
+    queryKey: ["mail-candidates", days],
+    queryFn: () => api.mailCandidates(days),
+    staleTime: 15_000,
+  });
+
+export function useMailAccept() {
+  const qc = useQueryClient();
+  const invalidate = useTaskInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => api.mailAccept(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mail-candidates"] });
+      invalidate();
+    },
+  });
+}
+
+export function useMailDismiss() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.mailDismiss(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mail-candidates"] }),
+  });
+}
+
 // ── Ambient day plan (#30) ──────────────────────────────────────────────────
 
 export const useDayPlan = () =>

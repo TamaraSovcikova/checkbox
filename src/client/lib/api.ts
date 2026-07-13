@@ -6,6 +6,7 @@ import type {
   DayPlan,
   Label,
   NoteCandidateRow,
+  MailCandidateRow,
   Project,
   SavedFilter,
   Stats,
@@ -232,6 +233,14 @@ export const api = {
     http(`/api/notes/candidates/${id}/reject`, { method: "POST" }),
   rejectAllNoteCandidates: () =>
     http("/api/notes/candidates/reject-all", { method: "POST" }),
+
+  // Gmail coverage (Phase A)
+  mailCandidates: (days = 7) =>
+    http<MailCandidateRow[]>(`/api/mail/candidates?days=${days}`),
+  mailAccept: (id: string) =>
+    http<Task>(`/api/mail/candidates/${id}/accept`, { method: "POST" }),
+  mailDismiss: (id: string) =>
+    httpMutate("POST", `/api/mail/candidates/${id}/dismiss`),
 
   // ambient day plan (#30)
   dayPlanToday: () => http<DayPlan | null>("/api/plans/today"),

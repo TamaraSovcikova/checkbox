@@ -219,6 +219,27 @@ export interface NoteCandidateRow {
   created_at: string;
 }
 
+// ── Gmail coverage (Phase A) ────────────────────────────────────────────────
+export interface MailCandidateRow {
+  id: string;
+  source: string; // planner | gmail_sync | forward | user
+  thread_id: string;
+  message_id: string;
+  permalink: string | null;
+  from_addr: string | null;
+  subject: string | null;
+  snippet: string | null;
+  received_at: string | null;
+  verdict: "pending" | "filed" | "skipped";
+  reason: string | null;
+  task_id: string | null;
+  user_locked: number; // 0 | 1
+  created_at: string;
+  updated_at: string;
+  // server-computed badge
+  coverage: "filed" | "skipped" | "pending" | "needs_attention";
+}
+
 // ── Ambient day plan (#30) ─────────────────────────────────────────────────
 export interface DayPlanBlock {
   task_id: string;

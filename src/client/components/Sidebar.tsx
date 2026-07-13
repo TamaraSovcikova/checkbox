@@ -30,6 +30,7 @@ import {
   BacklogIcon,
   LogbookIcon,
   CalendarIcon,
+  MailIcon,
   SettingsIcon,
   LogOutIcon,
   AddIcon,
@@ -73,6 +74,7 @@ const TASK_VIEWS: NavDef[] = [
 ];
 const PLAN_VIEWS: NavDef[] = [
   { to: "/calendar", label: "Calendar", icon: CalendarIcon },
+  { to: "/mail", label: "Mail coverage", icon: MailIcon },
   { to: "/review", label: "Weekly review", icon: ReviewIcon },
 ];
 const ALL_VIEWS = [...TASK_VIEWS, ...PLAN_VIEWS];

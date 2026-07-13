@@ -52,6 +52,8 @@ export {
   ListChecks as SubtaskIcon,
   CircleDot as DoingIcon,
   CornerUpLeft as BackIcon,
+  Mail as MailIcon,
+  AlertCircle as AttentionIcon,
 } from "lucide-react";
 
 // Curated icon set an area can be tagged with (the picker offers these by name;
