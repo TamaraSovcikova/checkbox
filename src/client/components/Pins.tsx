@@ -5,11 +5,19 @@ import { AREA_COLORS, areaColorVar } from "../lib/colors";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+} from "./ui/dropdown-menu";
+import {
   PinsIcon,
   TrashIcon,
   AddIcon,
   NotesIcon,
   SubtaskIcon,
+  MoreIcon,
 } from "../lib/icons";
 
 const newItem = (text: string): PinItem => ({
@@ -73,33 +81,45 @@ function ColorPicker({
   );
 }
 
-// Top / Side placement toggle. Clicking the active one unpins.
-function PlacementToggle({
+// Discreet per-pin menu: placement (top / side / off) + delete, behind one small
+// icon so it never crowds the card.
+function PinMenu({
   placement,
   onSet,
+  onDelete,
 }: {
   placement: Placement;
   onSet: (p: Placement) => void;
+  onDelete: () => void;
 }) {
-  const opt = (p: Placement, label: string) => (
-    <button
-      onClick={() => onSet(placement === p ? "unpinned" : p)}
-      title={placement === p ? `On ${label} — click to unpin` : `Pin to ${label}`}
-      className={cn(
-        "px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide transition-colors",
-        placement === p
-          ? "bg-primary text-primary-foreground"
-          : "text-subtle hover:text-foreground"
-      )}
-    >
-      {label}
-    </button>
-  );
   return (
-    <div className="flex overflow-hidden rounded border border-border">
-      {opt("top", "Top")}
-      {opt("side", "Side")}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          aria-label="Pin options"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded text-subtle transition-colors hover:bg-surface-2 hover:text-foreground data-[state=open]:bg-surface-2"
+        >
+          <MoreIcon className="h-3.5 w-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuCheckboxItem
+          checked={placement === "top"}
+          onSelect={() => onSet(placement === "top" ? "unpinned" : "top")}
+        >
+          Show at top of Today
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={placement === "side"}
+          onSelect={() => onSet(placement === "side" ? "unpinned" : "side")}
+        >
+          Show in Today side column
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuItem className="text-danger" onSelect={onDelete}>
+          Delete pin
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -139,15 +159,16 @@ function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
 
   const done = items.filter((i) => i.done).length;
   const accent = pin.color ? areaColorVar(pin.color) : null;
-  // In compact placements, an empty title just disappears (titles are optional).
-  const showTitle = !compact || title.trim().length > 0;
+  const [editingTitle, setEditingTitle] = useState(false);
+  // Titles are optional and take NO space when absent: show the input only when
+  // there's a title or you're adding one; on the page an untitled pin offers a
+  // subtle "+ title", on compact cards it shows nothing at all.
+  const hasTitle = title.trim().length > 0;
+  const showTitleInput = hasTitle || editingTitle;
 
   return (
     <div
-      className={cn(
-        "rounded-lg border bg-surface p-3",
-        compact && "bg-surface/60"
-      )}
+      className={cn("group rounded-lg border bg-surface p-3", compact && "bg-surface/60")}
       style={
         accent
           ? { borderLeftColor: accent, borderLeftWidth: 3 }
@@ -162,41 +183,42 @@ function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
             <NotesIcon className="h-3.5 w-3.5" />
           )}
         </span>
-        {showTitle && (
+        {showTitleInput ? (
           <input
             value={title}
+            autoFocus={editingTitle}
             onChange={(e) => setTitle(e.target.value)}
-            onBlur={() =>
-              title !== (pin.title ?? "") && update.mutate({ id: pin.id, body: { title } })
-            }
-            placeholder="Title (optional)"
+            onBlur={() => {
+              setEditingTitle(false);
+              if (title !== (pin.title ?? "")) update.mutate({ id: pin.id, body: { title } });
+            }}
+            placeholder="Title"
             className="min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-subtle"
           />
+        ) : compact ? (
+          <span className="flex-1" />
+        ) : (
+          <button
+            onClick={() => setEditingTitle(true)}
+            className="flex-1 text-left text-xs text-subtle opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+          >
+            + title
+          </button>
         )}
-        {!showTitle && <span className="flex-1" />}
         {pin.kind === "list" && items.length > 0 && (
           <span className="shrink-0 text-[11px] text-subtle">
             {done}/{items.length}
           </span>
         )}
-        <PlacementToggle
-          placement={pin.placement}
-          onSet={(p) => update.mutate({ id: pin.id, body: { placement: p } })}
-        />
         <ColorPicker
           color={pin.color}
           onPick={(c) => update.mutate({ id: pin.id, body: { color: c } })}
         />
-        {!compact && (
-          <button
-            onClick={() => del.mutate(pin.id)}
-            title="Delete pin"
-            aria-label="Delete pin"
-            className="grid h-6 w-6 shrink-0 place-items-center rounded text-subtle hover:bg-danger/10 hover:text-danger"
-          >
-            <TrashIcon className="h-3.5 w-3.5" />
-          </button>
-        )}
+        <PinMenu
+          placement={pin.placement}
+          onSet={(p) => update.mutate({ id: pin.id, body: { placement: p } })}
+          onDelete={() => del.mutate(pin.id)}
+        />
       </div>
 
       {pin.kind === "list" ? (

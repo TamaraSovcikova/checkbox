@@ -21,7 +21,6 @@ import { FilterDialog } from "./components/FilterDialog";
 import { AreaDialog } from "./components/AreaDialog";
 import { ProjectDialog } from "./components/ProjectDialog";
 import { CalendarSyncBanner } from "./components/CalendarSyncBanner";
-import { PlanMyDay } from "./components/PlanMyDay";
 import { SuggestToday } from "./components/SuggestToday";
 import { PinsStrip, PinsSide } from "./components/Pins";
 import { StatsWidget } from "./components/StatsWidget";
@@ -396,7 +395,6 @@ export function ViewPage({ name }: { name: string }) {
             <PinsStrip />
             <CheatSheet />
             <SuggestToday />
-            <PlanMyDay tasks={tasks} />
             {body}
             {view === "list" && <BulkActionBar controls={controls} />}
             <CompletedToday />

@@ -16,6 +16,7 @@ import { PRIORITY_VAR } from "./lib/colors";
 import { cn } from "@/lib/utils";
 import { Button } from "./components/ui/button";
 import { CalendarSyncBanner } from "./components/CalendarSyncBanner";
+import { PlanMyDay } from "./components/PlanMyDay";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -414,6 +415,17 @@ export default function CalendarPage() {
   const dayStrs = days.map((d) => format(d, "yyyy-MM-dd"));
   const allDayEvents = calEvents.filter((e) => e.all_day);
 
+  // "Plan my day" time-blocks TODAY's open tasks, so it always works off today
+  // regardless of which day/week the grid is showing.
+  const planCandidates = allTasks.filter(
+    (t) =>
+      t.status !== "done" &&
+      (t.due_date === todayStr ||
+        (t.due_date != null && t.due_date < todayStr) ||
+        t.planned_date === todayStr ||
+        t.scheduled_start?.slice(0, 10) === todayStr)
+  );
+
   // Left planner pane: unscheduled open tasks, grouped so it reads as a plan,
   // not a dump. Overdue (past due) first, then what's due in view, then
   // high-priority tasks with no date. Groups are disjoint.
@@ -510,6 +522,10 @@ export default function CalendarPage() {
       </div>
 
       <CalendarSyncBanner status={status} />
+
+      {/* Plan my day: auto time-block today's tasks around your meetings. Lives
+          here (not on Today) since Today has the task-selection planners. */}
+      <PlanMyDay tasks={planCandidates} />
 
       {/* All-day strip (across the visible range) */}
       <AllDayStrip events={allDayEvents} />
