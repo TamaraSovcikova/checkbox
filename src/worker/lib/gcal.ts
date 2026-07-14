@@ -274,18 +274,22 @@ export async function watchCalendar(
 
 export const TASK_ID_PROP = "checkbox_task_id";
 
-export function taskToGCalEvent(task: Task): Partial<GCalEvent> {
+// opts gates what gets synced (user prefs): a time block becomes a timed event,
+// a due date an all-day event, each only if its flag is on. Both default on.
+export function taskToGCalEvent(
+  task: Task,
+  opts: { timeBlocks?: boolean; dueDates?: boolean } = {}
+): Partial<GCalEvent> {
+  const timeBlocks = opts.timeBlocks !== false;
+  const dueDates = opts.dueDates !== false;
   const base: Partial<GCalEvent> = {
     summary: task.title,
     extendedProperties: { private: { [TASK_ID_PROP]: task.id } },
   };
-  if (task.scheduled_start && task.scheduled_end) {
-    base.start = {
-      dateTime: task.scheduled_start,
-      timeZone: "Europe/Brussels",
-    };
+  if (timeBlocks && task.scheduled_start && task.scheduled_end) {
+    base.start = { dateTime: task.scheduled_start, timeZone: "Europe/Brussels" };
     base.end = { dateTime: task.scheduled_end, timeZone: "Europe/Brussels" };
-  } else if (task.due_date) {
+  } else if (dueDates && task.due_date) {
     base.start = { date: task.due_date };
     base.end = { date: task.due_date };
   }

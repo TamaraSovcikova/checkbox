@@ -172,6 +172,11 @@ export interface UserPrefs {
   // Dim tasks due more than a month out so the far future doesn't pull the eye.
   // Undefined is treated as on. Toggled in Settings › Appearance.
   dimDistantTasks?: boolean;
+  // What Checkbox pushes to Google Calendar. Both default on (undefined ⇒ on).
+  // timeBlocks = time-blocked tasks as timed events; dueDates = due-dated tasks
+  // as all-day events. Toggled in Settings › Google Calendar.
+  gcalSyncTimeBlocks?: boolean;
+  gcalSyncDueDates?: boolean;
 }
 
 // ── Attachments ────────────────────────────────────────────────────────────

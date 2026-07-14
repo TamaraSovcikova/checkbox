@@ -47,6 +47,27 @@ export async function getCalendarAccount(
     .first<CalendarAccount>();
 }
 
+// What the user wants pushed to Google Calendar. Both default on; only an
+// explicit false in prefs turns one off.
+async function getGcalSyncPrefs(
+  env: Bindings,
+  userId: string
+): Promise<{ timeBlocks: boolean; dueDates: boolean }> {
+  const row = await env.DB.prepare("SELECT prefs FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ prefs: string | null }>();
+  let p: Record<string, unknown> = {};
+  try {
+    if (row?.prefs) p = JSON.parse(row.prefs) as Record<string, unknown>;
+  } catch {
+    p = {};
+  }
+  return {
+    timeBlocks: p.gcalSyncTimeBlocks !== false,
+    dueDates: p.gcalSyncDueDates !== false,
+  };
+}
+
 // ── Sync health ───────────────────────────────────────────────────────────────
 //
 // Any Google API failure (expired token, API not enabled, revoked scope) breaks
@@ -337,8 +358,13 @@ export async function pushTaskToGcal(
 
   if (!task) return;
 
-  // An event is wanted whenever the task has a time-block or a due date.
-  const wantEvent = !!(task.scheduled_start || task.due_date);
+  // User prefs decide what syncs (Settings › Google Calendar). Both default on.
+  const syncPrefs = await getGcalSyncPrefs(env, userId);
+  // An event is wanted for an enabled time-block or an enabled due date.
+  const wantEvent = !!(
+    (syncPrefs.timeBlocks && task.scheduled_start) ||
+    (syncPrefs.dueDates && task.due_date)
+  );
 
   // Nothing to reconcile: no event wanted and none exists.
   if (!wantEvent && !task.gcal_event_id) return;
@@ -374,7 +400,7 @@ export async function pushTaskToGcal(
   // Build a minimal Task-compatible object for the converter.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const taskLike = task as any;
-  const eventBody = taskToGCalEvent(taskLike);
+  const eventBody = taskToGCalEvent(taskLike, syncPrefs);
 
   try {
     if (task.gcal_event_id) {

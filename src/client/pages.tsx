@@ -1075,6 +1075,38 @@ function TriageSection() {
 
 // System / Light / Dark segmented control. Writes through useTheme (persists to
 // localStorage + applies to the DOM immediately). "System" follows the OS.
+// Small on/off switch, shared by the settings toggles.
+function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={cx(
+        "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+        checked ? "bg-primary" : "bg-surface-2"
+      )}
+    >
+      <span
+        className={cx(
+          "absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform",
+          checked ? "translate-x-[22px]" : "translate-x-0.5"
+        )}
+      />
+    </button>
+  );
+}
+
 function AppearanceSection() {
   const { pref, resolved, setPref } = useTheme();
   const { dimDistantTasks, setDimDistantTasks } = useViewPrefs();
@@ -1148,6 +1180,7 @@ export function SettingsPage() {
   const me = useMe();
   const { data: pushStatus, refetch: refetchPush } = usePushStatus();
   const { data: cal, refetch: refetchCal } = useCalendarStatus();
+  const { gcalSyncTimeBlocks, gcalSyncDueDates, setGcalSync } = useViewPrefs();
   const { data: gmail, refetch: refetchGmail } = useGmailStatus();
   const gmailRefresh = useGmailRefresh();
   const [gmailBusy, setGmailBusy] = useState(false);
@@ -1384,6 +1417,41 @@ export function SettingsPage() {
             </Button>
           </div>
         )}
+
+        {/* What Checkbox pushes to Google Calendar. */}
+        <div className="mt-4 space-y-3 border-t border-border pt-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-sm text-foreground">Sync time-blocked tasks</div>
+              <div className="text-xs text-subtle">
+                Tasks you give a time block show as timed events.
+              </div>
+            </div>
+            <Switch
+              label="Sync time-blocked tasks"
+              checked={gcalSyncTimeBlocks}
+              onChange={(v) => setGcalSync({ gcalSyncTimeBlocks: v })}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-sm text-foreground">Sync due-dated tasks</div>
+              <div className="text-xs text-subtle">
+                Tasks with a due date show as all-day events. Turn off to keep due
+                dates in Checkbox only and declutter your calendar.
+              </div>
+            </div>
+            <Switch
+              label="Sync due-dated tasks"
+              checked={gcalSyncDueDates}
+              onChange={(v) => setGcalSync({ gcalSyncDueDates: v })}
+            />
+          </div>
+          <p className="text-[11px] text-subtle">
+            Takes effect as tasks are next created or edited; existing events
+            reconcile on the next sync.
+          </p>
+        </div>
       </Section>
 
       <Section title="Gmail">

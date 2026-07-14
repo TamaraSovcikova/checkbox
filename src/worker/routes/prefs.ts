@@ -19,6 +19,7 @@ const cleanFallback = (v: unknown): string | null =>
 
 // Undefined means "not set yet" → default on; only an explicit false turns it off.
 const cleanDim = (v: unknown): boolean => (v === false ? false : true);
+const cleanOnByDefault = (v: unknown): boolean => (v === false ? false : true);
 
 function parsePrefs(raw: unknown): UserPrefs {
   if (typeof raw !== "string") return { ...EMPTY };
@@ -30,6 +31,8 @@ function parsePrefs(raw: unknown): UserPrefs {
       viewDefaults: cleanViewDefaults(p.viewDefaults),
       triageFallbackAreaId: cleanFallback(p.triageFallbackAreaId),
       dimDistantTasks: cleanDim(p.dimDistantTasks),
+      gcalSyncTimeBlocks: cleanOnByDefault(p.gcalSyncTimeBlocks),
+      gcalSyncDueDates: cleanOnByDefault(p.gcalSyncDueDates),
     };
   } catch {
     return { ...EMPTY };
@@ -53,6 +56,8 @@ prefs.put("/", async (c) => {
     viewDefaults: cleanViewDefaults(body.viewDefaults),
     triageFallbackAreaId: cleanFallback(body.triageFallbackAreaId),
     dimDistantTasks: cleanDim(body.dimDistantTasks),
+    gcalSyncTimeBlocks: cleanOnByDefault(body.gcalSyncTimeBlocks),
+    gcalSyncDueDates: cleanOnByDefault(body.gcalSyncDueDates),
   };
   await c.env.DB.prepare("UPDATE users SET prefs = ? WHERE id = ?")
     .bind(JSON.stringify(clean), userId)

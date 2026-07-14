@@ -501,6 +501,12 @@ export function useViewPrefs() {
   const setDimDistantTasks = (on: boolean) =>
     save.mutate({ ...prefs, dimDistantTasks: on });
 
+  // What syncs to Google Calendar. Both default on.
+  const gcalSyncTimeBlocks = prefs.gcalSyncTimeBlocks !== false;
+  const gcalSyncDueDates = prefs.gcalSyncDueDates !== false;
+  const setGcalSync = (patch: Partial<UserPrefs>) =>
+    save.mutate({ ...prefs, ...patch });
+
   return {
     prefs,
     hide,
@@ -511,6 +517,9 @@ export function useViewPrefs() {
     setTriageFallbackArea,
     dimDistantTasks,
     setDimDistantTasks,
+    gcalSyncTimeBlocks,
+    gcalSyncDueDates,
+    setGcalSync,
   };
 }
 
