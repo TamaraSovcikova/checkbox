@@ -426,23 +426,37 @@ export default function CalendarPage() {
         t.scheduled_start?.slice(0, 10) === todayStr)
   );
 
-  // Left planner pane: unscheduled open tasks, grouped so it reads as a plan,
-  // not a dump. Overdue (past due) first, then what's due in view, then
-  // high-priority tasks with no date. Groups are disjoint.
+  // Left planner pane: unscheduled open tasks to drag onto the grid. TODAY is the
+  // headline group — everything you planned for today (planned_date) or that is
+  // due today — because that is what you're here to time-block. Then overdue,
+  // then the rest of the visible range, then high-priority no-date tasks. Groups
+  // are disjoint.
   const openUnscheduled = allTasks.filter(
     (t) => !t.scheduled_start && t.status !== "done"
   );
   const overdue = openUnscheduled.filter(
     (t) => t.due_date != null && t.due_date < todayStr
   );
+  const overdueIds = new Set(overdue.map((t) => t.id));
+  const today = openUnscheduled.filter(
+    (t) =>
+      !overdueIds.has(t.id) &&
+      (t.planned_date === todayStr || t.due_date === todayStr)
+  );
+  const todayIds = new Set(today.map((t) => t.id));
+  const claimed = (t: Task) => overdueIds.has(t.id) || todayIds.has(t.id);
   const inRange = openUnscheduled.filter(
-    (t) => t.due_date != null && t.due_date >= todayStr && dayStrs.includes(t.due_date)
+    (t) =>
+      !claimed(t) &&
+      t.due_date != null &&
+      t.due_date > todayStr &&
+      dayStrs.includes(t.due_date)
   );
   const noDate = openUnscheduled.filter(
-    (t) => t.due_date == null && t.priority <= 2
+    (t) => !claimed(t) && t.due_date == null && t.priority <= 2
   );
   const nothingToSchedule =
-    overdue.length + inRange.length + noDate.length === 0;
+    today.length + overdue.length + inRange.length + noDate.length === 0;
 
   function step(dir: 1 | -1) {
     setDate((d) => addDays(d, dir * (view === "week" ? 7 : 1)));
@@ -540,9 +554,10 @@ export default function CalendarPage() {
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80">
             To schedule
           </div>
+          <PlannerGroup label="Today" tasks={today} />
           <PlannerGroup label="Overdue" tone="overdue" tasks={overdue} />
           <PlannerGroup
-            label={view === "week" ? "This week" : "Due today"}
+            label={view === "week" ? "Later this week" : "Coming up"}
             tasks={inRange}
           />
           <PlannerGroup label="No date · P1–P2" tasks={noDate} />
