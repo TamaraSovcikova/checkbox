@@ -9,6 +9,8 @@ import {
   useCalendarStatus,
   useCalendarRange,
   useCalendarSync,
+  useCalendarFeeds,
+  useSetCalendarFeed,
   useTasks,
 } from "./lib/queries";
 import { useTaskUI } from "./lib/ui-context";
@@ -18,6 +20,11 @@ import { cn } from "@/lib/utils";
 import { Button } from "./components/ui/button";
 import { CalendarSyncBanner } from "./components/CalendarSyncBanner";
 import { PlanMyDay } from "./components/PlanMyDay";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "./components/ui/popover";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -63,11 +70,31 @@ function timeToPx(isoOrHHMM: string): number {
   return (t.h - GRID_START + t.m / 60) * PX_PER_HOUR;
 }
 
+// Shortest an event is ever drawn (and treated as, for overlap). Small enough
+// that a 15-minute event doesn't visually spill into the next one, so touching
+// events (e.g. Wake up 6:00–6:15 then Morning focus 6:15–7:45) stack cleanly
+// instead of falsely colliding.
+const MIN_EVENT_MIN = 15;
+
 function durationPx(start: string, end: string): number {
   const s = new Date(start).getTime();
   const e = new Date(end).getTime();
-  const hours = Math.max(0.5, (e - s) / 3_600_000);
-  return hours * PX_PER_HOUR;
+  const minutes = Math.max(MIN_EVENT_MIN, (e - s) / 60_000);
+  return (minutes / 60) * PX_PER_HOUR;
+}
+
+// The interval an item actually occupies on screen (its real span, floored to
+// the minimum draw height) — used for overlap packing so the lanes match what
+// the eye sees. Without the floor, a 15-min block drawn 15-min tall would never
+// collide, but one drawn taller (old 30-min floor) would overlay its neighbour.
+function effectiveInterval(start: string, end: string): {
+  startMs: number;
+  endMs: number;
+} {
+  const startMs = new Date(start).getTime();
+  const rawEnd = new Date(end).getTime();
+  const endMs = Math.max(rawEnd, startMs + MIN_EVENT_MIN * 60_000);
+  return { startMs, endMs };
 }
 
 function fmtTime(iso: string): string {
@@ -117,12 +144,13 @@ function ExternalEventBlock({
   // fill + coloured left bar) so they read as "already busy" behind my tasks.
   const color = event.color ?? "var(--muted)";
   const pos = laneStyle(lane);
+  const drawH = Math.max(16, height);
   return (
     <div
-      className="absolute overflow-hidden rounded border border-l-2 px-1.5 py-0.5 text-xs"
+      className="absolute overflow-hidden rounded border border-l-2 px-1.5 py-0.5 text-xs leading-tight"
       style={{
         top,
-        height: Math.max(20, height),
+        height: drawH,
         left: pos.left,
         width: pos.width,
         backgroundColor: `color-mix(in oklab, ${color} 18%, transparent)`,
@@ -134,7 +162,9 @@ function ExternalEventBlock({
       <div className="truncate font-medium text-foreground/80">
         {event.title ?? "(no title)"}
       </div>
-      <div className="text-subtle/80">{fmtTime(event.start)}</div>
+      {drawH >= 32 && (
+        <div className="text-subtle/80">{fmtTime(event.start)}</div>
+      )}
     </div>
   );
 }
@@ -198,16 +228,17 @@ function TaskBlock({ task, lane }: { task: Task; lane?: Lane }) {
     : fmtTime(task.scheduled_end);
 
   const pos = laneStyle(lane);
+  const drawH = Math.max(16, height);
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "absolute rounded border border-l-2 text-xs text-foreground backdrop-blur-[1px]",
+        "absolute rounded border border-l-2 text-xs leading-tight text-foreground backdrop-blur-[1px]",
         isDragging ? "z-20 opacity-80 shadow-lg" : "z-10"
       )}
       style={{
         top,
-        height: Math.max(20, height),
+        height: drawH,
         left: pos.left,
         width: pos.width,
         // Checkbox blocks are "mine": a priority-tinted fill + a solid priority
@@ -227,9 +258,11 @@ function TaskBlock({ task, lane }: { task: Task; lane?: Lane }) {
         className="flex h-full w-full cursor-grab flex-col overflow-hidden px-1.5 py-0.5 text-left active:cursor-grabbing"
       >
         <div className="truncate font-medium">{task.title}</div>
-        <div className="text-subtle">
-          {fmtTime(task.scheduled_start)} – {endLabel}
-        </div>
+        {drawH >= 32 && (
+          <div className="text-subtle">
+            {fmtTime(task.scheduled_start)} – {endLabel}
+          </div>
+        )}
       </button>
       {/* Bottom resize handle. */}
       <div
@@ -347,15 +380,10 @@ function DayColumn({
   // Pack external events and task blocks into shared columns so overlaps sit
   // side by side (an all-day "Internship" block next to the tasks within it).
   const lanes = packLanes([
-    ...external.map((e) => ({
-      key: `e:${e.id}`,
-      startMs: new Date(e.start).getTime(),
-      endMs: new Date(e.end).getTime(),
-    })),
+    ...external.map((e) => ({ key: `e:${e.id}`, ...effectiveInterval(e.start, e.end) })),
     ...scheduled.map((t) => ({
       key: `t:${t.id}`,
-      startMs: new Date(t.scheduled_start!).getTime(),
-      endMs: new Date(t.scheduled_end ?? t.scheduled_start!).getTime(),
+      ...effectiveInterval(t.scheduled_start!, t.scheduled_end ?? t.scheduled_start!),
     })),
   ]);
   return (
@@ -427,6 +455,70 @@ function PlannerGroup({
         ))}
       </div>
     </div>
+  );
+}
+
+// Discreet header control: pick which Google calendars show on the grid.
+function CalendarPicker() {
+  const { data: feeds = [] } = useCalendarFeeds();
+  const setFeed = useSetCalendarFeed();
+  if (feeds.length === 0) return null;
+  const hiddenCount = feeds.filter((f) => !f.enabled).length;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          className="relative grid h-7 w-7 place-items-center rounded text-muted hover:bg-surface-2 hover:text-foreground"
+          aria-label="Choose calendars"
+          title="Choose calendars"
+        >
+          <CalendarIcon className="h-4 w-4" />
+          {hiddenCount > 0 && (
+            <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-60 p-1.5">
+        <div className="px-1.5 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-subtle">
+          Calendars
+        </div>
+        <div className="max-h-72 space-y-0.5 overflow-y-auto">
+          {feeds.map((f) => {
+            const color = f.color ?? "var(--muted)";
+            return (
+              <button
+                key={f.calendar_id}
+                disabled={f.primary || setFeed.isPending}
+                onClick={() =>
+                  setFeed.mutate({ id: f.calendar_id, enabled: !f.enabled })
+                }
+                className={cn(
+                  "flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-sm",
+                  f.primary ? "cursor-default" : "hover:bg-surface-2"
+                )}
+                title={f.primary ? "Primary calendar (always shown)" : undefined}
+              >
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full border"
+                  style={{
+                    backgroundColor: f.enabled ? color : "transparent",
+                    borderColor: color,
+                  }}
+                />
+                <span
+                  className={cn(
+                    "truncate",
+                    f.enabled ? "text-foreground" : "text-subtle"
+                  )}
+                >
+                  {f.summary ?? f.calendar_id}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -541,16 +633,18 @@ export default function CalendarPage() {
           ))}
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className="ml-auto"
-          onClick={() => sync.mutate()}
-          disabled={sync.isPending}
-        >
-          <RefreshIcon className={cn("h-4 w-4", sync.isPending && "animate-spin")} />
-          {sync.isPending ? "Syncing…" : "Sync"}
-        </Button>
+        <div className="ml-auto flex items-center gap-1">
+          <CalendarPicker />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => sync.mutate()}
+            disabled={sync.isPending}
+          >
+            <RefreshIcon className={cn("h-4 w-4", sync.isPending && "animate-spin")} />
+            {sync.isPending ? "Syncing…" : "Sync"}
+          </Button>
+        </div>
         <span className="hidden text-xs text-subtle md:inline">
           {status.google_email}
         </span>
@@ -565,8 +659,9 @@ export default function CalendarPage() {
       {/* All-day strip (across the visible range) */}
       <AllDayStrip events={allDayEvents} />
 
-      {/* Body: left planner pane + hour labels + one-or-seven day columns */}
-      <div className="flex flex-1 gap-3 overflow-auto">
+      {/* Body: left planner pane + hour labels + one-or-seven day columns.
+          pt-2 keeps the 06:00 label + first event off the clipped top edge. */}
+      <div className="flex flex-1 gap-3 overflow-auto pt-2">
         {/* Left planner pane — the tasks you drag onto the calendar. */}
         <div
           className="w-52 shrink-0 overflow-y-auto border-r border-border pr-3"
