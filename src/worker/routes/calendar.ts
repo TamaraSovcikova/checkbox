@@ -140,10 +140,14 @@ calendar.get("/events", async (c) => {
      UNION ALL
      SELECT id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id
      FROM calendar_events_cache
-     WHERE user_id = ? AND all_day AND start = ?
+     WHERE user_id = ? AND all_day AND start >= ? AND start < ?
      ORDER BY start`
   )
-    .bind(userId, startISO, endISO, userId, start)
+    // All-day starts are bare YYYY-MM-DD strings, so match them against the bare
+    // date range (not the ISO timestamps): in week view the range spans 7 days,
+    // and `start = ?` only ever matched all-day events on the first day, dropping
+    // every all-day event mid-week.
+    .bind(userId, startISO, endISO, userId, start, end)
     .all();
 
   return c.json(

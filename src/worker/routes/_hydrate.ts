@@ -1,5 +1,28 @@
 import { rowToSubtask, rowToTask } from "../db";
 
+// D1 caps a single query at 100 bound parameters, so an `IN (?,?,…)` over a
+// large id set (e.g. 163 open tasks) throws "too many SQL variables" and 500s
+// the whole request. Run the query per chunk of ids and concatenate the rows.
+const D1_MAX_BINDS = 90; // under the 100 cap, with margin for any extra binds
+
+async function chunkedIn(
+  db: D1Database,
+  ids: string[],
+  sql: (placeholders: string) => string
+): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  for (let i = 0; i < ids.length; i += D1_MAX_BINDS) {
+    const chunk = ids.slice(i, i + D1_MAX_BINDS);
+    const ph = chunk.map(() => "?").join(",");
+    const { results } = await db
+      .prepare(sql(ph))
+      .bind(...chunk)
+      .all();
+    out.push(...(results as Record<string, unknown>[]));
+  }
+  return out;
+}
+
 // Attach labels + subtasks to a set of task rows in two batched queries.
 export async function hydrateTasks(
   db: D1Database,
@@ -8,39 +31,36 @@ export async function hydrateTasks(
   const tasks = rows.map(rowToTask);
   if (tasks.length === 0) return tasks;
   const ids = tasks.map((t) => t.id as string);
-  const ph = ids.map(() => "?").join(",");
 
-  const { results: labelRows } = await db
-    .prepare(
-      `SELECT tl.task_id, l.id, l.name, l.color
+  const labelRows = await chunkedIn(
+    db,
+    ids,
+    (ph) => `SELECT tl.task_id, l.id, l.name, l.color
        FROM task_labels tl JOIN labels l ON l.id = tl.label_id
        WHERE tl.task_id IN (${ph})`
-    )
-    .bind(...ids)
-    .all();
+  );
 
-  const { results: subRows } = await db
-    .prepare(`SELECT * FROM subtasks WHERE task_id IN (${ph}) ORDER BY position`)
-    .bind(...ids)
-    .all();
+  const subRows = await chunkedIn(
+    db,
+    ids,
+    (ph) => `SELECT * FROM subtasks WHERE task_id IN (${ph}) ORDER BY position`
+  );
 
   // Dependencies: blockers (this task waits on) and dependents (waiting on this).
-  const { results: depRows } = await db
-    .prepare(
-      `SELECT d.task_id, d.depends_on_id, t.title, t.status
+  const depRows = await chunkedIn(
+    db,
+    ids,
+    (ph) => `SELECT d.task_id, d.depends_on_id, t.title, t.status
        FROM task_dependencies d JOIN tasks t ON t.id = d.depends_on_id
        WHERE d.task_id IN (${ph})`
-    )
-    .bind(...ids)
-    .all();
-  const { results: blkRows } = await db
-    .prepare(
-      `SELECT d.depends_on_id AS blocker_id, d.task_id, t.title, t.status
+  );
+  const blkRows = await chunkedIn(
+    db,
+    ids,
+    (ph) => `SELECT d.depends_on_id AS blocker_id, d.task_id, t.title, t.status
        FROM task_dependencies d JOIN tasks t ON t.id = d.task_id
        WHERE d.depends_on_id IN (${ph})`
-    )
-    .bind(...ids)
-    .all();
+  );
 
   const labelsByTask = new Map<string, unknown[]>();
   for (const r of labelRows as Record<string, unknown>[]) {

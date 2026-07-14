@@ -21,10 +21,19 @@ function clean(args: unknown[]): unknown[] {
   );
 }
 
+// Cloudflare D1 rejects any single query with more than 100 bound parameters.
+// node:sqlite allows far more, so enforce the cap here to reproduce D1 faithfully.
+const D1_BIND_LIMIT = 100;
+
 class Stmt {
   private args: unknown[] = [];
   constructor(private db: DatabaseSync, private sql: string) {}
   bind(...args: unknown[]) {
+    if (args.length > D1_BIND_LIMIT) {
+      throw new Error(
+        `D1_ERROR: too many SQL variables (${args.length} > ${D1_BIND_LIMIT})`
+      );
+    }
     this.args = clean(args);
     return this;
   }
