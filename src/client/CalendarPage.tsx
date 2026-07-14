@@ -1,4 +1,8 @@
-import { useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { format, addDays, addMinutes, parseISO } from "date-fns";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -30,6 +34,7 @@ import {
   ChevronRightIcon,
   RefreshIcon,
   CalendarIcon,
+  CloseIcon,
 } from "./lib/icons";
 
 // ── Grid constants ────────────────────────────────────────────────────────────
@@ -75,6 +80,10 @@ function timeToPx(isoOrHHMM: string): number {
 // events (e.g. Wake up 6:00–6:15 then Morning focus 6:15–7:45) stack cleanly
 // instead of falsely colliding.
 const MIN_EVENT_MIN = 15;
+
+// A hairline gap subtracted from each block's height so back-to-back events
+// (e.g. Wake up 6:00–6:15 then Morning focus 6:15–…) don't visually merge.
+const BLOCK_GAP = 3;
 
 function durationPx(start: string, end: string): number {
   const s = new Date(start).getTime();
@@ -144,7 +153,7 @@ function ExternalEventBlock({
   // fill + coloured left bar) so they read as "already busy" behind my tasks.
   const color = event.color ?? "var(--muted)";
   const pos = laneStyle(lane);
-  const drawH = Math.max(16, height);
+  const drawH = Math.max(14, height - BLOCK_GAP);
   return (
     <div
       className="absolute overflow-hidden rounded border border-l-2 px-1.5 py-0.5 text-xs leading-tight"
@@ -227,13 +236,27 @@ function TaskBlock({ task, lane }: { task: Task; lane?: Lane }) {
       )
     : fmtTime(task.scheduled_end);
 
+  // Take the task off the timeline: clears its time-block so it returns to the
+  // left "To schedule" pane. The server's pushTaskToGcal removes the Google
+  // Calendar event it created (unless the task still has a due date to keep).
+  function unschedule(e: ReactMouseEvent) {
+    e.stopPropagation();
+    api
+      .updateTask(task.id, { scheduled_start: null, scheduled_end: null })
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ["tasks"] });
+        qc.invalidateQueries({ queryKey: ["view"] });
+        qc.invalidateQueries({ queryKey: ["calendar", "events"] });
+      });
+  }
+
   const pos = laneStyle(lane);
-  const drawH = Math.max(16, height);
+  const drawH = Math.max(14, height - BLOCK_GAP);
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "absolute rounded border border-l-2 text-xs leading-tight text-foreground backdrop-blur-[1px]",
+        "group absolute rounded border border-l-2 text-xs leading-tight text-foreground backdrop-blur-[1px]",
         isDragging ? "z-20 opacity-80 shadow-lg" : "z-10"
       )}
       style={{
@@ -255,7 +278,7 @@ function TaskBlock({ task, lane }: { task: Task; lane?: Lane }) {
         {...attributes}
         {...listeners}
         onClick={() => open(task)}
-        className="flex h-full w-full cursor-grab flex-col overflow-hidden px-1.5 py-0.5 text-left active:cursor-grabbing"
+        className="flex h-full w-full cursor-grab flex-col overflow-hidden px-1.5 py-0.5 pr-5 text-left active:cursor-grabbing"
       >
         <div className="truncate font-medium">{task.title}</div>
         {drawH >= 32 && (
@@ -263,6 +286,18 @@ function TaskBlock({ task, lane }: { task: Task; lane?: Lane }) {
             {fmtTime(task.scheduled_start)} – {endLabel}
           </div>
         )}
+      </button>
+      {/* Unschedule: send the task back to the left pane (and remove its GCal
+          event). Hidden until hover; stops the drag/open handlers. */}
+      <button
+        onClick={unschedule}
+        onPointerDown={(e) => e.stopPropagation()}
+        aria-label="Remove from calendar"
+        title="Remove from calendar"
+        // Faintly visible always (touch has no hover), full on hover/tap.
+        className="absolute right-0.5 top-0.5 z-10 grid h-4 w-4 place-items-center rounded text-foreground/70 opacity-50 transition-opacity hover:bg-black/10 hover:text-foreground group-hover:opacity-100"
+      >
+        <CloseIcon className="h-3 w-3" />
       </button>
       {/* Bottom resize handle. */}
       <div

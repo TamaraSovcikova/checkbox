@@ -3,12 +3,16 @@
 
 import type { Task } from "../../shared/types";
 
+// dateTime/date/timeZone allow null so a PATCH can explicitly CLEAR the opposite
+// representation: Google merges the start/end objects, so converting an all-day
+// event to timed (or back) must null the field it's replacing or the event ends
+// up with both date and dateTime set — a 400 "Invalid start time."
 export type GCalEvent = {
   id: string;
   summary?: string;
   description?: string;
-  start: { dateTime?: string; date?: string; timeZone?: string };
-  end: { dateTime?: string; date?: string; timeZone?: string };
+  start: { dateTime?: string | null; date?: string | null; timeZone?: string | null };
+  end: { dateTime?: string | null; date?: string | null; timeZone?: string | null };
   status?: string;
   extendedProperties?: { private?: Record<string, string> };
   updated?: string;
@@ -315,11 +319,13 @@ export function taskToGCalEvent(
     extendedProperties: { private: { [TASK_ID_PROP]: task.id } },
   };
   if (timeBlocks && task.scheduled_start && task.scheduled_end) {
-    base.start = { dateTime: task.scheduled_start, timeZone: "Europe/Brussels" };
-    base.end = { dateTime: task.scheduled_end, timeZone: "Europe/Brussels" };
+    // date:null clears any all-day date left over when re-timing an existing event.
+    base.start = { dateTime: task.scheduled_start, timeZone: "Europe/Brussels", date: null };
+    base.end = { dateTime: task.scheduled_end, timeZone: "Europe/Brussels", date: null };
   } else if (dueDates && task.due_date) {
-    base.start = { date: task.due_date };
-    base.end = { date: task.due_date };
+    // dateTime/timeZone:null clears any timed fields when converting back to all-day.
+    base.start = { date: task.due_date, dateTime: null, timeZone: null };
+    base.end = { date: task.due_date, dateTime: null, timeZone: null };
   }
   return base;
 }

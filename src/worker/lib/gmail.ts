@@ -243,6 +243,14 @@ export async function syncGmail(
       });
       upserted++;
     }
+
+    // Reconcile deletions: mail the user has since trashed in Gmail should leave
+    // the coverage list. Pull recently-trashed messages and drop any still-
+    // pending row for them. Rows a human has ruled on (filed/skipped, locked)
+    // are a deliberate record and stay. Emptying the trash (permanent delete)
+    // isn't covered — those messages no longer appear in any search.
+    await removeTrashedPending(env, userId, token);
+
     await env.DB.prepare(
       "UPDATE gmail_accounts SET last_sync_at = ? WHERE id = ?"
     )
@@ -254,4 +262,48 @@ export async function syncGmail(
     await noteGmailError(env, account.id, String((e as Error).message));
     throw e;
   }
+}
+
+// Drop still-pending coverage rows whose Gmail message the user has trashed, so
+// deleting an email in Gmail removes it from the coverage list. Only `pending`,
+// unlocked rows are touched (filed/skipped rows are a kept record). One extra
+// search covers the trash; D1's 100-bind cap means chunked deletes.
+async function removeTrashedPending(
+  env: Bindings,
+  userId: string,
+  token: string
+): Promise<number> {
+  const trashed = await listMessageRefs(token, "in:trash newer_than:30d", 200);
+  if (trashed.length === 0) return 0;
+  return deletePendingByMessageId(
+    env.DB,
+    userId,
+    trashed.map((t) => t.id)
+  );
+}
+
+// Delete still-pending, unlocked coverage rows for the given message ids. Kept
+// separate + exported so the "trashed mail leaves the list, ruled-on mail stays"
+// contract is unit-testable without the Gmail API. Chunked under D1's bind cap.
+export async function deletePendingByMessageId(
+  db: D1Database,
+  userId: string,
+  messageIds: string[]
+): Promise<number> {
+  const ids = [...new Set(messageIds)];
+  let removed = 0;
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const ph = chunk.map(() => "?").join(",");
+    const res = await db
+      .prepare(
+        `DELETE FROM mail_candidates
+         WHERE user_id = ? AND verdict = 'pending' AND user_locked = 0
+           AND message_id IN (${ph})`
+      )
+      .bind(userId, ...chunk)
+      .run();
+    removed += res.meta?.changes ?? 0;
+  }
+  return removed;
 }
