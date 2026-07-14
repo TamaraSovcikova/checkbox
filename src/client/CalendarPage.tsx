@@ -154,9 +154,13 @@ function ExternalEventBlock({
   const color = event.color ?? "var(--muted)";
   const pos = laneStyle(lane);
   const drawH = Math.max(14, height - BLOCK_GAP);
+  const compact = drawH < 30; // too short for a title + time line
   return (
     <div
-      className="absolute overflow-hidden rounded border border-l-2 px-1.5 py-0.5 text-xs leading-tight"
+      className={cn(
+        "absolute flex flex-col overflow-hidden rounded border border-l-2 leading-none text-foreground/80",
+        compact ? "justify-center px-1.5" : "px-1.5 py-0.5"
+      )}
       style={{
         top,
         height: drawH,
@@ -168,11 +172,18 @@ function ExternalEventBlock({
       }}
       title={event.title ?? ""}
     >
-      <div className="truncate font-medium text-foreground/80">
+      <div
+        className={cn(
+          "truncate font-medium",
+          compact ? "text-[11px]" : "text-xs"
+        )}
+      >
         {event.title ?? "(no title)"}
       </div>
-      {drawH >= 32 && (
-        <div className="text-subtle/80">{fmtTime(event.start)}</div>
+      {!compact && drawH >= 40 && (
+        <div className="mt-0.5 text-[11px] text-subtle/80">
+          {fmtTime(event.start)}
+        </div>
       )}
     </div>
   );
@@ -252,11 +263,12 @@ function TaskBlock({ task, lane }: { task: Task; lane?: Lane }) {
 
   const pos = laneStyle(lane);
   const drawH = Math.max(14, height - BLOCK_GAP);
+  const compact = drawH < 30; // too short for a title + time line
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "group absolute rounded border border-l-2 text-xs leading-tight text-foreground backdrop-blur-[1px]",
+        "group absolute rounded border border-l-2 leading-none text-foreground backdrop-blur-[1px]",
         isDragging ? "z-20 opacity-80 shadow-lg" : "z-10"
       )}
       style={{
@@ -278,11 +290,21 @@ function TaskBlock({ task, lane }: { task: Task; lane?: Lane }) {
         {...attributes}
         {...listeners}
         onClick={() => open(task)}
-        className="flex h-full w-full cursor-grab flex-col overflow-hidden px-1.5 py-0.5 pr-5 text-left active:cursor-grabbing"
+        className={cn(
+          "flex h-full w-full cursor-grab flex-col overflow-hidden px-1.5 pr-5 text-left active:cursor-grabbing",
+          compact ? "justify-center" : "py-0.5"
+        )}
       >
-        <div className="truncate font-medium">{task.title}</div>
-        {drawH >= 32 && (
-          <div className="text-subtle">
+        <div
+          className={cn(
+            "truncate font-medium",
+            compact ? "text-[11px]" : "text-xs"
+          )}
+        >
+          {task.title}
+        </div>
+        {!compact && drawH >= 40 && (
+          <div className="mt-0.5 text-[11px] text-subtle">
             {fmtTime(task.scheduled_start)} – {endLabel}
           </div>
         )}
