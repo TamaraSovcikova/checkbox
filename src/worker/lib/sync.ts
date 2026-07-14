@@ -9,6 +9,7 @@ import {
   exchangeCode,
   getGoogleEmail,
   getPrimaryCalendarId,
+  listCalendars,
   listEvents,
   refreshAccessToken,
   createEvent,
@@ -28,6 +29,7 @@ export type CalendarAccount = {
   token_expiry: string | null;
   primary_calendar_id: string | null;
   sync_token: string | null;
+  sync_tokens: string | null; // JSON { calendarId: syncToken } for all calendars
   watch_channel_id: string | null;
   watch_expiry: string | null;
   last_error: string | null;
@@ -180,7 +182,8 @@ export async function connectCalendar(
     await env.DB.prepare(
       `UPDATE calendar_accounts SET
          google_email = ?, refresh_token_enc = ?, access_token = ?,
-         token_expiry = ?, primary_calendar_id = ?, sync_token = NULL
+         token_expiry = ?, primary_calendar_id = ?, sync_token = NULL,
+         sync_tokens = NULL
        WHERE id = ?`
     )
       .bind(
@@ -228,45 +231,100 @@ export async function syncCalendar(
   if (account.last_error) await clearCalendarError(env, account.id);
 }
 
+type CalToSync = { id: string; color: string | null };
+
 async function syncCalendarInner(
   env: Bindings,
   userId: string,
   account: CalendarAccount
 ): Promise<void> {
   const accessToken = await getValidAccessToken(env, account);
-  const calendarId = account.primary_calendar_id ?? "primary";
-  const syncToken = account.sync_token ?? undefined;
 
-  // No sync token → bounded full sync (last 30 days + next 90 days).
-  const timeMin = syncToken
-    ? undefined
-    : new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const timeMax = syncToken
-    ? undefined
-    : new Date(Date.now() + 90 * 86_400_000).toISOString();
+  // Discover every calendar the user keeps visible (needs calendar.readonly).
+  // Skip deleted calendars, ones the user has hidden in Google (selected:false),
+  // and freeBusy/none access roles whose events we can't actually read. If the
+  // scope isn't granted yet, fall back to primary alone (pre-multi behaviour).
+  const list = await listCalendars(accessToken);
+  const calendars: CalToSync[] =
+    list && list.length > 0
+      ? list
+          .filter(
+            (c) =>
+              !c.deleted &&
+              c.selected !== false &&
+              c.accessRole !== "freeBusyReader" &&
+              c.accessRole !== "none"
+          )
+          .map((c) => ({ id: c.id, color: c.backgroundColor ?? null }))
+      : [{ id: account.primary_calendar_id ?? "primary", color: null }];
 
+  let tokens: Record<string, string> = {};
+  try {
+    if (account.sync_tokens) tokens = JSON.parse(account.sync_tokens);
+  } catch {
+    tokens = {};
+  }
+
+  const nextTokens: Record<string, string> = {};
+  for (const cal of calendars) {
+    try {
+      const next = await syncOneCalendar(env, userId, accessToken, cal, tokens[cal.id]);
+      // Keep the fresh token, or preserve the old one if none came back.
+      if (next) nextTokens[cal.id] = next;
+      else if (tokens[cal.id]) nextTokens[cal.id] = tokens[cal.id];
+    } catch (e) {
+      // One bad calendar must not abort the others. Preserve its previous token
+      // so the next run retries incrementally rather than losing all state.
+      if (tokens[cal.id]) nextTokens[cal.id] = tokens[cal.id];
+      console.error(`sync calendar ${cal.id}:`, (e as Error).message);
+    }
+  }
+
+  await env.DB.prepare(
+    "UPDATE calendar_accounts SET sync_tokens = ? WHERE id = ?"
+  )
+    .bind(JSON.stringify(nextTokens), account.id)
+    .run();
+}
+
+// Pull one calendar into the cache. Incremental when a sync token is supplied,
+// else a bounded full sync (last 30 days + next 90 days). Returns the calendar's
+// next sync token to persist.
+async function syncOneCalendar(
+  env: Bindings,
+  userId: string,
+  accessToken: string,
+  cal: CalToSync,
+  syncToken: string | undefined
+): Promise<string | undefined> {
+  const fullMin = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const fullMax = new Date(Date.now() + 90 * 86_400_000).toISOString();
+
+  let token = syncToken;
+  let timeMin = token ? undefined : fullMin;
+  let timeMax = token ? undefined : fullMax;
   let pageToken: string | undefined;
   let nextSyncToken: string | undefined;
 
   do {
     let result;
     try {
-      result = await listEvents(accessToken, calendarId, {
-        syncToken,
+      result = await listEvents(accessToken, cal.id, {
+        syncToken: token,
         timeMin,
         timeMax,
         pageToken,
       });
     } catch (e) {
       if ((e as Error).message === "SYNC_TOKEN_INVALID") {
-        await env.DB.prepare(
-          "UPDATE calendar_accounts SET sync_token = NULL WHERE id = ?"
-        )
-          .bind(account.id)
-          .run();
-        result = await listEvents(accessToken, calendarId, {
-          timeMin,
-          timeMax,
+        // The stored token expired: restart as a bounded full sync.
+        token = undefined;
+        timeMin = fullMin;
+        timeMax = fullMax;
+        pageToken = undefined;
+        result = await listEvents(accessToken, cal.id, {
+          timeMin: fullMin,
+          timeMax: fullMax,
         });
       } else {
         throw e;
@@ -280,7 +338,7 @@ async function syncCalendarInner(
       if (ev.status === "cancelled") {
         return env.DB.prepare(
           "DELETE FROM calendar_events_cache WHERE gcal_event_id = ? AND calendar_id = ?"
-        ).bind(ev.id, calendarId);
+        ).bind(ev.id, cal.id);
       }
       const allDay = !ev.start.dateTime;
       // Normalise to UTC ISO so date range queries work correctly.
@@ -293,37 +351,33 @@ async function syncCalendarInner(
       const taskId = ev.extendedProperties?.private?.[TASK_ID_PROP] ?? null;
       return env.DB.prepare(
         `INSERT INTO calendar_events_cache
-           (id, user_id, gcal_event_id, calendar_id, title, start, end, all_day, updated, is_checkbox_owned, task_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           (id, user_id, gcal_event_id, calendar_id, title, start, end, all_day, updated, is_checkbox_owned, task_id, color)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(gcal_event_id, calendar_id) DO UPDATE SET
            title = excluded.title, start = excluded.start, end = excluded.end,
            all_day = excluded.all_day, updated = excluded.updated,
-           is_checkbox_owned = excluded.is_checkbox_owned, task_id = excluded.task_id`
+           is_checkbox_owned = excluded.is_checkbox_owned, task_id = excluded.task_id,
+           color = excluded.color`
       ).bind(
         uuid(),
         userId,
         ev.id,
-        calendarId,
+        cal.id,
         ev.summary ?? null,
         start,
         end,
         allDay ? 1 : 0,
         ev.updated ?? null,
         taskId ? 1 : 0,
-        taskId
+        taskId,
+        cal.color
       );
     });
 
     if (stmts.length > 0) await env.DB.batch(stmts);
   } while (pageToken);
 
-  if (nextSyncToken) {
-    await env.DB.prepare(
-      "UPDATE calendar_accounts SET sync_token = ? WHERE id = ?"
-    )
-      .bind(nextSyncToken, account.id)
-      .run();
-  }
+  return nextSyncToken;
 }
 
 // ── Push a Checkbox task to Google Calendar ───────────────────────────────────

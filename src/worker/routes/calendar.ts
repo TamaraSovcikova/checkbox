@@ -134,11 +134,11 @@ calendar.get("/events", async (c) => {
   const endISO = new Date(end + "T00:00:00.000Z").toISOString();
 
   const { results } = await c.env.DB.prepare(
-    `SELECT id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id
+    `SELECT id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id, color
      FROM calendar_events_cache
      WHERE user_id = ? AND NOT all_day AND start >= ? AND start < ?
      UNION ALL
-     SELECT id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id
+     SELECT id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id, color
      FROM calendar_events_cache
      WHERE user_id = ? AND all_day AND start >= ? AND start < ?
      ORDER BY start`

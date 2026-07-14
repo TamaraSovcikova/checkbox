@@ -23,8 +23,11 @@ export type GCalEventList = {
 const GCAL_BASE = "https://www.googleapis.com/calendar/v3";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+// calendar.events: read/write events on any calendar we know the id of (task
+// push + pull). calendar.readonly: list the user's calendars (calendarList) so
+// we can discover and mirror every calendar, not just primary.
 const SCOPES =
-  "https://www.googleapis.com/auth/calendar.events openid email profile";
+  "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly openid email profile";
 
 // ── AES-GCM encryption for refresh tokens ────────────────────────────────────
 
@@ -155,6 +158,31 @@ export async function getPrimaryCalendarId(
     items: { id: string; primary?: boolean }[];
   }>();
   return data.items.find((c) => c.primary)?.id ?? "primary";
+}
+
+// ── Calendar list ─────────────────────────────────────────────────────────────
+
+export type GCalCalendar = {
+  id: string;
+  summary?: string;
+  primary?: boolean;
+  selected?: boolean;
+  deleted?: boolean;
+  accessRole?: string; // owner | writer | reader | freeBusyReader | none
+  backgroundColor?: string;
+};
+
+// The user's calendar list. Requires the calendar.readonly scope; returns null
+// when that scope hasn't been granted yet (so callers fall back to primary).
+export async function listCalendars(
+  accessToken: string
+): Promise<GCalCalendar[] | null> {
+  const res = await fetch(`${GCAL_BASE}/users/me/calendarList`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json<{ items?: GCalCalendar[] }>();
+  return data.items ?? [];
 }
 
 // ── Event CRUD ────────────────────────────────────────────────────────────────

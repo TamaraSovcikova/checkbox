@@ -115,6 +115,7 @@ export interface CalendarEvent {
   all_day: boolean;
   is_checkbox_owned: boolean;
   task_id: string | null;
+  color?: string | null; // source calendar's colour (external events)
 }
 
 export interface CalendarStatus {

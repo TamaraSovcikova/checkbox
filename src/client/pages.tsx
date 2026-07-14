@@ -1378,7 +1378,8 @@ export function SettingsPage() {
                 Connected <span className="text-subtle">· {cal.google_email}</span>
               </p>
               <p className="text-xs text-subtle">
-                Two-way sync with your primary calendar.
+                Two-way task sync, and all your calendars shown as a backdrop.
+                Reconnect if your other calendars aren't appearing.
               </p>
             </div>
             <div className="flex shrink-0 gap-2">
@@ -1390,6 +1391,15 @@ export function SettingsPage() {
                 }}
               >
                 Open
+              </Button>
+              <Button
+                variant="subtle"
+                className="h-8 text-xs"
+                onClick={() => {
+                  window.location.href = "/api/calendar/connect";
+                }}
+              >
+                Reconnect
               </Button>
               <Button
                 variant="ghost"

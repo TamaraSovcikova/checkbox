@@ -13,6 +13,7 @@ import {
 } from "./lib/queries";
 import { useTaskUI } from "./lib/ui-context";
 import { PRIORITY_VAR } from "./lib/colors";
+import { packLanes, laneStyle, type Lane } from "./lib/lanes";
 import { cn } from "@/lib/utils";
 import { Button } from "./components/ui/button";
 import { CalendarSyncBanner } from "./components/CalendarSyncBanner";
@@ -75,6 +76,7 @@ function fmtTime(iso: string): string {
   return `${String(t.h).padStart(2, "0")}:${String(t.m).padStart(2, "0")}`;
 }
 
+
 // ── Droppable slot (resolves in the app-level DndContext) ─────────────────────
 
 function SlotRow({ date, time, top }: { date: string; time: string; top: number }) {
@@ -100,22 +102,39 @@ function SlotRow({ date, time, top }: { date: string; time: string; top: number 
 
 // ── GCal external event block ─────────────────────────────────────────────────
 
-function ExternalEventBlock({ event }: { event: CalendarEvent }) {
+function ExternalEventBlock({
+  event,
+  lane,
+}: {
+  event: CalendarEvent;
+  lane?: Lane;
+}) {
   const top = timeToPx(event.start);
   const height = durationPx(event.start, event.end);
   if (top < 0 || top > GRID_HEIGHT) return null;
+  // Google events are a read-only backdrop, tinted with their source calendar's
+  // colour so different calendars are distinguishable, but muted (translucent
+  // fill + coloured left bar) so they read as "already busy" behind my tasks.
+  const color = event.color ?? "var(--muted)";
+  const pos = laneStyle(lane);
   return (
     <div
-      // Google events are a read-only backdrop: flat, muted, no color, so the
-      // eye reads them as "external / already busy" versus my tinted blocks.
-      className="absolute left-0 right-1 overflow-hidden rounded border border-dashed border-border bg-surface-2/40 px-1.5 py-0.5 text-xs"
-      style={{ top, height: Math.max(20, height) }}
+      className="absolute overflow-hidden rounded border border-l-2 px-1.5 py-0.5 text-xs"
+      style={{
+        top,
+        height: Math.max(20, height),
+        left: pos.left,
+        width: pos.width,
+        backgroundColor: `color-mix(in oklab, ${color} 18%, transparent)`,
+        borderColor: `color-mix(in oklab, ${color} 30%, transparent)`,
+        borderLeftColor: color,
+      }}
       title={event.title ?? ""}
     >
-      <div className="truncate font-medium text-subtle">
+      <div className="truncate font-medium text-foreground/80">
         {event.title ?? "(no title)"}
       </div>
-      <div className="text-subtle/70">{fmtTime(event.start)}</div>
+      <div className="text-subtle/80">{fmtTime(event.start)}</div>
     </div>
   );
 }
@@ -125,7 +144,7 @@ function ExternalEventBlock({ event }: { event: CalendarEvent }) {
 const SNAP_PX = PX_PER_HOUR / 4; // 15-minute snap for resize
 const MIN_PX = PX_PER_HOUR / 4; // min 15-minute block
 
-function TaskBlock({ task }: { task: Task }) {
+function TaskBlock({ task, lane }: { task: Task; lane?: Lane }) {
   const { open } = useTaskUI();
   const qc = useQueryClient();
   // Live height override while resizing (null = use the stored duration).
@@ -178,18 +197,21 @@ function TaskBlock({ task }: { task: Task }) {
       )
     : fmtTime(task.scheduled_end);
 
+  const pos = laneStyle(lane);
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "absolute left-0 right-1 rounded border border-l-2 text-xs text-foreground backdrop-blur-[1px]",
-        isDragging ? "z-20 opacity-80 shadow-lg" : "z-0"
+        "absolute rounded border border-l-2 text-xs text-foreground backdrop-blur-[1px]",
+        isDragging ? "z-20 opacity-80 shadow-lg" : "z-10"
       )}
       style={{
         top,
         height: Math.max(20, height),
+        left: pos.left,
+        width: pos.width,
         // Checkbox blocks are "mine": a priority-tinted fill + a solid priority
-        // left bar, so they read distinctly from the flat-grey Google backdrop.
+        // left bar, so they read distinctly from the muted Google backdrop.
         backgroundColor: `color-mix(in oklab, ${PRIORITY_VAR[task.priority]} 22%, transparent)`,
         borderColor: `color-mix(in oklab, ${PRIORITY_VAR[task.priority]} 35%, transparent)`,
         borderLeftColor: PRIORITY_VAR[task.priority],
@@ -322,6 +344,20 @@ function DayColumn({
   const scheduled = tasks.filter(
     (t) => t.scheduled_start?.startsWith(dateStr) && t.status !== "done"
   );
+  // Pack external events and task blocks into shared columns so overlaps sit
+  // side by side (an all-day "Internship" block next to the tasks within it).
+  const lanes = packLanes([
+    ...external.map((e) => ({
+      key: `e:${e.id}`,
+      startMs: new Date(e.start).getTime(),
+      endMs: new Date(e.end).getTime(),
+    })),
+    ...scheduled.map((t) => ({
+      key: `t:${t.id}`,
+      startMs: new Date(t.scheduled_start!).getTime(),
+      endMs: new Date(t.scheduled_end ?? t.scheduled_start!).getTime(),
+    })),
+  ]);
   return (
     <div className="flex min-w-0 flex-1 flex-col">
       {header && (
@@ -348,10 +384,10 @@ function DayColumn({
           />
         ))}
         {external.map((e) => (
-          <ExternalEventBlock key={e.id} event={e} />
+          <ExternalEventBlock key={e.id} event={e} lane={lanes.get(`e:${e.id}`)} />
         ))}
         {scheduled.map((t) => (
-          <TaskBlock key={t.id} task={t} />
+          <TaskBlock key={t.id} task={t} lane={lanes.get(`t:${t.id}`)} />
         ))}
         <NowLine dateStr={dateStr} />
       </div>
@@ -412,7 +448,6 @@ export default function CalendarPage() {
   const sync = useCalendarSync();
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
-  const dayStrs = days.map((d) => format(d, "yyyy-MM-dd"));
   const allDayEvents = calEvents.filter((e) => e.all_day);
 
   // "Plan my day" time-blocks TODAY's open tasks, so it always works off today
@@ -426,11 +461,10 @@ export default function CalendarPage() {
         t.scheduled_start?.slice(0, 10) === todayStr)
   );
 
-  // Left planner pane: unscheduled open tasks to drag onto the grid. TODAY is the
-  // headline group — everything you planned for today (planned_date) or that is
-  // due today — because that is what you're here to time-block. Then overdue,
-  // then the rest of the visible range, then high-priority no-date tasks. Groups
-  // are disjoint.
+  // Left planner pane: unscheduled open tasks to drag onto the grid. Scoped to
+  // TODAY only — what you planned for today or that is due today, plus overdue
+  // tasks that still need doing now. Future-dated and no-date tasks are
+  // deliberately excluded so the pane stays a focused "schedule today" list.
   const openUnscheduled = allTasks.filter(
     (t) => !t.scheduled_start && t.status !== "done"
   );
@@ -443,20 +477,7 @@ export default function CalendarPage() {
       !overdueIds.has(t.id) &&
       (t.planned_date === todayStr || t.due_date === todayStr)
   );
-  const todayIds = new Set(today.map((t) => t.id));
-  const claimed = (t: Task) => overdueIds.has(t.id) || todayIds.has(t.id);
-  const inRange = openUnscheduled.filter(
-    (t) =>
-      !claimed(t) &&
-      t.due_date != null &&
-      t.due_date > todayStr &&
-      dayStrs.includes(t.due_date)
-  );
-  const noDate = openUnscheduled.filter(
-    (t) => !claimed(t) && t.due_date == null && t.priority <= 2
-  );
-  const nothingToSchedule =
-    today.length + overdue.length + inRange.length + noDate.length === 0;
+  const nothingToSchedule = today.length + overdue.length === 0;
 
   function step(dir: 1 | -1) {
     setDate((d) => addDays(d, dir * (view === "week" ? 7 : 1)));
@@ -556,13 +577,8 @@ export default function CalendarPage() {
           </div>
           <PlannerGroup label="Today" tasks={today} />
           <PlannerGroup label="Overdue" tone="overdue" tasks={overdue} />
-          <PlannerGroup
-            label={view === "week" ? "Later this week" : "Coming up"}
-            tasks={inRange}
-          />
-          <PlannerGroup label="No date · P1–P2" tasks={noDate} />
           {nothingToSchedule && (
-            <p className="text-xs text-subtle">Nothing waiting to be scheduled.</p>
+            <p className="text-xs text-subtle">Nothing to schedule today.</p>
           )}
           <p className="mt-3 text-[10px] text-subtle">
             Drag a task onto the timeline to schedule it.
