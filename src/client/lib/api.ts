@@ -7,6 +7,7 @@ import type {
   Label,
   NoteCandidateRow,
   MailCandidateRow,
+  GmailStatus,
   Pin,
   Project,
   SavedFilter,
@@ -242,6 +243,15 @@ export const api = {
     http<Task>(`/api/mail/candidates/${id}/accept`, { method: "POST" }),
   mailDismiss: (id: string) =>
     httpMutate("POST", `/api/mail/candidates/${id}/dismiss`),
+
+  // Gmail live sync (Phase B)
+  gmailStatus: () => http<GmailStatus>("/api/gmail/status"),
+  gmailRefresh: () =>
+    httpMutate<{ ok: boolean; fetched: number; upserted: number }>(
+      "POST",
+      "/api/gmail/refresh"
+    ),
+  gmailDisconnect: () => httpMutate("DELETE", "/api/gmail/disconnect"),
 
   // Pins (non-task lists + reminders)
   pins: () => http<Pin[]>("/api/pins"),

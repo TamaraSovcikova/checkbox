@@ -13,6 +13,8 @@ import {
   useTriageReject,
   usePushStatus,
   useCalendarStatus,
+  useGmailStatus,
+  useGmailRefresh,
   useSavedFilters,
   useFilterTasks,
   useDeleteFilter,
@@ -1146,6 +1148,9 @@ export function SettingsPage() {
   const me = useMe();
   const { data: pushStatus, refetch: refetchPush } = usePushStatus();
   const { data: cal, refetch: refetchCal } = useCalendarStatus();
+  const { data: gmail, refetch: refetchGmail } = useGmailStatus();
+  const gmailRefresh = useGmailRefresh();
+  const [gmailBusy, setGmailBusy] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
   const [mcpToken, setMcpToken] = useState<string | null>(null);
@@ -1163,6 +1168,18 @@ export function SettingsPage() {
       await refetchCal();
     } finally {
       setCalBusy(false);
+    }
+  }
+
+  async function disconnectGmail() {
+    if (!confirm("Disconnect Gmail? Coverage rows already recorded are kept."))
+      return;
+    setGmailBusy(true);
+    try {
+      await api.gmailDisconnect();
+      await refetchGmail();
+    } finally {
+      setGmailBusy(false);
     }
   }
 
@@ -1365,6 +1382,75 @@ export function SettingsPage() {
             >
               Connect
             </Button>
+          </div>
+        )}
+      </Section>
+
+      <Section title="Gmail">
+        {gmail?.sync_broken && gmail.last_error && (
+          <div className="mb-3 rounded-md border border-danger/40 bg-danger/10 p-2.5 text-xs text-danger">
+            Gmail sync is broken — reconnect. <span className="opacity-70">{gmail.last_error}</span>
+          </div>
+        )}
+        {gmail?.connected ? (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm text-foreground">
+                Connected <span className="text-subtle">· {gmail.google_email}</span>
+              </p>
+              <p className="text-xs text-subtle">
+                Live coverage pull.{" "}
+                {gmail.last_sync_at
+                  ? `Last refreshed ${gmail.last_sync_at.slice(0, 16).replace("T", " ")}`
+                  : "Not refreshed yet"}
+                .
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                variant="subtle"
+                className="h-8 text-xs"
+                disabled={gmailRefresh.isPending}
+                onClick={() => gmailRefresh.mutate()}
+              >
+                {gmailRefresh.isPending ? "Refreshing…" : "Refresh now"}
+              </Button>
+              <Button
+                variant="ghost"
+                className="h-8 text-xs text-danger hover:bg-danger/10"
+                disabled={gmailBusy}
+                onClick={disconnectGmail}
+              >
+                {gmailBusy ? "…" : "Disconnect"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-muted">
+                Connect Gmail to refresh Mail coverage live, instead of waiting for
+                the planner&apos;s next run. Checkbox never sends mail.
+              </p>
+              <Button
+                variant="primary"
+                className="h-8 shrink-0 text-xs"
+                onClick={() => {
+                  window.location.href = "/api/gmail/connect";
+                }}
+              >
+                Connect
+              </Button>
+            </div>
+            <p className="mt-2 text-[11px] text-subtle">
+              One-time Google Cloud setup: add the scope{" "}
+              <code className="rounded bg-surface-2 px-1">gmail.modify</code> to your
+              OAuth consent screen, and add{" "}
+              <code className="rounded bg-surface-2 px-1">
+                {location.origin}/api/gmail/callback
+              </code>{" "}
+              as an authorised redirect URI.
+            </p>
           </div>
         )}
       </Section>

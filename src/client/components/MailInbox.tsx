@@ -1,14 +1,22 @@
 import { useMemo } from "react";
 import type { MailCandidateRow } from "../../shared/types";
-import { useMailCandidates, useMailAccept, useMailDismiss } from "../lib/queries";
+import {
+  useMailCandidates,
+  useMailAccept,
+  useMailDismiss,
+  useGmailStatus,
+  useGmailRefresh,
+} from "../lib/queries";
 import { useToast } from "../lib/toast";
 import { cn } from "@/lib/utils";
+import { Button } from "./ui/button";
 import {
   MailIcon,
   CheckIcon,
   CloseIcon,
   ExternalLinkIcon,
   AttentionIcon,
+  RefreshIcon,
 } from "../lib/icons";
 
 type Coverage = MailCandidateRow["coverage"];
@@ -115,6 +123,9 @@ function ThreadRow({ head, count }: Thread) {
 
 export function MailInboxPage() {
   const { data: candidates = [], isLoading } = useMailCandidates(7);
+  const { data: gmail } = useGmailStatus();
+  const refresh = useGmailRefresh();
+  const { toast } = useToast();
 
   // Reduce messages to threads (latest message is the headline). New messages in
   // an already-handled thread arrive as their own pending rows, so the latest is
@@ -156,6 +167,24 @@ export function MailInboxPage() {
         <h1 className="text-xl font-bold tracking-tight text-foreground">
           Mail coverage
         </h1>
+        {gmail?.connected && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto h-8 gap-1.5 text-xs"
+            disabled={refresh.isPending}
+            onClick={() =>
+              refresh.mutate(undefined, {
+                onSuccess: (r) =>
+                  toast(`Refreshed — ${r.upserted} thread${r.upserted === 1 ? "" : "s"} checked`),
+                onError: () => toast("Gmail refresh failed — check Settings"),
+              })
+            }
+          >
+            <RefreshIcon className={cn("h-4 w-4", refresh.isPending && "animate-spin")} />
+            {refresh.isPending ? "Refreshing…" : "Refresh from Gmail"}
+          </Button>
+        )}
       </div>
       <p className="mb-4 text-sm text-subtle">
         Every email thread the planner reviewed in the last 7 days, with what it

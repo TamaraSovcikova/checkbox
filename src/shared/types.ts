@@ -131,6 +131,16 @@ export interface CalendarStatus {
   last_error_at?: string | null;
 }
 
+export interface GmailStatus {
+  connected: boolean;
+  google_email: string | null;
+  sync_broken: boolean;
+  error_kind: "auth" | "other" | null;
+  last_error: string | null;
+  last_error_at: string | null;
+  last_sync_at: string | null;
+}
+
 export interface TriageSuggestion {
   id: string;
   task_id: string;

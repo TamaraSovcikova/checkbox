@@ -18,6 +18,7 @@ import { attachments } from "./routes/attachments";
 import { plans } from "./routes/plans";
 import { notes } from "./routes/notes";
 import { mail } from "./routes/mail";
+import { gmail } from "./routes/gmail";
 import { pins } from "./routes/pins";
 import { mcp } from "./routes/mcp";
 import { syncCalendar, renewWatchChannel } from "./lib/sync";
@@ -49,6 +50,7 @@ app.route("/api/attachments", attachments);
 app.route("/api/plans", plans);
 app.route("/api/notes", notes);
 app.route("/api/mail", mail);
+app.route("/api/gmail", gmail);
 app.route("/api/pins", pins);
 app.route("/mcp", mcp);
 

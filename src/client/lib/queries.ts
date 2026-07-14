@@ -193,6 +193,22 @@ export function useMailDismiss() {
   });
 }
 
+// ── Gmail live sync (Phase B) ────────────────────────────────────────────────
+
+export const useGmailStatus = () =>
+  useQuery({ queryKey: ["gmail-status"], queryFn: api.gmailStatus, staleTime: 30_000 });
+
+export function useGmailRefresh() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.gmailRefresh(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mail-candidates"] });
+      qc.invalidateQueries({ queryKey: ["gmail-status"] });
+    },
+  });
+}
+
 // ── Pins ─────────────────────────────────────────────────────────────────────
 
 export const usePins = () =>
