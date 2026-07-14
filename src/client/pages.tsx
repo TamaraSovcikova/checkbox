@@ -13,6 +13,8 @@ import {
   useTriageReject,
   usePushStatus,
   useCalendarStatus,
+  useCalendarFeeds,
+  useSetCalendarFeed,
   useGmailStatus,
   useGmailRefresh,
   useSavedFilters,
@@ -1080,10 +1082,12 @@ function Switch({
   checked,
   onChange,
   label,
+  disabled,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -1091,9 +1095,10 @@ function Switch({
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cx(
-        "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+        "relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50",
         checked ? "bg-primary" : "bg-surface-2"
       )}
     >
@@ -1180,6 +1185,8 @@ export function SettingsPage() {
   const me = useMe();
   const { data: pushStatus, refetch: refetchPush } = usePushStatus();
   const { data: cal, refetch: refetchCal } = useCalendarStatus();
+  const { data: calFeeds } = useCalendarFeeds(!!cal?.connected);
+  const setCalFeed = useSetCalendarFeed();
   const { gcalSyncTimeBlocks, gcalSyncDueDates, setGcalSync } = useViewPrefs();
   const { data: gmail, refetch: refetchGmail } = useGmailStatus();
   const gmailRefresh = useGmailRefresh();
@@ -1425,6 +1432,47 @@ export function SettingsPage() {
             >
               Connect
             </Button>
+          </div>
+        )}
+
+        {/* Which calendars show up on the grid. */}
+        {cal?.connected && calFeeds && calFeeds.length > 0 && (
+          <div className="mt-4 space-y-2 border-t border-border pt-4">
+            <div className="text-sm text-foreground">Calendars to show</div>
+            <div className="text-xs text-subtle">
+              Pick which Google calendars appear as a backdrop on the timeline.
+            </div>
+            <div className="mt-1 space-y-1.5">
+              {calFeeds.map((f) => (
+                <div
+                  key={f.calendar_id}
+                  className="flex items-center justify-between gap-3"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: f.color ?? "var(--muted)" }}
+                    />
+                    <span className="truncate text-sm text-foreground">
+                      {f.summary ?? f.calendar_id}
+                    </span>
+                    {f.primary && (
+                      <span className="shrink-0 text-[10px] uppercase tracking-wide text-subtle">
+                        primary
+                      </span>
+                    )}
+                  </div>
+                  <Switch
+                    label={`Show ${f.summary ?? f.calendar_id}`}
+                    checked={f.enabled}
+                    disabled={f.primary || setCalFeed.isPending}
+                    onChange={(v) =>
+                      setCalFeed.mutate({ id: f.calendar_id, enabled: v })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

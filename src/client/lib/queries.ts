@@ -554,8 +554,30 @@ export function useCalendarSync() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.calendarSync,
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["calendar", "events"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["calendar", "events"] });
+      qc.invalidateQueries({ queryKey: ["calendar", "feeds"] });
+    },
+  });
+}
+
+export const useCalendarFeeds = (enabled = true) =>
+  useQuery({
+    queryKey: ["calendar", "feeds"],
+    queryFn: api.calendarFeeds,
+    enabled,
+    staleTime: 60_000,
+  });
+
+export function useSetCalendarFeed() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      api.setCalendarFeed(id, enabled),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["calendar", "feeds"] });
+      qc.invalidateQueries({ queryKey: ["calendar", "events"] });
+    },
   });
 }
 

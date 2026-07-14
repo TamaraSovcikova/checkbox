@@ -2,6 +2,7 @@ import type {
   Area,
   Attachment,
   CalendarEvent,
+  CalendarFeed,
   CalendarStatus,
   DayPlan,
   Label,
@@ -318,4 +319,10 @@ export const api = {
     http<{ ok: boolean }>("/api/calendar/sync", { method: "POST" }),
   calendarDisconnect: () =>
     http("/api/calendar/disconnect", { method: "DELETE" }),
+  calendarFeeds: () => http<CalendarFeed[]>("/api/calendar/feeds"),
+  setCalendarFeed: (id: string, enabled: boolean) =>
+    http<{ ok: boolean }>(`/api/calendar/feeds/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }),
 };

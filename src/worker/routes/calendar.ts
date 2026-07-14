@@ -133,21 +133,27 @@ calendar.get("/events", async (c) => {
   const startISO = new Date(start + "T00:00:00.000Z").toISOString();
   const endISO = new Date(end + "T00:00:00.000Z").toISOString();
 
+  // Hide events from calendars the user has toggled off (feeds.enabled = 0).
+  // Filter on read so toggling is instant, no re-sync needed; default-visible so
+  // nothing hides until explicitly disabled.
+  const hidden =
+    "calendar_id NOT IN (SELECT calendar_id FROM calendar_feeds WHERE user_id = ? AND enabled = 0)";
+
   const { results } = await c.env.DB.prepare(
     `SELECT id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id, color
      FROM calendar_events_cache
-     WHERE user_id = ? AND NOT all_day AND start >= ? AND start < ?
+     WHERE user_id = ? AND NOT all_day AND start >= ? AND start < ? AND ${hidden}
      UNION ALL
      SELECT id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id, color
      FROM calendar_events_cache
-     WHERE user_id = ? AND all_day AND start >= ? AND start < ?
+     WHERE user_id = ? AND all_day AND start >= ? AND start < ? AND ${hidden}
      ORDER BY start`
   )
     // All-day starts are bare YYYY-MM-DD strings, so match them against the bare
     // date range (not the ISO timestamps): in week view the range spans 7 days,
     // and `start = ?` only ever matched all-day events on the first day, dropping
     // every all-day event mid-week.
-    .bind(userId, startISO, endISO, userId, start, end)
+    .bind(userId, startISO, endISO, userId, userId, start, end, userId)
     .all();
 
   return c.json(
@@ -157,6 +163,49 @@ calendar.get("/events", async (c) => {
       is_checkbox_owned: r.is_checkbox_owned === 1,
     }))
   );
+});
+
+// ── Per-calendar visibility ───────────────────────────────────────────────────
+
+calendar.get("/feeds", async (c) => {
+  const userId = await getUserId(c);
+  const { results } = await c.env.DB.prepare(
+    `SELECT calendar_id, summary, color, primary_cal, enabled
+     FROM calendar_feeds WHERE user_id = ?
+     ORDER BY primary_cal DESC, summary COLLATE NOCASE`
+  )
+    .bind(userId)
+    .all();
+  return c.json(
+    results.map((r) => ({
+      calendar_id: r.calendar_id,
+      summary: r.summary,
+      color: r.color,
+      primary: r.primary_cal === 1,
+      enabled: r.enabled === 1,
+    }))
+  );
+});
+
+calendar.patch("/feeds/:id", async (c) => {
+  const userId = await getUserId(c);
+  const calendarId = c.req.param("id");
+  const { enabled } = await c.req.json<{ enabled: boolean }>();
+  // The primary calendar holds task events and stays on.
+  const feed = await c.env.DB.prepare(
+    "SELECT primary_cal FROM calendar_feeds WHERE user_id = ? AND calendar_id = ?"
+  )
+    .bind(userId, calendarId)
+    .first<{ primary_cal: number }>();
+  if (!feed) return c.json({ error: "unknown calendar" }, 404);
+  if (feed.primary_cal === 1 && !enabled)
+    return c.json({ error: "primary calendar can't be hidden" }, 400);
+  await c.env.DB.prepare(
+    "UPDATE calendar_feeds SET enabled = ? WHERE user_id = ? AND calendar_id = ?"
+  )
+    .bind(enabled ? 1 : 0, userId, calendarId)
+    .run();
+  return c.json({ ok: true });
 });
 
 // ── Disconnect ────────────────────────────────────────────────────────────────
@@ -169,6 +218,9 @@ calendar.delete("/disconnect", async (c) => {
     ).bind(userId),
     c.env.DB.prepare(
       "DELETE FROM calendar_events_cache WHERE user_id = ?"
+    ).bind(userId),
+    c.env.DB.prepare(
+      "DELETE FROM calendar_feeds WHERE user_id = ?"
     ).bind(userId),
   ]);
   return c.json({ ok: true });

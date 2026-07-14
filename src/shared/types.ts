@@ -132,6 +132,14 @@ export interface CalendarStatus {
   last_error_at?: string | null;
 }
 
+export interface CalendarFeed {
+  calendar_id: string;
+  summary: string | null;
+  color: string | null;
+  primary: boolean;
+  enabled: boolean;
+}
+
 export interface GmailStatus {
   connected: boolean;
   google_email: string | null;

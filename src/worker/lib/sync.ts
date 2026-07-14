@@ -240,21 +240,57 @@ async function syncCalendarInner(
 ): Promise<void> {
   const accessToken = await getValidAccessToken(env, account);
 
-  // Discover every calendar the user keeps visible (needs calendar.readonly).
-  // Skip deleted calendars, ones the user has hidden in Google (selected:false),
-  // and freeBusy/none access roles whose events we can't actually read. If the
+  // Discover every calendar the user has (needs calendar.readonly). Skip deleted
+  // calendars and freeBusy/none access roles whose events we can't read. If the
   // scope isn't granted yet, fall back to primary alone (pre-multi behaviour).
   const list = await listCalendars(accessToken);
+  const readable =
+    list?.filter(
+      (c) =>
+        !c.deleted &&
+        c.accessRole !== "freeBusyReader" &&
+        c.accessRole !== "none"
+    ) ?? null;
+
+  if (readable && readable.length > 0) {
+    // Record every calendar as a feed so the user can toggle it in Settings.
+    // enabled defaults from Google's `selected` the first time we see it, then
+    // the user owns it (preserved on conflict).
+    await env.DB.batch(
+      readable.map((c) =>
+        env.DB.prepare(
+          `INSERT INTO calendar_feeds
+             (user_id, calendar_id, summary, color, primary_cal, enabled)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, calendar_id) DO UPDATE SET
+             summary = excluded.summary, color = excluded.color,
+             primary_cal = excluded.primary_cal`
+        ).bind(
+          userId,
+          c.id,
+          c.summary ?? null,
+          c.backgroundColor ?? null,
+          c.primary ? 1 : 0,
+          c.selected === false ? 0 : 1
+        )
+      )
+    );
+  }
+
+  // Only pull the calendars the user has left enabled.
+  const { results: feedRows } = readable
+    ? await env.DB.prepare(
+        "SELECT calendar_id FROM calendar_feeds WHERE user_id = ? AND enabled = 0"
+      )
+        .bind(userId)
+        .all<{ calendar_id: string }>()
+    : { results: [] as { calendar_id: string }[] };
+  const disabled = new Set(feedRows.map((r) => r.calendar_id));
+
   const calendars: CalToSync[] =
-    list && list.length > 0
-      ? list
-          .filter(
-            (c) =>
-              !c.deleted &&
-              c.selected !== false &&
-              c.accessRole !== "freeBusyReader" &&
-              c.accessRole !== "none"
-          )
+    readable && readable.length > 0
+      ? readable
+          .filter((c) => !disabled.has(c.id))
           .map((c) => ({ id: c.id, color: c.backgroundColor ?? null }))
       : [{ id: account.primary_calendar_id ?? "primary", color: null }];
 
