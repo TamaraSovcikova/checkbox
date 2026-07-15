@@ -16,7 +16,6 @@ import { PRIORITY_VAR, areaColorVar, areaTintBg, shouldPill } from "../lib/color
 import { PriorityPill } from "./ui";
 import { cn, todayStr, monthAheadStr } from "@/lib/utils";
 import {
-  DragIcon,
   CheckIcon,
   RepeatIcon,
   BlockedIcon,
@@ -109,10 +108,11 @@ export function TaskRow({
     await runComplete();
   }
 
-  // Faint area-coloured wash on the OUTER wrapper: the inner row's hover/selection
+  // Area-coloured wash on the OUTER wrapper: the inner row's hover/selection
   // backgrounds are semi-transparent, so they compose over this instead of hiding
-  // it. Tasks with no area stay untinted.
-  const tint = areaTintBg(area?.color);
+  // it. Thin rows need a touch more than cards to read, so tint a bit stronger.
+  // Tasks with no area stay untinted.
+  const tint = areaTintBg(area?.color, 16);
   return (
     <div
       className={cn(
@@ -141,33 +141,8 @@ export function TaskRow({
             : "hover:bg-surface-2/50"
         )}
       >
-        {/* multi-select checkbox — appears on hover or while a selection is active */}
-        <button
-          aria-label={selection?.selected ? "Deselect" : "Select"}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            selection?.onToggle();
-          }}
-          className={cn(
-            "mt-0.5 h-4 w-4 shrink-0 place-items-center rounded border transition-colors",
-            selection?.selected
-              ? "grid border-primary bg-primary text-primary-foreground"
-              : selection?.active
-              ? "grid border-input hover:border-primary"
-              : "hidden group-hover:grid border-input hover:border-primary"
-          )}
-        >
-          {selection?.selected && <CheckIcon className="h-2.5 w-2.5" />}
-        </button>
-
-        {/* Drag affordance — a hint, not the only grab point; the row drags. */}
-        <span
-          aria-hidden
-          className="mt-0.5 hidden w-4 shrink-0 place-items-center text-subtle group-hover:grid"
-        >
-          <DragIcon className="h-3.5 w-3.5" />
-        </span>
+        {/* Complete — leftmost and FIXED. It never shifts on hover, so ticking a
+            task off is a single move to a stable target. */}
         <button
           aria-label="Complete"
           onPointerDown={(e) => e.stopPropagation()}
@@ -182,6 +157,31 @@ export function TaskRow({
         >
           {done && <CheckIcon className="h-2.5 w-2.5" />}
         </button>
+
+        {/* Multi-select — a square checkbox in a RESERVED slot just right of the
+            complete circle. It fades in on hover (or stays while a selection is
+            active) using visibility, not display, so it never nudges the complete
+            circle. Only rendered where selection is supported (list views). */}
+        {selection && (
+          <button
+            aria-label={selection.selected ? "Deselect" : "Select"}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              selection.onToggle();
+            }}
+            className={cn(
+              "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border transition-[color,background-color]",
+              selection.selected
+                ? "border-primary bg-primary text-primary-foreground"
+                : selection.active
+                ? "border-input hover:border-primary"
+                : "invisible group-hover:visible border-input hover:border-primary"
+            )}
+          >
+            {selection.selected && <CheckIcon className="h-2.5 w-2.5" />}
+          </button>
+        )}
 
         {!done && (
           <button

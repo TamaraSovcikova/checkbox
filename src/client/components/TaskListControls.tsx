@@ -54,12 +54,15 @@ export function useTaskSelection(
   const invalidate = useTaskInvalidate();
   const { toast } = useToast();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [cursor, setCursor] = useState(0);
+  // -1 = no keyboard cursor yet, so nothing looks "selected" on load. The first
+  // j/k/arrow moves it onto a row; a plain mouse click never sets it.
+  const [cursor, setCursor] = useState(-1);
   const lastClicked = useRef<number>(-1);
 
-  // Keep the cursor and selection valid as the list changes.
+  // Keep the cursor and selection valid as the list changes. Preserve -1 (no
+  // cursor); only clamp a real cursor into range.
   useEffect(() => {
-    setCursor((c) => Math.min(Math.max(0, c), Math.max(0, tasks.length - 1)));
+    setCursor((c) => (c < 0 ? -1 : Math.min(c, Math.max(0, tasks.length - 1))));
     setSelectedIds((sel) => {
       const ids = new Set(tasks.map((t) => t.id));
       const next = new Set([...sel].filter((id) => ids.has(id)));
@@ -237,21 +240,24 @@ export function useTaskSelection(
         toggle(task.id);
       },
       onRowClick: (e: React.MouseEvent) => {
-        setCursor(index);
         if (e.shiftKey) {
+          setCursor(index);
           e.preventDefault();
           selectRange(index);
         } else if (e.metaKey || e.ctrlKey) {
+          setCursor(index);
           e.preventDefault();
           lastClicked.current = index;
           toggle(task.id);
         } else if (selectedIds.size > 0) {
           // In selection mode a plain click extends the selection instead of
           // opening — matches Gmail/Todoist multi-select ergonomics.
+          setCursor(index);
           e.preventDefault();
           lastClicked.current = index;
           toggle(task.id);
         } else {
+          // Plain click just opens; it must not leave a cursor highlight behind.
           onOpen(task);
         }
       },
