@@ -3,7 +3,11 @@
 // too eager about". Real phrases must still parse; weak words must not.
 
 import { describe, it, expect } from "vitest";
-import { parseCapture, parseDatePhrase } from "../src/client/lib/nlp";
+import {
+  parseCapture,
+  parseDatePhrase,
+  activeCaptureToken,
+} from "../src/client/lib/nlp";
 
 describe("parseCapture — real dates still parse", () => {
   it("keeps explicit relative dates and times", () => {
@@ -43,6 +47,68 @@ describe("parseCapture — weak prose words do NOT invent a date", () => {
       expect(p.title).toBe(s);
     });
   }
+});
+
+describe("parseCapture — multi-word categories", () => {
+  const cats = ["Health & Home", "Trip Planning", "Finance & Admin", "Career"];
+
+  it("matches the longest known multi-word category", () => {
+    const p = parseCapture("Buy filters #Health & Home", cats);
+    expect(p.projectName).toBe("Health & Home");
+    expect(p.title).toBe("Buy filters");
+  });
+
+  it("preserves the title after a mid-string category", () => {
+    const p = parseCapture("#Trip Planning book flights", cats);
+    expect(p.projectName).toBe("Trip Planning");
+    expect(p.title).toBe("book flights");
+  });
+
+  it("does not swallow trailing words past the category boundary", () => {
+    const p = parseCapture("#Career update CV tomorrow", cats);
+    expect(p.projectName).toBe("Career");
+    expect(p.title.toLowerCase()).toBe("update cv");
+    expect(p.due_date).not.toBeNull();
+  });
+
+  it("falls back to a single token when nothing matches", () => {
+    const p = parseCapture("Draft deck #Launch", cats);
+    expect(p.projectName).toBe("Launch");
+  });
+
+  it("still works with no category list (single token)", () => {
+    expect(parseCapture("Draft deck #Launch").projectName).toBe("Launch");
+  });
+});
+
+describe("activeCaptureToken — type-ahead detection", () => {
+  const cats = ["Health & Home"];
+
+  it("detects a label token at the caret", () => {
+    const t = "Draft deck @wo";
+    expect(activeCaptureToken(t, t.length)).toEqual({
+      trigger: "@",
+      query: "wo",
+      start: 11,
+    });
+  });
+
+  it("detects a multi-word category token", () => {
+    const t = "Buy milk #Health & Ho";
+    const tok = activeCaptureToken(t, t.length, cats);
+    expect(tok?.trigger).toBe("#");
+    expect(tok?.query).toBe("Health & Ho");
+  });
+
+  it("closes once a known category is settled with a trailing space", () => {
+    const t = "Buy milk #Health & Home ";
+    expect(activeCaptureToken(t, t.length, cats)).toBeNull();
+  });
+
+  it("returns null when the caret is outside any token", () => {
+    const t = "just a plain title";
+    expect(activeCaptureToken(t, t.length)).toBeNull();
+  });
 });
 
 describe("parseDatePhrase — inline sheet editor", () => {

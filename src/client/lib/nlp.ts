@@ -80,10 +80,25 @@ function firstConfidentDate(text: string): chrono.ParsedResult | null {
   return null;
 }
 
+// Index of the first `#` that starts a category token (string start or after
+// whitespace), or -1. A bare `#` mid-word is left in the title.
+function boundaryHashIndex(text: string): number {
+  const m = text.match(/(^|\s)#/);
+  return m ? m.index! + m[0].length - 1 : -1;
+}
+
 // Parse a quick-capture string like:
 //   "Call dentist tomorrow 3pm p2 @call #Belgium"
 // into structured fields, returning the cleaned title plus what was extracted.
-export function parseCapture(input: string): CaptureParse {
+//
+// `knownCategories` are existing area + project names. When given, a `#` token
+// is matched against the LONGEST known name it starts with, so multi-word
+// categories ("#Health & Home", "#Trip Planning") resolve. Without a match (or
+// an empty list) it falls back to a single `[\w-]+` token.
+export function parseCapture(
+  input: string,
+  knownCategories: string[] = []
+): CaptureParse {
   let text = input;
 
   // recurrence first, so "every monday" is not consumed by the date parser
@@ -106,12 +121,34 @@ export function parseCapture(input: string): CaptureParse {
     return "";
   });
 
-  // project: #project (single token; quotes not supported in MVP)
+  // category: #name — resolves to an area OR project. Match the longest known
+  // multi-word name first (so "#Health & Home" works), else a single token.
   let projectName: string | null = null;
-  const projMatch = text.match(/#([\w-]+)/);
-  if (projMatch) {
-    projectName = projMatch[1];
-    text = text.replace(projMatch[0], "");
+  const hashIdx = boundaryHashIndex(text);
+  if (hashIdx >= 0) {
+    const after = text.slice(hashIdx + 1);
+    let matched: string | null = null;
+    for (const name of knownCategories) {
+      if (!name) continue;
+      if (after.toLowerCase().startsWith(name.toLowerCase())) {
+        const boundary = after[name.length];
+        // The name must end at a word boundary, not mid-word ("#Care" must not
+        // swallow the "er" of a "Career" title fragment).
+        if (boundary === undefined || /[\s#@]/.test(boundary)) {
+          if (!matched || name.length > matched.length) matched = name;
+        }
+      }
+    }
+    if (matched) {
+      projectName = after.slice(0, matched.length); // preserve the typed casing
+      text = text.slice(0, hashIdx) + after.slice(matched.length);
+    } else {
+      const single = after.match(/^([\w-]+)/);
+      if (single) {
+        projectName = single[1];
+        text = text.slice(0, hashIdx) + after.slice(single[1].length);
+      }
+    }
   }
 
   // date/time via chrono (weak, prose-y matches rejected)
@@ -149,6 +186,36 @@ export function parseCapture(input: string): CaptureParse {
     projectName,
     recurrence,
   };
+}
+
+// The `@label` or `#category` token the caret currently sits in, if any. Powers
+// the type-ahead suggestions in QuickCapture.
+//   - `@` tokens end at whitespace (labels are single words).
+//   - `#` tokens run to the caret and may contain spaces (categories are often
+//     multi-word), but close once the query exactly matches a known name and a
+//     space has been typed after it — so the menu dismisses after a pick.
+// `start` is the index of the trigger char; the query spans from there to the
+// caret. Returns null when the caret is not in a token.
+export function activeCaptureToken(
+  text: string,
+  caret: number,
+  knownCategories: string[] = []
+): { trigger: "@" | "#"; query: string; start: number } | null {
+  const upto = text.slice(0, caret);
+
+  const label = upto.match(/(?:^|\s)@([\w-]*)$/);
+  if (label) return { trigger: "@", query: label[1], start: caret - label[1].length - 1 };
+
+  const cat = upto.match(/(?:^|\s)#([^#@]*)$/);
+  if (cat) {
+    const query = cat[1];
+    const settled =
+      /\s$/.test(query) &&
+      knownCategories.some((n) => n.toLowerCase() === query.trim().toLowerCase());
+    if (settled) return null;
+    return { trigger: "#", query, start: caret - query.length - 1 };
+  }
+  return null;
 }
 
 // Parse a free-text date phrase ("next tue", "tomorrow 3pm", "in 2 weeks") into

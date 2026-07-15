@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { parseCapture, previewChips } from "../lib/nlp";
-import { useCreateTask, useProjects } from "../lib/queries";
+import { useCreateTask, useProjects, useAreas } from "../lib/queries";
 import { api } from "../lib/api";
 import { useTaskUI } from "../lib/ui-context";
 import {
@@ -44,6 +44,11 @@ export function CommandCapture() {
   const create = useCreateTask();
   const { open: openTask } = useTaskUI();
   const { data: projects = [] } = useProjects();
+  const { data: areas = [] } = useAreas();
+  const categoryNames = useMemo(
+    () => [...areas.map((a) => a.name), ...projects.map((p) => p.name)],
+    [areas, projects]
+  );
 
   // Debounced task search — only queries once ≥2 chars have settled for 200ms.
   const [debounced, setDebounced] = useState("");
@@ -79,7 +84,7 @@ export function CommandCapture() {
     };
   }, []);
 
-  const parsed = useMemo(() => parseCapture(text), [text]);
+  const parsed = useMemo(() => parseCapture(text, categoryNames), [text, categoryNames]);
   const chips = previewChips(parsed);
 
   function close() {
@@ -93,12 +98,14 @@ export function CommandCapture() {
     let project_id: string | null = null;
     let area_id: string | null = null;
     if (parsed.projectName) {
-      const match = projects.find(
-        (p) => p.name.toLowerCase() === parsed.projectName!.toLowerCase()
-      );
-      if (match) {
-        project_id = match.id;
-        area_id = match.area_id;
+      const q = parsed.projectName.toLowerCase();
+      const proj = projects.find((p) => p.name.toLowerCase() === q);
+      if (proj) {
+        project_id = proj.id;
+        area_id = proj.area_id;
+      } else {
+        const area = areas.find((a) => a.name.toLowerCase() === q);
+        if (area) area_id = area.id;
       }
     }
     create.mutate({
