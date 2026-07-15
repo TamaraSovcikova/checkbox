@@ -106,6 +106,92 @@
   --area-green: #16a34a;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Colour schemes (palettes). Orthogonal to light/dark: a palette only recolours
+   the ACCENT (primary / hover / ring / focus + the primary-foreground text on
+   it). The light/dark mode still owns every surface + text token, so each
+   palette works in both modes. Driven by [data-palette]; "indigo" is the base
+   above (no block). Light blocks carry two attributes so they out-specify the
+   single-attribute dark blocks in light mode. Keys mirror lib/theme.ts PALETTES.
+   ───────────────────────────────────────────────────────────────────────── */
+:root[data-palette="ocean"] {
+  --primary: #0ea5e9; --primary-hover: #38bdf8; --ring: #0ea5e9;
+}
+:root[data-theme="light"][data-palette="ocean"] {
+  --primary: #0284c7; --primary-hover: #0369a1; --ring: #0284c7;
+}
+
+:root[data-palette="emerald"] {
+  --primary: #10b981; --primary-hover: #34d399; --ring: #10b981;
+}
+:root[data-theme="light"][data-palette="emerald"] {
+  --primary: #059669; --primary-hover: #047857; --ring: #059669;
+}
+
+:root[data-palette="teal"] {
+  --primary: #14b8a6; --primary-hover: #2dd4bf; --ring: #14b8a6;
+}
+:root[data-theme="light"][data-palette="teal"] {
+  --primary: #0d9488; --primary-hover: #0f766e; --ring: #0d9488;
+}
+
+:root[data-palette="violet"] {
+  --primary: #8b5cf6; --primary-hover: #a78bfa; --ring: #8b5cf6;
+}
+:root[data-theme="light"][data-palette="violet"] {
+  --primary: #7c3aed; --primary-hover: #6d28d9; --ring: #7c3aed;
+}
+
+:root[data-palette="rose"] {
+  --primary: #f43f5e; --primary-hover: #fb7185; --ring: #f43f5e;
+}
+:root[data-theme="light"][data-palette="rose"] {
+  --primary: #e11d48; --primary-hover: #be123c; --ring: #e11d48;
+}
+
+/* Amber is light enough that white text on it reads poorly — flip the on-primary
+   text to the warm near-black in both modes. */
+:root[data-palette="amber"] {
+  --primary: #f59e0b; --primary-hover: #fbbf24; --ring: #f59e0b;
+  --primary-foreground: #1c1b19;
+}
+:root[data-theme="light"][data-palette="amber"] {
+  --primary: #d97706; --primary-hover: #b45309; --ring: #d97706;
+  --primary-foreground: #ffffff;
+}
+
+:root[data-palette="crimson"] {
+  --primary: #ef4444; --primary-hover: #f87171; --ring: #ef4444;
+}
+:root[data-theme="light"][data-palette="crimson"] {
+  --primary: #dc2626; --primary-hover: #b91c1c; --ring: #dc2626;
+}
+
+/* Graphite: a restrained monochrome accent for a minimalist, no-colour feel. */
+:root[data-palette="graphite"] {
+  --primary: #64748b; --primary-hover: #94a3b8; --ring: #64748b;
+}
+:root[data-theme="light"][data-palette="graphite"] {
+  --primary: #475569; --primary-hover: #334155; --ring: #475569;
+}
+
+/* ── Fonts ──────────────────────────────────────────────────────────────────
+   System-only stacks (no web downloads, so it stays offline-safe). body reads
+   --app-font; [data-font] swaps it. Defaults to the sans stack. */
+:root {
+  --app-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+:root[data-font="serif"] {
+  --app-font: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+}
+:root[data-font="rounded"] {
+  --app-font: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand,
+    system-ui, sans-serif;
+}
+:root[data-font="mono"] {
+  --app-font: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
 /* Expose tokens as Tailwind v4 utilities: bg-primary, text-muted, border-border,
    text-pri-1, etc. `inline` keeps them referencing the CSS vars at runtime. */
 @theme inline {
@@ -141,8 +227,7 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--app-font);
 }
 
 /* priority accent text (kept for back-compat during the rewrite; now token-driven) */
