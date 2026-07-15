@@ -1,23 +1,28 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Project, Task } from "../../shared/types";
-import { useTasks } from "../lib/queries";
+import { useTasks, useAreas } from "../lib/queries";
 import { TaskRow } from "./TaskRow";
-import { PRIORITY_VAR } from "../lib/colors";
+import { areaTintBg, areaColorVar, shouldPill } from "../lib/colors";
+import { PriorityPill } from "./ui";
 import { cn } from "@/lib/utils";
 
 // Draggable board card. Drops resolve in the app-level DndContext (AppShell),
 // so a card can go to another column OR onto a sidebar area/project.
-function Card({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
+export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
+  const { data: areas = [] } = useAreas();
+  const area = areas.find((a) => a.id === task.area_id);
+  const tint = areaTintBg(area?.color, 12);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: task.id, data: { type: "task", task } });
   return (
     <div
       ref={setNodeRef}
-      style={
-        transform
+      style={{
+        ...(transform
           ? { transform: `translate(${transform.x}px, ${transform.y}px)` }
-          : undefined
-      }
+          : {}),
+        ...(tint ? { backgroundColor: tint } : {}),
+      }}
       onClick={() => onOpen(task)}
       className={cn(
         "touch-none rounded-md border border-border bg-surface p-2 transition-colors hover:border-primary/40",
@@ -28,7 +33,14 @@ function Card({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
     >
       <div className="text-sm text-foreground">{task.title}</div>
       <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-subtle">
-        <span style={{ color: PRIORITY_VAR[task.priority] }}>P{task.priority}</span>
+        {shouldPill(task.priority) && <PriorityPill priority={task.priority} />}
+        {area && (
+          <span
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ background: areaColorVar(area.color) }}
+            title={area.name}
+          />
+        )}
         {task.due_date && <span className="text-primary">{task.due_date}</span>}
         {(task.labels ?? []).map((l) => (
           <span key={l.id} className="text-muted">
@@ -69,7 +81,7 @@ function Column({
         {name} <span className="text-subtle">{tasks.length}</span>
       </div>
       {tasks.map((t) => (
-        <Card key={t.id} task={t} onOpen={onOpen} />
+        <BoardCard key={t.id} task={t} onOpen={onOpen} />
       ))}
     </div>
   );

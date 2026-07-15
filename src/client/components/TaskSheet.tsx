@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { format, parseISO, addDays } from "date-fns";
-import type { Task, Subtask } from "../../shared/types";
+import type { Task, Subtask, Priority } from "../../shared/types";
 import { api } from "../lib/api";
 import {
   PRIORITY_LABEL,
@@ -11,9 +11,10 @@ import {
 import { RECURRENCE_PRESETS, recurrenceLabel } from "../../shared/recurrence";
 import { Markdown } from "../lib/markdown";
 import { parseDatePhrase } from "../lib/nlp";
-import { PRIORITY_VAR } from "../lib/colors";
+import { PRIORITY_VAR, shouldPill } from "../lib/colors";
 import { cn, todayStr } from "@/lib/utils";
 import { Button } from "./ui/button";
+import { PriorityPill } from "./ui";
 import { Sheet, SheetContent } from "./ui/sheet";
 import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
 import {
@@ -222,15 +223,19 @@ export function TaskSheet({
 
   async function addSub() {
     if (!task || !newSub.trim()) return;
-    await api.addSubtask(task.id, newSub.trim());
+    // Use the server-assigned id so a follow-up edit (due date / priority) on the
+    // fresh subtask targets the real row instead of a throwaway local id.
+    const created = await api.addSubtask(task.id, newSub.trim());
     setSubtasks((s) => [
       ...s,
       {
-        id: crypto.randomUUID(),
+        id: created.id,
         task_id: task.id,
         title: newSub.trim(),
         done: false,
         position: s.length,
+        due_date: null,
+        priority: null,
       },
     ]);
     setNewSub("");
@@ -241,6 +246,18 @@ export function TaskSheet({
     if (!task) return;
     await api.updateSubtask(task.id, id, { done });
     setSubtasks((s) => s.map((x) => (x.id === id ? { ...x, done } : x)));
+    invalidate();
+  }
+
+  // Edit a subtask's due date or priority. Optimistic: patch local state, then
+  // persist. null clears the field.
+  async function editSub(id: string, patch: Partial<Subtask>) {
+    if (!task) return;
+    setSubtasks((s) => s.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    await api.updateSubtask(task.id, id, {
+      ...(patch.due_date !== undefined ? { due_date: patch.due_date } : {}),
+      ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+    });
     invalidate();
   }
 
@@ -420,28 +437,59 @@ export function TaskSheet({
                   />
                 </div>
               )}
-              <div className="mt-2 space-y-1">
+              <div className="mt-2 space-y-1.5">
                 {subtasks.map((s) => (
-                  <div
-                    key={s.id}
-                    className="group flex items-center gap-2 text-sm text-foreground"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={s.done}
-                      onChange={(e) => toggleSub(s.id, e.target.checked)}
-                      className="h-4 w-4 [accent-color:var(--primary)]"
-                    />
-                    <span className={cn("flex-1", s.done && "text-subtle line-through")}>
-                      {s.title}
-                    </span>
-                    <button
-                      onClick={() => deleteSub(s.id)}
-                      aria-label="Delete subtask"
-                      className="hidden shrink-0 text-subtle hover:text-danger group-hover:block"
-                    >
-                      <TrashIcon className="h-3.5 w-3.5" />
-                    </button>
+                  <div key={s.id} className="group">
+                    <div className="flex items-center gap-2 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={s.done}
+                        onChange={(e) => toggleSub(s.id, e.target.checked)}
+                        className="h-4 w-4 [accent-color:var(--primary)]"
+                      />
+                      <span className={cn("flex-1", s.done && "text-subtle line-through")}>
+                        {s.title}
+                      </span>
+                      <button
+                        onClick={() => deleteSub(s.id)}
+                        aria-label="Delete subtask"
+                        className="hidden shrink-0 text-subtle hover:text-danger group-hover:block"
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    {/* Per-subtask due date + priority. Compact, indented under
+                        the title so a checklist item can be scheduled/ranked. */}
+                    <div className="ml-6 mt-1 flex flex-wrap items-center gap-2">
+                      <input
+                        type="date"
+                        value={s.due_date ?? ""}
+                        onChange={(e) =>
+                          editSub(s.id, { due_date: e.target.value || null })
+                        }
+                        aria-label="Subtask due date"
+                        className="h-7 rounded border border-input bg-surface px-2 text-[11px] text-foreground outline-none focus:border-primary"
+                      />
+                      <select
+                        value={s.priority ?? ""}
+                        onChange={(e) =>
+                          editSub(s.id, {
+                            priority: e.target.value
+                              ? (Number(e.target.value) as Priority)
+                              : null,
+                          })
+                        }
+                        aria-label="Subtask priority"
+                        className="h-7 rounded border border-input bg-surface px-1.5 text-[11px] text-foreground outline-none focus:border-primary"
+                      >
+                        <option value="">No priority</option>
+                        <option value="1">P1</option>
+                        <option value="2">P2</option>
+                        <option value="3">P3</option>
+                        <option value="4">P4</option>
+                      </select>
+                      {shouldPill(s.priority) && <PriorityPill priority={s.priority} />}
+                    </div>
                   </div>
                 ))}
               </div>

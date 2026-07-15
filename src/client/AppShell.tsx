@@ -62,6 +62,9 @@ export function AppShell() {
     try {
       if (action.kind === "move-project") {
         await api.updateProject(action.id, { area_id: action.areaId });
+      } else if (action.kind === "complete") {
+        await api.completeTask(action.id, action.done);
+        if (action.then) await api.updateTask(action.id, action.then);
       } else {
         await api.updateTask(action.id, action.body);
       }

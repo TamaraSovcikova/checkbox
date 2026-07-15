@@ -33,6 +33,8 @@ export interface Subtask {
   title: string;
   done: boolean;
   position: number;
+  due_date: string | null; // YYYY-MM-DD
+  priority: Priority | null; // 1 urgent .. 4 backlog; null = unranked
 }
 
 export interface Label {
@@ -165,7 +167,7 @@ export interface TriageSuggestion {
 
 // Per-view display defaults (grid vs list, sort key, group key), keyed by view.
 export interface ViewDefault {
-  mode?: "grid" | "list";
+  mode?: "grid" | "list" | "board"; // "board" is Today-only (To do/Doing/Done)
   sort?: string;
   group?: string;
   filter?: string; // "all" | "p1".."p4" | "overdue" | "planned"

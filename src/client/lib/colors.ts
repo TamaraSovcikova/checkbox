@@ -40,6 +40,8 @@ export const AREA_COLORS: { key: string; var: string; label: string }[] = [
   { key: "orange", var: "var(--area-orange)", label: "Orange" },
   { key: "rose", var: "var(--area-rose)", label: "Rose" },
   { key: "violet", var: "var(--area-violet)", label: "Violet" },
+  { key: "cyan", var: "var(--area-cyan)", label: "Cyan" },
+  { key: "green", var: "var(--area-green)", label: "Green" },
   { key: "slate", var: "var(--area-slate)", label: "Slate" },
 ];
 
@@ -49,3 +51,31 @@ export function areaColorVar(key: string | null | undefined): string {
   if (!key) return "var(--primary)";
   return AREA_COLORS.find((c) => c.key === key)?.var ?? "var(--primary)";
 }
+
+// A faint, theme-aware wash of an area's colour for tinting the *background* of
+// tasks that belong to it, so a mixed list (Today, board) reads at a glance by
+// area. Transparent so it composes over hover/selection layers; returns
+// `undefined` for an area with no colour so callers can skip the style entirely.
+export function areaTintBg(
+  key: string | null | undefined,
+  pct = 8
+): string | undefined {
+  if (!key) return undefined;
+  const v = AREA_COLORS.find((c) => c.key === key)?.var;
+  if (!v) return undefined;
+  return `color-mix(in oklab, ${v} ${pct}%, transparent)`;
+}
+
+// Priority pill palette: a light wash of the priority colour as background with
+// the solid colour as text, so P1 (urgent) shouts and P3 stays legible in both
+// themes. P4 (the default backlog level) is deliberately not pilled — see
+// shouldPill.
+export function priorityChip(p: Priority): { bg: string; fg: string } {
+  const v = PRIORITY_VAR[p];
+  return { bg: `color-mix(in oklab, ${v} 18%, transparent)`, fg: v };
+}
+
+// P4 is the level almost every task sits at, so pilling it everywhere is noise.
+// Only 1-3 (an active decision to raise a task) get a visible pill.
+export const shouldPill = (p: Priority | null | undefined): p is Priority =>
+  p != null && p <= 3;

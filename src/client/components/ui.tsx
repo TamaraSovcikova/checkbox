@@ -4,6 +4,8 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
 } from "react";
+import type { Priority } from "../../shared/types";
+import { priorityChip } from "../lib/colors";
 
 export function cx(...parts: (string | false | null | undefined)[]) {
   return parts.filter(Boolean).join(" ");
@@ -59,6 +61,31 @@ export function Badge({
       )}
     >
       {children}
+    </span>
+  );
+}
+
+// A colour-coded priority chip (P1 urgent .. P3). Callers gate on shouldPill so
+// the default P4 stays clean. Used across rows, cards, board and the drawer so
+// priority reads the same everywhere.
+export function PriorityPill({
+  priority,
+  className,
+}: {
+  priority: Priority;
+  className?: string;
+}) {
+  const { bg, fg } = priorityChip(priority);
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center rounded px-1 py-0.5 text-[10px] font-semibold leading-none",
+        className
+      )}
+      style={{ backgroundColor: bg, color: fg }}
+      title={`Priority ${priority}`}
+    >
+      P{priority}
     </span>
   );
 }

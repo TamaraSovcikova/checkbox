@@ -542,7 +542,10 @@ tasks.post("/:id/subtasks", async (c) => {
   )
     .bind(id, taskId, b.title)
     .run();
-  return c.json({ id, task_id: taskId, title: b.title, done: false }, 201);
+  return c.json(
+    { id, task_id: taskId, title: b.title, done: false, due_date: null, priority: null },
+    201
+  );
 });
 
 tasks.patch("/:id/subtasks/:subId", async (c) => {
@@ -550,7 +553,12 @@ tasks.patch("/:id/subtasks/:subId", async (c) => {
   const taskId = c.req.param("id");
   if (!(await ownsTask(c.env.DB, userId, taskId)))
     return c.json({ error: "not found" }, 404);
-  const b = await c.req.json<{ title?: string; done?: boolean }>();
+  const b = await c.req.json<{
+    title?: string;
+    done?: boolean;
+    due_date?: string | null;
+    priority?: number | null;
+  }>();
   const sets: string[] = [];
   const binds: unknown[] = [];
   if (b.title != null) {
@@ -560,6 +568,16 @@ tasks.patch("/:id/subtasks/:subId", async (c) => {
   if (b.done != null) {
     sets.push("done = ?");
     binds.push(b.done ? 1 : 0);
+  }
+  // due_date/priority accept null to clear. `in b` (not != null) so an explicit
+  // null reaches the column instead of being skipped.
+  if ("due_date" in b) {
+    sets.push("due_date = ?");
+    binds.push(b.due_date ?? null);
+  }
+  if ("priority" in b) {
+    sets.push("priority = ?");
+    binds.push(b.priority ?? null);
   }
   if (sets.length) {
     binds.push(c.req.param("subId"), taskId);

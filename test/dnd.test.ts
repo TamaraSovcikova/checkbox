@@ -86,6 +86,52 @@ describe("resolveDrop", () => {
     });
   });
 
+  // The Today board's stage columns map straight to task.status.
+  it("stage drop to doing sets status doing", () => {
+    expect(resolveDrop(drag, { type: "stage", stage: "doing" }, TODAY)).toEqual({
+      kind: "update",
+      id: "t1",
+      body: { status: "doing" },
+    });
+  });
+
+  it("stage drop to the same status is a no-op", () => {
+    expect(resolveDrop(drag, { type: "stage", stage: "todo" }, TODAY)).toBeNull();
+  });
+
+  it("stage drop to done completes via the complete endpoint", () => {
+    expect(resolveDrop(drag, { type: "stage", stage: "done" }, TODAY)).toEqual({
+      kind: "complete",
+      id: "t1",
+      done: true,
+    });
+  });
+
+  it("stage: dragging a done task to doing reopens it, then marks doing", () => {
+    const doneDrag = { type: "task", task: task({ status: "done" }) };
+    expect(resolveDrop(doneDrag, { type: "stage", stage: "doing" }, TODAY)).toEqual({
+      kind: "complete",
+      id: "t1",
+      done: false,
+      then: { status: "doing" },
+    });
+  });
+
+  it("stage: dragging a done task to todo just reopens it", () => {
+    const doneDrag = { type: "task", task: task({ status: "done" }) };
+    expect(resolveDrop(doneDrag, { type: "stage", stage: "todo" }, TODAY)).toEqual({
+      kind: "complete",
+      id: "t1",
+      done: false,
+      then: undefined,
+    });
+  });
+
+  it("stage: a done task dropped back on done is a no-op", () => {
+    const doneDrag = { type: "task", task: task({ status: "done" }) };
+    expect(resolveDrop(doneDrag, { type: "stage", stage: "done" }, TODAY)).toBeNull();
+  });
+
   it("slot drop schedules using the task's estimate (default 60m)", () => {
     const action = resolveDrop(
       { type: "task", task: task({ time_estimate_min: 90 }) },

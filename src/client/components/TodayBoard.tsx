@@ -1,0 +1,78 @@
+import { useDroppable } from "@dnd-kit/core";
+import type { Task, TaskStatus } from "../../shared/types";
+import { useTaskUI } from "../lib/ui-context";
+import { cn } from "@/lib/utils";
+import { BoardCard } from "./ProjectBoard";
+
+// The three stages of the Today board. Each maps straight to task.status, so
+// dragging a card between columns is just a status change (Done routes through
+// the complete endpoint - see resolveDrop's "stage" case).
+const STAGES: { stage: TaskStatus; label: string }[] = [
+  { stage: "todo", label: "To do" },
+  { stage: "doing", label: "Doing" },
+  { stage: "done", label: "Done" },
+];
+
+function StageColumn({
+  stage,
+  label,
+  tasks,
+  onOpen,
+}: {
+  stage: TaskStatus;
+  label: string;
+  tasks: Task[];
+  onOpen: (t: Task) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `stage:${stage}`,
+    data: { type: "stage", stage },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "flex w-72 shrink-0 flex-col gap-2 rounded-lg bg-surface/40 p-2",
+        isOver && "ring-1 ring-primary"
+      )}
+    >
+      <div className="px-1 text-xs font-medium uppercase tracking-wide text-muted">
+        {label} <span className="text-subtle">{tasks.length}</span>
+      </div>
+      {tasks.map((t) => (
+        <BoardCard key={t.id} task={t} onOpen={onOpen} />
+      ))}
+      {tasks.length === 0 && (
+        <p className="px-1 py-6 text-center text-[11px] text-subtle">
+          Drop a task here
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Board layout for Today: the open tasks (todo + doing) plus the tasks completed
+// today, split into three draggable columns. `open` are the todo/doing tasks
+// from the Today view; `done` are today's completed tasks (a separate view, so
+// the Done column stays populated even though Today excludes done tasks).
+export function TodayBoard({ open, done }: { open: Task[]; done: Task[] }) {
+  const { open: openTask } = useTaskUI();
+  const byStage: Record<TaskStatus, Task[]> = {
+    todo: open.filter((t) => t.status !== "doing"),
+    doing: open.filter((t) => t.status === "doing"),
+    done,
+  };
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-2">
+      {STAGES.map(({ stage, label }) => (
+        <StageColumn
+          key={stage}
+          stage={stage}
+          label={label}
+          tasks={byStage[stage]}
+          onOpen={openTask}
+        />
+      ))}
+    </div>
+  );
+}

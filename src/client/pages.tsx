@@ -39,6 +39,7 @@ import { useTaskUI, useMe } from "./lib/ui-context";
 import { useTheme, type ThemePref } from "./lib/theme";
 import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
+import { TodayBoard } from "./components/TodayBoard";
 import { TaskRow } from "./components/TaskRow";
 import {
   useTaskSelection,
@@ -49,6 +50,7 @@ import { TopBar, type Tab, type MenuChoice } from "./components/TopBar";
 import {
   GridIcon,
   ListIcon,
+  BoardIcon,
   TodayIcon,
   UpcomingIcon,
   OverdueIcon,
@@ -58,9 +60,9 @@ import {
   BackIcon,
   ICON_SIZE,
 } from "./lib/icons";
-import { PRIORITY_VAR } from "./lib/colors";
+import { areaTintBg, shouldPill } from "./lib/colors";
 import { useViewPrefs } from "./lib/queries";
-import { Button, cx } from "./components/ui";
+import { Button, cx, PriorityPill } from "./components/ui";
 import { todayStr } from "./lib/utils";
 import { api } from "./lib/api";
 import type { ComponentType, ReactNode } from "react";
@@ -249,12 +251,12 @@ function useTaskCollection(prefsKey: string, tasks: Task[], empty: string) {
   const { open } = useTaskUI();
 
   const vd = viewDefault(prefsKey);
-  const view = (vd.mode ?? "list") as "grid" | "list";
+  const view = (vd.mode ?? "list") as ViewMode;
   const sort = (vd.sort as SortKey) ?? "manual";
   const group = (vd.group as GroupKey) ?? "none";
   const filter = (vd.filter as FilterKey) ?? "all";
 
-  const setView = (m: "grid" | "list") => setViewDefault(prefsKey, { mode: m });
+  const setView = (m: ViewMode) => setViewDefault(prefsKey, { mode: m });
 
   const names = {
     area: (id: string | null) => areas.find((a) => a.id === id)?.name ?? "No area",
@@ -321,17 +323,28 @@ function useTaskCollection(prefsKey: string, tasks: Task[], empty: string) {
 }
 
 function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
+  const { data: areas = [] } = useAreas();
+  const area = areas.find((a) => a.id === task.area_id);
   const done = task.status === "done";
+  const tint = areaTintBg(area?.color, 10);
   return (
     <button
       onClick={() => onOpen(task)}
       className="flex flex-col rounded-lg border border-border bg-surface/60 p-3 text-left transition-colors hover:border-primary/40"
+      style={tint ? { backgroundColor: tint } : undefined}
     >
       <span className={cx("text-sm text-foreground", done && "text-subtle line-through")}>
         {task.title}
       </span>
       <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-subtle">
-        <span style={{ color: PRIORITY_VAR[task.priority] }}>P{task.priority}</span>
+        {shouldPill(task.priority) && <PriorityPill priority={task.priority} />}
+        {area && (
+          <span
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ background: areaColorVar(area.color) }}
+            title={area.name}
+          />
+        )}
         {task.due_date && <span className="text-primary">{task.due_date}</span>}
         {(task.labels ?? []).map((l) => (
           <span key={l.id} className="text-muted">
@@ -356,24 +369,36 @@ function TaskGrid({ tasks, empty }: { tasks: Task[]; empty: string }) {
   );
 }
 
-const VIEW_TABS: Tab<"grid" | "list">[] = [
+type ViewMode = "grid" | "list" | "board";
+
+const LIST_GRID_TABS: Tab<ViewMode>[] = [
   { id: "grid", label: "Grid", icon: <GridIcon className={ICON_SIZE} /> },
   { id: "list", label: "List", icon: <ListIcon className={ICON_SIZE} /> },
+];
+// Today also offers a To do / Doing / Done board you can drag between.
+const TODAY_TABS: Tab<ViewMode>[] = [
+  ...LIST_GRID_TABS,
+  { id: "board", label: "Board", icon: <BoardIcon className={ICON_SIZE} /> },
 ];
 
 export function ViewPage({ name }: { name: string }) {
   const { data: tasks = [] } = useView(name);
+  // Today's board keeps a Done column, which the Today view (open tasks only)
+  // can't fill — so pull today's completed tasks alongside. Cheap + cached.
+  const { data: completedToday = [] } = useView("completed-today");
   const meta = VIEW_META[name];
   const { hide } = useViewPrefs();
   const { view, setView, controls, body, sortMenu, groupMenu, filterMenu } =
     useTaskCollection(`/${name}`, tasks, meta.empty);
+  const isToday = name === "today";
+  const showBoard = isToday && view === "board";
 
   return (
     <div>
       <Header
         title={meta.title}
         icon={<meta.icon className={ICON_SIZE} />}
-        tabs={VIEW_TABS}
+        tabs={isToday ? TODAY_TABS : LIST_GRID_TABS}
         activeTab={view}
         onTab={setView}
         sort={sortMenu}
@@ -391,7 +416,7 @@ export function ViewPage({ name }: { name: string }) {
           ) : undefined
         }
       />
-      {name === "today" ? (
+      {isToday ? (
         // Today can carry pins on the side, so it lays out as main column + rail.
         <div className="lg:flex lg:gap-5">
           <div className="min-w-0 lg:flex-1">
@@ -399,9 +424,17 @@ export function ViewPage({ name }: { name: string }) {
             <PinsStrip />
             <CheatSheet />
             <SuggestToday />
-            {body}
-            {view === "list" && <BulkActionBar controls={controls} />}
-            <CompletedToday />
+            {showBoard ? (
+              // The board's Done column already shows today's completed tasks, so
+              // the separate CompletedToday strip is redundant here.
+              <TodayBoard open={tasks} done={completedToday} />
+            ) : (
+              <>
+                {body}
+                {view === "list" && <BulkActionBar controls={controls} />}
+                <CompletedToday />
+              </>
+            )}
           </div>
           <PinsSide />
         </div>
@@ -702,7 +735,7 @@ export function AreaPage() {
             />
           )
         }
-        tabs={VIEW_TABS}
+        tabs={LIST_GRID_TABS}
         activeTab={view}
         onTab={setView}
         sort={sortMenu}
@@ -753,10 +786,10 @@ export function ProjectPage() {
   const { data: areas = [] } = useAreas();
   const { viewDefault, setViewDefault } = useViewPrefs();
   const vd = viewDefault(`project:${id}`);
-  const view = (vd.mode ?? "grid") as "grid" | "list";
+  const view = (vd.mode ?? "grid") as ViewMode;
   const sort = (vd.sort as SortKey) ?? "manual";
   const filter = (vd.filter as FilterKey) ?? "all";
-  const setView = (m: "grid" | "list") => setViewDefault(`project:${id}`, { mode: m });
+  const setView = (m: ViewMode) => setViewDefault(`project:${id}`, { mode: m });
   const [edit, setEdit] = useState(false);
   const project = projects.find((p) => p.id === id);
   if (!project) return <p className="text-subtle">Loading project...</p>;
@@ -777,7 +810,7 @@ export function ProjectPage() {
     <div>
       <Header
         title={project.name}
-        tabs={VIEW_TABS}
+        tabs={LIST_GRID_TABS}
         activeTab={view}
         onTab={setView}
         sort={sortMenu}
@@ -802,7 +835,7 @@ export function ProjectPage() {
       <ProjectDialog open={edit} onOpenChange={setEdit} existing={project} />
       <ProjectBoard
         project={project}
-        view={view}
+        view={view === "list" ? "list" : "grid"}
         onOpen={open}
         transform={(ts) => sortTasks(filterTasks(ts, filter), sort)}
       />

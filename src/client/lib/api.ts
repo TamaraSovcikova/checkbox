@@ -13,6 +13,7 @@ import type {
   Project,
   SavedFilter,
   Stats,
+  Subtask,
   Task,
   Template,
   TriageSuggestion,
@@ -139,9 +140,17 @@ export const api = {
   removeDependency: (id: string, depId: string) =>
     httpMutate("DELETE", `/api/tasks/${id}/dependencies/${depId}`),
   addSubtask: (taskId: string, title: string) =>
-    httpMutate("POST", `/api/tasks/${taskId}/subtasks`, { title }),
-  updateSubtask: (taskId: string, subId: string, b: { done?: boolean; title?: string }) =>
-    httpMutate("PATCH", `/api/tasks/${taskId}/subtasks/${subId}`, b),
+    httpMutate<Subtask>("POST", `/api/tasks/${taskId}/subtasks`, { title }),
+  updateSubtask: (
+    taskId: string,
+    subId: string,
+    b: {
+      done?: boolean;
+      title?: string;
+      due_date?: string | null;
+      priority?: number | null;
+    }
+  ) => httpMutate("PATCH", `/api/tasks/${taskId}/subtasks/${subId}`, b),
   deleteSubtask: (taskId: string, subId: string) =>
     httpMutate("DELETE", `/api/tasks/${taskId}/subtasks/${subId}`),
   completeAllSubtasks: (taskId: string) =>

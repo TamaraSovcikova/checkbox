@@ -15,6 +15,7 @@ export type DropData =
       projectId?: string;
       view?: string;
       column?: string;
+      stage?: "todo" | "doing" | "done";
       done?: boolean;
       date?: string;
       time?: string;
@@ -24,6 +25,9 @@ export type DropData =
 export type DropAction =
   | { kind: "update"; id: string; body: Record<string, unknown> }
   | { kind: "move-project"; id: string; areaId: string | null }
+  // Complete/reopen a task through the dedicated endpoint (handles completed_at
+  // + recurrence), with an optional follow-up update once it has reopened.
+  | { kind: "complete"; id: string; done: boolean; then?: Record<string, unknown> }
   | null;
 
 // Resolve a drop into the mutation it should trigger, or null for a no-op.
@@ -76,6 +80,25 @@ export function resolveDrop(
             },
           }
         : null;
+    case "stage": {
+      // The Today board's columns map straight to task.status. The Done column
+      // goes through the complete endpoint so completed_at + recurrence are
+      // handled; dragging a done task back reopens it (and lands it in Doing if
+      // that was the target, else Todo).
+      const stage = target.stage;
+      if (!stage) return null;
+      if (stage === "done")
+        return task.status === "done" ? null : { kind: "complete", id, done: true };
+      if (task.status === "done")
+        return {
+          kind: "complete",
+          id,
+          done: false,
+          then: stage === "doing" ? { status: "doing" } : undefined,
+        };
+      if (task.status === stage) return null;
+      return { kind: "update", id, body: { status: stage } };
+    }
     case "slot": {
       if (!target.date || !target.time) return null;
       const start = `${target.date}T${target.time}:00`;

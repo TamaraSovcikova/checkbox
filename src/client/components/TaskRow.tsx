@@ -12,7 +12,8 @@ import {
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import { recurrenceLabel } from "../../shared/recurrence";
-import { PRIORITY_VAR, areaColorVar } from "../lib/colors";
+import { PRIORITY_VAR, areaColorVar, areaTintBg, shouldPill } from "../lib/colors";
+import { PriorityPill } from "./ui";
 import { cn, todayStr, monthAheadStr } from "@/lib/utils";
 import {
   DragIcon,
@@ -108,13 +109,19 @@ export function TaskRow({
     await runComplete();
   }
 
+  // Faint area-coloured wash on the OUTER wrapper: the inner row's hover/selection
+  // backgrounds are semi-transparent, so they compose over this instead of hiding
+  // it. Tasks with no area stay untinted.
+  const tint = areaTintBg(area?.color);
   return (
     <div
       className={cn(
+        "rounded-md",
         isDragging && "opacity-40",
         // Dim the far future; hover restores full opacity so it never feels lost.
         distant && !isDragging && "opacity-45 transition-opacity hover:opacity-100"
       )}
+      style={tint ? { backgroundColor: tint } : undefined}
     >
       {/* The whole row is the drag surface (grab anywhere, including on touch via
           press-and-hold). A plain click still opens the task, because the sensor
@@ -204,6 +211,7 @@ export function TaskRow({
             {task.title}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-subtle">
+            {shouldPill(task.priority) && <PriorityPill priority={task.priority} />}
             {(area || project) && (
               <span
                 className="inline-flex items-center gap-1"
@@ -324,6 +332,10 @@ export function TaskRow({
               >
                 {s.title}
               </button>
+              {shouldPill(s.priority) && <PriorityPill priority={s.priority} />}
+              {s.due_date && (
+                <span className="shrink-0 text-[11px] text-primary">{s.due_date}</span>
+              )}
             </li>
           ))}
         </ul>

@@ -12,6 +12,7 @@ export {
   Settings as SettingsIcon,
   LayoutGrid as GridIcon,
   List as ListIcon,
+  Kanban as BoardIcon,
   ArrowUpDown as SortIcon,
   Columns as GroupIcon,
   MoreHorizontal as MoreIcon,
