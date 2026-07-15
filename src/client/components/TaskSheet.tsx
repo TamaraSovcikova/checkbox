@@ -13,6 +13,8 @@ import { Markdown } from "../lib/markdown";
 import { parseDatePhrase } from "../lib/nlp";
 import { PRIORITY_VAR, shouldPill } from "../lib/colors";
 import { cn, todayStr } from "@/lib/utils";
+import { inToday, leaveTodayBody, undoLeaveTodayBody } from "../lib/today";
+import { useToast } from "../lib/toast";
 import { Button } from "./ui/button";
 import { PriorityPill } from "./ui";
 import { Sheet, SheetContent } from "./ui/sheet";
@@ -169,6 +171,7 @@ export function TaskSheet({
   const del = useDeleteTask();
   const snooze = useSnoozeTask();
   const invalidate = useTaskInvalidate();
+  const { toast } = useToast();
 
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
@@ -270,6 +273,22 @@ export function TaskSheet({
 
   const subDone = subtasks.filter((s) => s.done).length;
   const plannedToday = task?.planned_date === todayStr();
+  // "In Today" for any reason (planned, due today/overdue, blocked today), so the
+  // toggle can actually remove it. Add sets a plan; Remove clears every trigger.
+  const isInToday = task ? inToday(task, todayStr()) : false;
+
+  function onToggleToday() {
+    if (!task) return;
+    if (isInToday) {
+      const body = leaveTodayBody(task, todayStr());
+      save(body);
+      const prev = undoLeaveTodayBody(task, body);
+      toast("Removed from Today", () => save(prev));
+    } else {
+      save({ planned_date: todayStr() });
+      toast("Added to Today");
+    }
+  }
 
   // Section summaries — what each collapsed section reports about itself.
   const scheduleSummary =
@@ -376,18 +395,16 @@ export function TaskSheet({
             {task.status !== "done" && (
               <button
                 type="button"
-                onClick={() =>
-                  save({ planned_date: plannedToday ? null : todayStr() })
-                }
+                onClick={onToggleToday}
                 className={cn(
                   "inline-flex w-fit items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm font-medium transition-colors",
-                  plannedToday
+                  isInToday
                     ? "border-primary bg-primary/15 text-primary hover:bg-primary/10"
                     : "border-border text-foreground hover:border-primary/50 hover:bg-surface-2"
                 )}
               >
                 <TodayIcon className="h-4 w-4" />
-                {plannedToday ? "Planned for today" : "Add to Today"}
+                {isInToday ? "Remove from Today" : "Add to Today"}
               </button>
             )}
 

@@ -15,6 +15,7 @@ import { recurrenceLabel } from "../../shared/recurrence";
 import { PRIORITY_VAR, areaColorVar, areaTintBg, shouldPill } from "../lib/colors";
 import { PriorityPill } from "./ui";
 import { cn, todayStr, monthAheadStr } from "@/lib/utils";
+import { inToday, leaveTodayBody, undoLeaveTodayBody } from "../lib/today";
 import {
   CheckIcon,
   RepeatIcon,
@@ -58,7 +59,11 @@ export function TaskRow({
   // future recedes. Toggle in Settings › Appearance.
   const distant =
     dimDistantTasks && !done && !!task.due_date && task.due_date > monthAheadStr();
-  const plannedToday = task.planned_date === todayStr();
+  const todayIsToday = todayStr();
+  // "In Today" means the task surfaces in the Today view for ANY reason (planned,
+  // due today/overdue, or time-blocked today) — not just an explicit plan. So the
+  // toggle's Remove branch can actually clear it out.
+  const isInToday = inToday(task, todayIsToday);
   const openBlockers = (task.depends_on ?? []).filter(
     (d) => d.status !== "done"
   ).length;
@@ -72,14 +77,19 @@ export function TaskRow({
     data: { type: "task", task },
   });
 
-  // "Add to Today": marks intent to work on it today without touching the
-  // deadline or moving it out of its area/project.
+  // Toggle Today. Add just marks intent (planned_date) without touching the
+  // deadline. Remove clears every trigger so the task truly leaves Today and
+  // falls back to its area/project (or Backlog if it has none); undoable.
   function onToggleToday() {
-    update.mutate({
-      id: task.id,
-      body: { planned_date: plannedToday ? null : todayStr() },
-    });
-    toast(plannedToday ? "Removed from Today" : "Added to Today");
+    if (isInToday) {
+      const body = leaveTodayBody(task, todayIsToday);
+      update.mutate({ id: task.id, body });
+      const prev = undoLeaveTodayBody(task, body);
+      toast("Removed from Today", () => update.mutate({ id: task.id, body: prev }));
+    } else {
+      update.mutate({ id: task.id, body: { planned_date: todayIsToday } });
+      toast("Added to Today");
+    }
   }
 
   async function runComplete() {
@@ -185,8 +195,8 @@ export function TaskRow({
 
         {!done && (
           <button
-            aria-label={plannedToday ? "Remove from Today" : "Add to Today"}
-            title={plannedToday ? "Remove from Today" : "Add to Today"}
+            aria-label={isInToday ? "Remove from Today" : "Add to Today"}
+            title={isInToday ? "Remove from Today" : "Add to Today"}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -194,7 +204,7 @@ export function TaskRow({
             }}
             className={cn(
               "order-last mt-0.5 h-5 w-5 shrink-0 place-items-center rounded transition-colors",
-              plannedToday
+              isInToday
                 ? "grid text-primary hover:text-primary/80"
                 : "hidden text-subtle hover:text-foreground group-hover:grid"
             )}
