@@ -25,6 +25,8 @@ import {
   NotesIcon,
   SubtaskIcon,
   MoreIcon,
+  SearchIcon,
+  ChevronDownIcon,
 } from "../lib/icons";
 
 const newItem = (text: string): PinItem => ({
@@ -446,16 +448,39 @@ export function PinsSide({ scope = "today" }: { scope?: string }) {
   );
 }
 
+// Does a pin match what you typed? Searches everything you can read on the card,
+// including list lines, because "the pin with milk on it" is how you look for it.
+function pinMatches(pin: Pin, q: string): boolean {
+  if (!q) return true;
+  const hay = [pin.title ?? "", pin.body ?? "", ...(pin.items ?? []).map((i) => i.text)]
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(q.toLowerCase());
+}
+
 // The Pins management page (sidebar → Pins).
 export function PinsPage() {
   const { data: pins = [] } = usePins();
   const { data: areas = [] } = useAreas();
   const create = useCreatePin();
+  const [q, setQ] = useState("");
+  // Collapsed sections, by scope. Collapsing is the main tool once you have more
+  // pins than fit on a screen, so it is one click from the section header.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleGroup = (scope: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(scope)) next.delete(scope);
+      else next.add(scope);
+      return next;
+    });
+
+  const found = pins.filter((p) => pinMatches(p, q));
 
   // Group by scope, in the picker's order, so the page always lists pages in the
   // same sequence rather than jumping around as pins move.
   const order = scopeOptions(areas).map((o) => o.value);
-  const groups = [...new Set(pins.map((p) => p.scope || "today"))]
+  const groups = [...new Set(found.map((p) => p.scope || "today"))]
     .sort((a, b) => {
       const ia = order.indexOf(a);
       const ib = order.indexOf(b);
@@ -465,23 +490,31 @@ export function PinsPage() {
     .map((scope) => ({
       scope,
       label: scopeLabel(scope, areas),
-      pins: pins.filter((p) => (p.scope || "today") === scope),
+      pins: found.filter((p) => (p.scope || "today") === scope),
     }));
 
+  const allCollapsed = groups.length > 0 && groups.every((g) => collapsed.has(g.scope));
+
   return (
-    <div className="max-w-2xl pt-4 md:pt-6">
+    <div className="max-w-4xl pt-4 md:pt-6">
       <div className="mb-1 flex items-center gap-2">
         <PinsIcon className="h-5 w-5 text-primary" />
         <h1 className="text-xl font-bold tracking-tight text-foreground">Pins</h1>
+        {pins.length > 0 && (
+          <span className="text-xs text-subtle">
+            {pins.length} across {new Set(pins.map((p) => p.scope || "today")).size} page
+            {new Set(pins.map((p) => p.scope || "today")).size === 1 ? "" : "s"}
+          </span>
+        )}
       </div>
       <p className="mb-4 text-sm text-subtle">
         Lists you edit day to day and reminders you want on your eyes, kept beside
         your tasks. &ldquo;Show on&rdquo; picks the page a pin lives on (Today, a view, or
         an area); the Top / Side toggle picks where on that page; colour them so
-        they stand apart.
+        they stand apart. Drag a pin&rsquo;s corner where it shows up to resize it.
       </p>
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <Button
           variant="secondary"
           size="sm"
@@ -496,6 +529,29 @@ export function PinsPage() {
         >
           <AddIcon className="h-4 w-4" /> New reminder
         </Button>
+
+        {pins.length > 0 && (
+          <>
+            <div className="relative ml-auto">
+              <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search pins"
+                className="h-8 w-44 rounded-md border border-input bg-surface pl-7 pr-2 text-xs text-foreground outline-none placeholder:text-subtle focus:border-primary"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setCollapsed(allCollapsed ? new Set() : new Set(groups.map((g) => g.scope)))
+              }
+              className="text-xs text-subtle transition-colors hover:text-foreground"
+            >
+              {allCollapsed ? "Expand all" : "Collapse all"}
+            </button>
+          </>
+        )}
       </div>
 
       {pins.length === 0 ? (
@@ -506,25 +562,44 @@ export function PinsPage() {
             topics; a reminder is good for a goal or a quote you go by.
           </p>
         </div>
+      ) : groups.length === 0 ? (
+        <p className="rounded-lg border border-border bg-surface/40 p-4 text-center text-sm text-subtle">
+          Nothing matches &ldquo;{q}&rdquo;.
+        </p>
       ) : (
         // Grouped by the page each pin lives on, so this reads as "what is on
         // Today, what is on Health" rather than one undifferentiated pile.
-        <div className="space-y-6">
-          {groups.map((g) => (
-            <section key={g.scope}>
-              <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-subtle">
-                {g.label}
-                <span className="rounded-full bg-surface-2 px-1.5 text-[11px] font-normal tabular-nums text-muted">
-                  {g.pins.length}
-                </span>
-              </h2>
-              <div className="space-y-2">
-                {g.pins.map((p) => (
-                  <PinCard key={p.id} pin={p} />
-                ))}
-              </div>
-            </section>
-          ))}
+        <div className="space-y-5">
+          {groups.map((g) => {
+            const isCollapsed = collapsed.has(g.scope);
+            return (
+              <section key={g.scope}>
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(g.scope)}
+                  className="mb-2 flex w-full items-center gap-2 border-b border-border pb-1 text-xs font-semibold uppercase tracking-wide text-subtle transition-colors hover:text-foreground"
+                >
+                  <ChevronDownIcon
+                    className={cn(
+                      "h-3.5 w-3.5 transition-transform",
+                      isCollapsed && "-rotate-90"
+                    )}
+                  />
+                  {g.label}
+                  <span className="rounded-full bg-surface-2 px-1.5 text-[11px] font-normal tabular-nums text-muted">
+                    {g.pins.length}
+                  </span>
+                </button>
+                {!isCollapsed && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {g.pins.map((p) => (
+                      <PinCard key={p.id} pin={p} />
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
     </div>
