@@ -18,6 +18,7 @@ function task(id: string, over: Partial<Task> = {}): Task {
     timer_started_at: null,
     snoozed_until: null,
     blocked_until: null,
+    gcal_hidden: 0,
     optional: false,
     planned_date: null,
     scheduled_start: null,

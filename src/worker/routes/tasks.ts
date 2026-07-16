@@ -37,6 +37,7 @@ const WRITABLE = [
   "planned_date",
   "blocked_until",
   "optional",
+  "gcal_hidden",
 ];
 
 // Does this task belong to this user? Used to gate subtask + label mutations.

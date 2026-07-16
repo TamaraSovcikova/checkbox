@@ -62,6 +62,9 @@ export interface Task {
   timer_started_at: string | null; // ISO instant a running timer began
   snoozed_until: string | null; // YYYY-MM-DD; hidden from views until this day
   blocked_until: string | null; // YYYY-MM-DD; task is blocked until this date
+  // 1 = keep this task off Google Calendar without touching its dates (set by
+  // hiding its chip in the calendar's all-day box). Reversible; see sync.ts.
+  gcal_hidden: number;
   optional: boolean; // a nice-to-have rather than a commitment
   planned_date: string | null; // YYYY-MM-DD; "I intend to work on this today" (not a deadline)
   scheduled_start: string | null;

@@ -431,7 +431,27 @@ type TaskRow = {
   gcal_event_id: string | null;
   gcal_calendar_id: string | null;
   status: string;
+  gcal_hidden: number;
 };
+
+// Should this task have an event on Google Calendar right now?
+//
+// An event is wanted for an enabled time-block or an enabled due date, unless the
+// task is hidden. Hiding routes into the same "no event wanted" path that
+// unscheduling uses, so it deletes the event we made and stops us re-creating
+// one, while leaving the task's dates alone: clearing the flag pushes it back.
+//
+// Pure and exported so the rule can be tested without a Google account.
+export function wantsGcalEvent(
+  task: Pick<TaskRow, "gcal_hidden" | "scheduled_start" | "due_date">,
+  prefs: { timeBlocks: boolean; dueDates: boolean }
+): boolean {
+  if (task.gcal_hidden) return false;
+  return !!(
+    (prefs.timeBlocks && task.scheduled_start) ||
+    (prefs.dueDates && task.due_date)
+  );
+}
 
 export async function pushTaskToGcal(
   env: Bindings,
@@ -443,7 +463,7 @@ export async function pushTaskToGcal(
 
   const task = await env.DB.prepare(
     `SELECT id, title, due_date, due_time, scheduled_start, scheduled_end,
-            gcal_event_id, gcal_calendar_id, status
+            gcal_event_id, gcal_calendar_id, status, gcal_hidden
      FROM tasks WHERE id = ? AND user_id = ?`
   )
     .bind(taskId, userId)
@@ -453,11 +473,7 @@ export async function pushTaskToGcal(
 
   // User prefs decide what syncs (Settings › Google Calendar). Both default on.
   const syncPrefs = await getGcalSyncPrefs(env, userId);
-  // An event is wanted for an enabled time-block or an enabled due date.
-  const wantEvent = !!(
-    (syncPrefs.timeBlocks && task.scheduled_start) ||
-    (syncPrefs.dueDates && task.due_date)
-  );
+  const wantEvent = wantsGcalEvent(task, syncPrefs);
 
   // Nothing to reconcile: no event wanted and none exists.
   if (!wantEvent && !task.gcal_event_id) return;
