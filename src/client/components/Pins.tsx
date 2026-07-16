@@ -617,16 +617,25 @@ export function PinsStrip({ scope = "today" }: { scope?: string }) {
 }
 
 // Narrow right column: that page's pins placed 'side'.
-export function PinsSide({ scope = "today" }: { scope?: string }) {
+//
+// `inline` means the caller already owns the rail (Today does, when it is also
+// showing the day timeline): render just the cards, no second column of our own.
+export function PinsSide({
+  scope = "today",
+  inline,
+}: {
+  scope?: string;
+  inline?: boolean;
+}) {
   const { data: pins = [] } = usePins();
   const side = pinsForScope(pins, scope).filter((p) => p.placement === "side");
   if (side.length === 0) return null;
+  const cards = side.map((p) => (
+    <PinCard key={p.id} pin={p} compact resize="height" />
+  ));
+  if (inline) return <div className="mt-2 space-y-2">{cards}</div>;
   return (
-    <aside className="mt-4 space-y-2 lg:mt-0 lg:w-64 lg:shrink-0">
-      {side.map((p) => (
-        <PinCard key={p.id} pin={p} compact resize="height" />
-      ))}
-    </aside>
+    <aside className="mt-4 space-y-2 lg:mt-0 lg:w-64 lg:shrink-0">{cards}</aside>
   );
 }
 

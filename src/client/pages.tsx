@@ -35,6 +35,7 @@ import { CheatSheet } from "./components/CheatSheet";
 import { NotesInbox } from "./components/NotesInbox";
 import { InstallHint } from "./components/InstallHint";
 import { FilterIcon, SnoozeIcon, ReviewIcon } from "./lib/icons";
+import { TodayTimeline } from "./components/TodayTimeline";
 import { areaColorVar } from "./lib/colors";
 import { areaIcon } from "./lib/icons";
 import { useReview } from "./lib/queries";
@@ -413,7 +414,7 @@ export function ViewPage({ name }: { name: string }) {
   // can't fill, so pull today's completed tasks alongside. Cheap + cached.
   const { data: completedToday = [] } = useView("completed-today");
   const meta = VIEW_META[name];
-  const { hide } = useViewPrefs();
+  const { hide, todayCalendar, setTodayCalendar } = useViewPrefs();
   const { view, setView, controls, body, sortMenu, groupMenu, filterMenu } =
     useTaskCollection(`/${name}`, tasks, meta.empty);
   const isToday = name === "today";
@@ -431,7 +432,17 @@ export function ViewPage({ name }: { name: string }) {
         sort={sortMenu}
         group={groupMenu}
         filter={filterMenu}
-        menu={[{ label: "Hide this view", onSelect: () => hide(`/${name}`) }]}
+        menu={[
+          ...(isToday
+            ? [
+                {
+                  label: todayCalendar ? "Hide calendar" : "Show calendar",
+                  onSelect: () => setTodayCalendar(!todayCalendar),
+                },
+              ]
+            : []),
+          { label: "Hide this view", onSelect: () => hide(`/${name}`) },
+        ]}
         below={
           name !== "logbook" ? (
             <div className="max-w-2xl">
@@ -463,7 +474,17 @@ export function ViewPage({ name }: { name: string }) {
             </>
           )}
         </div>
-        <PinsSide scope={pinScope} />
+        {/* Right rail: the day, then that view's pins. Today only, and only when
+            asked for: it is a glance at the schedule, not a second place to
+            schedule from. */}
+        {isToday && todayCalendar ? (
+          <aside className="mt-4 lg:mt-0 lg:w-72 lg:shrink-0">
+            <TodayTimeline tasks={tasks} />
+            <PinsSide scope={pinScope} inline />
+          </aside>
+        ) : (
+          <PinsSide scope={pinScope} />
+        )}
       </div>
     </div>
   );

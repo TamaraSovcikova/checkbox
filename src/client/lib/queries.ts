@@ -531,6 +531,11 @@ export function useViewPrefs() {
         : [...hiddenAllDayTitles, title],
     });
 
+  // The read-only day timeline beside Today. Off by default.
+  const todayCalendar = prefs.todayCalendar === true;
+  const setTodayCalendar = (on: boolean) =>
+    save.mutate({ ...prefs, todayCalendar: on });
+
   return {
     prefs,
     hide,
@@ -547,6 +552,8 @@ export function useViewPrefs() {
     hiddenAllDayTitles,
     isAllDayHidden,
     toggleAllDayTitle,
+    todayCalendar,
+    setTodayCalendar,
   };
 }
 

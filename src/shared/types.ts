@@ -203,6 +203,9 @@ export interface UserPrefs {
   // as all-day events. Toggled in Settings › Google Calendar.
   gcalSyncTimeBlocks?: boolean;
   gcalSyncDueDates?: boolean;
+  // Show the read-only day timeline beside Today. Off by default: Today is a
+  // list first, and the Calendar page is still where you schedule.
+  todayCalendar?: boolean;
 }
 
 // ── Attachments ────────────────────────────────────────────────────────────
