@@ -117,7 +117,7 @@ export function NotesInbox() {
 
       {!hasCandidates ? (
         <p className="text-xs text-subtle">
-          Ask Claude to scan your Obsidian daily notes — it files{" "}
+          Ask Claude to scan your Obsidian daily notes - it files{" "}
           <code className="rounded bg-surface-2 px-1 text-[11px]">- [ ]</code> items
           and commitments here via the <code className="rounded bg-surface-2 px-1 text-[11px]">scan_notes_for_tasks</code>{" "}
           MCP tool. Or paste a note above.

@@ -176,7 +176,7 @@ export async function connectCalendar(
     Date.now() + tokens.expires_in * 1000
   ).toISOString();
 
-  // Upsert — one Google account per user for now.
+  // Upsert - one Google account per user for now.
   const existing = await getCalendarAccount(env, userId);
   if (existing) {
     await env.DB.prepare(

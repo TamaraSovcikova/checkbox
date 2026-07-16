@@ -13,7 +13,7 @@ export function inToday(task: Task, today: string): boolean {
 
 // The update body that removes a task from Today for good: clear EVERY trigger
 // (the today plan, a today time-block, and a today/overdue deadline). Area and
-// project are left untouched, so the task falls back to its section — or to the
+// project are left untouched, so the task falls back to its section - or to the
 // Backlog when it has neither. Returns only the fields that actually change, so
 // the caller can snapshot exactly those for an undo.
 export function leaveTodayBody(task: Task, today: string): Record<string, unknown> {

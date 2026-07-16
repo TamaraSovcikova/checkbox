@@ -1,8 +1,8 @@
 import type { Priority } from "../../shared/types";
 
 // Single source of truth for priority color. Mirrors the --pri-* CSS tokens in
-// index.css. Import this anywhere a priority needs a color — task rows, cards,
-// the drawer, and the calendar — so P3 (etc.) renders the SAME color everywhere
+// index.css. Import this anywhere a priority needs a color - task rows, cards,
+// the drawer, and the calendar - so P3 (etc.) renders the SAME color everywhere
 // instead of the old list-vs-calendar split.
 export const PRIORITY_VAR: Record<Priority, string> = {
   1: "var(--pri-1)",
@@ -68,7 +68,7 @@ export function areaTintBg(
 
 // Priority pill palette: a light wash of the priority colour as background with
 // the solid colour as text, so P1 (urgent) shouts and P3 stays legible in both
-// themes. P4 (the default backlog level) is deliberately not pilled — see
+// themes. P4 (the default backlog level) is deliberately not pilled - see
 // shouldPill.
 export function priorityChip(p: Priority): { bg: string; fg: string } {
   const v = PRIORITY_VAR[p];

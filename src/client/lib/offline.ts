@@ -81,7 +81,7 @@ export async function replayOfflineQueue(
         }
       }
     } catch {
-      break; // still offline — stop replaying
+      break; // still offline - stop replaying
     }
   }
   return replayed;

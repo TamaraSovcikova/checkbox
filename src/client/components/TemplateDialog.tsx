@@ -136,7 +136,7 @@ export function TemplateDialog({
                         offset_days: e.target.value === "" ? "" : Number(e.target.value),
                       })
                     }
-                    placeholder="—"
+                    placeholder="-"
                     className="w-16 text-center"
                   />
                   <button

@@ -47,8 +47,8 @@ export function TopBar<T extends string>({
   menu?: MenuChoice[];
   actions?: ReactNode;
   // Optional content pinned inside the same opaque sticky bar (e.g. the
-  // quick-capture input). Keeping it in the header — rather than as a separate
-  // scrolling element below — means task rows always scroll cleanly *under* an
+  // quick-capture input). Keeping it in the header - rather than as a separate
+  // scrolling element below - means task rows always scroll cleanly *under* an
   // opaque block instead of colliding with a half-covered capture bar.
   below?: ReactNode;
 }) {

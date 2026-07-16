@@ -33,7 +33,7 @@ async function fallbackAreaId(env: Bindings, userId: string): Promise<string | n
   }
 }
 
-// POST /generate — score backlog tasks against areas+projects, store suggestions
+// POST /generate - score backlog tasks against areas+projects, store suggestions
 triage.post("/generate", async (c) => {
   const userId = await getUserId(c);
 
@@ -131,11 +131,11 @@ triage.post("/generate", async (c) => {
     } else if (fallbackId && areas.some((a) => a.id === fallbackId)) {
       chosenAreaId = fallbackId;
       const name = areas.find((a) => a.id === fallbackId)!.name;
-      reason = `No strong match — filing to your catch-all area "${name}"`;
+      reason = `No strong match - filing to your catch-all area "${name}"`;
     } else if (areas.length === 0 && projects.length === 0) {
       reason = "Create areas or projects first, then re-triage";
     } else {
-      reason = "No strong match — pick a destination below";
+      reason = "No strong match - pick a destination below";
     }
 
     const chosenArea = areas.find((a) => a.id === chosenAreaId) ?? null;
@@ -167,7 +167,7 @@ triage.post("/generate", async (c) => {
   return c.json(out);
 });
 
-// GET / — list current pending suggestions
+// GET / - list current pending suggestions
 triage.get("/", async (c) => {
   const userId = await getUserId(c);
   const { results } = await c.env.DB.prepare(
@@ -188,7 +188,7 @@ triage.get("/", async (c) => {
   return c.json(results);
 });
 
-// POST /:id/accept — apply the suggestion, or an explicit destination override
+// POST /:id/accept - apply the suggestion, or an explicit destination override
 // from the card's picker (so a "no match" is still actionable in one click).
 triage.post("/:id/accept", async (c) => {
   const userId = await getUserId(c);
@@ -251,7 +251,7 @@ triage.post("/:id/accept", async (c) => {
   return c.json({ ok: true });
 });
 
-// POST /:id/reject — mark suggestion rejected (task stays in backlog)
+// POST /:id/reject - mark suggestion rejected (task stays in backlog)
 triage.post("/:id/reject", async (c) => {
   const userId = await getUserId(c);
   const sugId = c.req.param("id");

@@ -5,7 +5,7 @@ import { StreakIcon } from "../lib/icons";
 // 12-week completion heatmap.
 //
 // This lives on the Weekly review, NOT on Today. On Today it was a distraction:
-// a scoreboard sitting above the work. On the review it is the point — that is
+// a scoreboard sitting above the work. On the review it is the point - that is
 // where you look back at momentum on purpose.
 export function StatsWidget() {
   const { data } = useStats();

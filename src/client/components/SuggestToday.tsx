@@ -68,7 +68,7 @@ export function SuggestToday() {
       href={claudeUrl}
       target="_blank"
       rel="noreferrer"
-      title="Opens a Claude chat that plans your day via the Checkbox connector — runs on your subscription, no API cost"
+      title="Opens a Claude chat that plans your day via the Checkbox connector - runs on your subscription, no API cost"
       className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
     >
       <PlanIcon className="h-4 w-4" /> Ask Claude to plan
@@ -111,7 +111,7 @@ export function SuggestToday() {
 
       {suggestions.length === 0 ? (
         <p className="text-sm text-subtle">
-          Nothing left to pull in — every open task is already in Today, done, or
+          Nothing left to pull in - every open task is already in Today, done, or
           waiting on something else. Try “Ask Claude to plan” for a goal-aware take.
         </p>
       ) : (
@@ -148,7 +148,7 @@ export function SuggestToday() {
       </div>
       <p className="mt-2 text-[11px] text-subtle">
         “Ask Claude” opens a chat that reviews everything and weighs the goals on
-        your areas and projects, then plans via your Checkbox connector — needs
+        your areas and projects, then plans via your Checkbox connector - needs
         only that connector enabled. Runs on your subscription, no API cost.
       </p>
     </div>

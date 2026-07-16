@@ -88,7 +88,7 @@ attachments.post("/:taskId/file", async (c) => {
     return c.json(
       {
         error:
-          "storage limit reached (free-tier guard) — delete some files or attach a link instead",
+          "storage limit reached (free-tier guard) - delete some files or attach a link instead",
       },
       507
     );

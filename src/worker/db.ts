@@ -5,22 +5,22 @@ export type Bindings = {
   DB: D1Database;
   SESSIONS: KVNamespace;
   ASSETS: Fetcher;
-  // R2 bucket for file attachments. Optional — when unbound, the app runs in
+  // R2 bucket for file attachments. Optional - when unbound, the app runs in
   // link-only mode and the file-upload endpoint returns 501.
   ATTACHMENTS: R2Bucket | undefined;
-  // Calendar integration — set via wrangler secret in prod, .dev.vars locally.
+  // Calendar integration - set via wrangler secret in prod, .dev.vars locally.
   GOOGLE_CLIENT_ID: string | undefined;
   GOOGLE_CLIENT_SECRET: string | undefined;
   CALENDAR_ENCRYPTION_KEY: string | undefined; // 64-char hex (32 bytes)
   // Base URL of the Worker (http://localhost:8787 locally, https://... in prod).
   WORKER_URL: string;
-  // MCP server bearer token — legacy single-token, maps to the owner. Per-user
+  // MCP server bearer token - legacy single-token, maps to the owner. Per-user
   // tokens live in the mcp_tokens table now; this stays for back-compat.
   MCP_AUTH_TOKEN: string | undefined;
-  // Web Push (VAPID) — generate with: node scripts/gen-vapid.mjs
+  // Web Push (VAPID) - generate with: node scripts/gen-vapid.mjs
   VAPID_PUBLIC_KEY: string | undefined;
   VAPID_PRIVATE_KEY_JWK: string | undefined;
-  // Resend email digest — get from resend.com
+  // Resend email digest - get from resend.com
   RESEND_API_KEY: string | undefined;
   // Local dev only: "1" resolves the first user row when no session/token is
   // present, so the app works without logging in. Never set in production.
@@ -147,8 +147,8 @@ export async function devUser(env: Bindings): Promise<string> {
 
 /**
  * Resolve the current user for a request. Two auth contexts:
- *   1. Web app  — cb_session cookie -> KV session lookup.
- *   2. MCP       — Authorization: Bearer <token> -> mcp_tokens lookup.
+ *   1. Web app  - cb_session cookie -> KV session lookup.
+ *   2. MCP       - Authorization: Bearer <token> -> mcp_tokens lookup.
  * Throws 401 when neither resolves (unless DEV_AUTH_BYPASS is set locally).
  */
 export async function getUserId(c: AppContext): Promise<string> {

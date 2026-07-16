@@ -277,7 +277,7 @@ function useTaskCollection(prefsKey: string, tasks: Task[], empty: string) {
       onSelect: () => setViewDefault(prefsKey, { [key]: k }),
     }));
 
-  // Selection + keyboard nav run over the flattened, grouped order — only in list
+  // Selection + keyboard nav run over the flattened, grouped order - only in list
   // view (grid keeps plain click-to-open). The running offset keeps each group's
   // rows in one continuous cursor sequence.
   const flat = groups.flatMap((g) => g.tasks);
@@ -384,7 +384,7 @@ const TODAY_TABS: Tab<ViewMode>[] = [
 export function ViewPage({ name }: { name: string }) {
   const { data: tasks = [] } = useView(name);
   // Today's board keeps a Done column, which the Today view (open tasks only)
-  // can't fill — so pull today's completed tasks alongside. Cheap + cached.
+  // can't fill - so pull today's completed tasks alongside. Cheap + cached.
   const { data: completedToday = [] } = useView("completed-today");
   const meta = VIEW_META[name];
   const { hide } = useViewPrefs();
@@ -454,7 +454,7 @@ export function ViewPage({ name }: { name: string }) {
 
 // A same-day history strip under Today: the tasks you ticked off today. It resets
 // at midnight (keyed off today's date server-side) and each row stays un-checkable
-// — clicking the circle restores the task to the active list. The full archive
+// - clicking the circle restores the task to the active list. The full archive
 // lives in the Logbook.
 function CompletedToday() {
   const { data: done = [] } = useView("completed-today");
@@ -622,7 +622,7 @@ function BacklogBody({ tasks, list }: { tasks: Task[]; list: ReactNode }) {
               <p className="text-xs text-subtle">
                 {tasks.length === 0
                   ? "Backlog is empty."
-                  : "No suggestions yet — click «Suggest placements» to analyse."}
+                  : "No suggestions yet - click «Suggest placements» to analyse."}
               </p>
             ) : (
               <div className="grid gap-2 sm:grid-cols-2">
@@ -1183,7 +1183,7 @@ function AppearanceSection() {
         </div>
       </div>
 
-      {/* Colour scheme — recolours the accent, works in light + dark. */}
+      {/* Colour scheme - recolours the accent, works in light + dark. */}
       <div className="mt-4 border-t border-border pt-4">
         <div className="text-sm text-foreground">Colour scheme</div>
         <div className="text-xs text-subtle">
@@ -1218,7 +1218,7 @@ function AppearanceSection() {
         </div>
       </div>
 
-      {/* Font — system stacks only, so it stays offline-safe. */}
+      {/* Font - system stacks only, so it stays offline-safe. */}
       <div className="mt-4 flex items-center justify-between gap-4 border-t border-border pt-4">
         <div className="min-w-0">
           <div className="text-sm text-foreground">Font</div>
@@ -1427,7 +1427,7 @@ export function SettingsPage() {
           </p>
         ) : !pushStatus?.configured ? (
           <p className="text-sm text-muted">
-            Push not configured — run{" "}
+            Push not configured - run{" "}
             <code className="rounded bg-surface-2 px-1 text-[12px]">
               node scripts/gen-vapid.mjs
             </code>{" "}
@@ -1608,7 +1608,7 @@ export function SettingsPage() {
       <Section title="Gmail">
         {gmail?.sync_broken && gmail.last_error && (
           <div className="mb-3 rounded-md border border-danger/40 bg-danger/10 p-2.5 text-xs text-danger">
-            Gmail sync is broken — reconnect. <span className="opacity-70">{gmail.last_error}</span>
+            Gmail sync is broken - reconnect. <span className="opacity-70">{gmail.last_error}</span>
           </div>
         )}
         {gmail?.connected ? (
@@ -1677,7 +1677,7 @@ export function SettingsPage() {
       <Section title="Integrations">
         <p className="mb-2 text-sm text-foreground">
           Add Checkbox to Claude&apos;s MCP settings to use it from chat. This token
-          is yours alone — it identifies your account.
+          is yours alone - it identifies your account.
         </p>
         <div className="space-y-2 text-xs">
           <div>
@@ -1704,7 +1704,7 @@ export function SettingsPage() {
               <button
                 onClick={rotateToken}
                 className="rounded px-2 py-0.5 text-subtle hover:text-foreground"
-                title="Rotate — invalidates the old token"
+                title="Rotate - invalidates the old token"
               >
                 {tokenBusy ? "…" : "rotate"}
               </button>

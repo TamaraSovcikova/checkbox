@@ -36,7 +36,7 @@ plans.post("/generate", async (c) => {
   const userId = await getUserId(c);
   const res = await generateDayPlan(c.env, userId);
   if (!res) {
-    // A plan already accepted/dismissed today — return the fresh computation so
+    // A plan already accepted/dismissed today - return the fresh computation so
     // the caller can preview it without overwriting the acted-on record.
     const preview = await computeDayPlan(c.env, userId);
     return c.json({ id: null, ...preview, status: "preview" });

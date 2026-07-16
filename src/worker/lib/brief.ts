@@ -93,7 +93,7 @@ export async function sendMorningBrief(env: Bindings): Promise<void> {
 
     const summary =
       total === 0
-        ? "<p>Nothing due today — enjoy a clear day! 🎉</p>"
+        ? "<p>Nothing due today - enjoy a clear day! 🎉</p>"
         : `<p style="margin:0 0 12px"><strong>${total} task${total !== 1 ? "s" : ""} today</strong>${
             overdue ? ` · <span style="color:#f87171">${overdue} overdue</span>` : ""
           }${urgent ? ` · ${urgent} urgent` : ""}</p><ul style="margin:0;padding-left:20px">${taskItems}</ul>${more}`;
@@ -119,7 +119,7 @@ export async function sendMorningBrief(env: Bindings): Promise<void> {
         from: "Checkbox <onboarding@resend.dev>",
         to: [user.email],
         subject: `Checkbox · ${dateStr}${
-          total > 0 ? ` — ${total} task${total !== 1 ? "s" : ""}` : " — clear day"
+          total > 0 ? ` - ${total} task${total !== 1 ? "s" : ""}` : " - clear day"
         }`,
         html,
       }),

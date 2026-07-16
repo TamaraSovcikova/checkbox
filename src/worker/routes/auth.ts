@@ -52,7 +52,7 @@ a{color:#4f46e5}</style></head><body>
 </body></html>`;
 }
 
-// ── GET /api/auth/google — kick off the OAuth redirect ──────────────────────
+// ── GET /api/auth/google - kick off the OAuth redirect ──────────────────────
 auth.get("/google", async (c) => {
   if (!c.env.GOOGLE_CLIENT_ID) {
     return c.text("Google OAuth not configured (GOOGLE_CLIENT_ID unset).", 503);
@@ -73,7 +73,7 @@ auth.get("/google", async (c) => {
   return c.redirect(url);
 });
 
-// ── GET /api/auth/google/callback — exchange, allowlist, adopt, mint session ──
+// ── GET /api/auth/google/callback - exchange, allowlist, adopt, mint session ──
 auth.get("/google/callback", async (c) => {
   const { code, state, error } = c.req.query();
   if (error) return c.text(`Google returned an error: ${error}`, 400);
@@ -104,7 +104,7 @@ auth.get("/google/callback", async (c) => {
 
   const email = info.email.toLowerCase();
 
-  // Invite allowlist — enforced before any session is minted.
+  // Invite allowlist - enforced before any session is minted.
   const allowed = await c.env.DB.prepare(
     "SELECT email, note FROM allowed_emails WHERE lower(email) = ?"
   )
@@ -168,7 +168,7 @@ async function resolveOrCreateUser(
   return user.id;
 }
 
-// ── GET /api/auth/me — current session (or 401) ──────────────────────────────
+// ── GET /api/auth/me - current session (or 401) ──────────────────────────────
 auth.get("/me", async (c) => {
   const session = await getSession(c);
   if (session) {
@@ -202,7 +202,7 @@ auth.get("/me", async (c) => {
   return c.json({ error: "unauthenticated" }, 401);
 });
 
-// ── POST /api/auth/logout — destroy the session ──────────────────────────────
+// ── POST /api/auth/logout - destroy the session ──────────────────────────────
 auth.post("/logout", async (c) => {
   const sid = getSessionId(c);
   if (sid) await destroySession(c.env, sid);

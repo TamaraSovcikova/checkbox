@@ -1,6 +1,6 @@
 // Pure recurrence maths shared by the Worker (roll a task forward on completion)
 // and the client (build + preview a recurrence spec). Operates on plain
-// YYYY-MM-DD strings so it is timezone-independent — a due date is a calendar
+// YYYY-MM-DD strings so it is timezone-independent - a due date is a calendar
 // day, not an instant.
 //
 // Spec grammar (stored in tasks.recurrence):

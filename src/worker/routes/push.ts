@@ -3,13 +3,13 @@ import { type Bindings, getUserId, uuid } from "../db";
 
 export const push = new Hono<{ Bindings: Bindings }>();
 
-// GET /vapid-public-key — browser subscribes using this key
+// GET /vapid-public-key - browser subscribes using this key
 push.get("/vapid-public-key", (c) => {
   if (!c.env.VAPID_PUBLIC_KEY) return c.json({ error: "push not configured" }, 503);
   return c.json({ key: c.env.VAPID_PUBLIC_KEY });
 });
 
-// GET /status — is push configured + how many subscriptions?
+// GET /status - is push configured + how many subscriptions?
 push.get("/status", async (c) => {
   const userId = await getUserId(c);
   const row = await c.env.DB.prepare(
@@ -23,7 +23,7 @@ push.get("/status", async (c) => {
   });
 });
 
-// POST /subscribe — save a push subscription (upsert by endpoint)
+// POST /subscribe - save a push subscription (upsert by endpoint)
 push.post("/subscribe", async (c) => {
   const userId = await getUserId(c);
   const body = await c.req.json<{
@@ -43,7 +43,7 @@ push.post("/subscribe", async (c) => {
   return c.json({ ok: true });
 });
 
-// DELETE /subscribe — remove a specific subscription
+// DELETE /subscribe - remove a specific subscription
 push.delete("/subscribe", async (c) => {
   const userId = await getUserId(c);
   const body = await c.req.json<{ endpoint: string }>();
@@ -55,7 +55,7 @@ push.delete("/subscribe", async (c) => {
   return c.json({ ok: true });
 });
 
-// GET /brief-data — lightweight summary fetched by the service worker when a push arrives
+// GET /brief-data - lightweight summary fetched by the service worker when a push arrives
 push.get("/brief-data", async (c) => {
   const userId = await getUserId(c);
   const today = new Date()

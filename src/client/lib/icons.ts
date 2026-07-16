@@ -1,4 +1,4 @@
-// One icon vocabulary for the whole app — replaces the emoji scattered across
+// One icon vocabulary for the whole app - replaces the emoji scattered across
 // the sidebar, view titles, and calendar. Call sites import named aliases from
 // here (never the lucide barrel directly) so the icon set stays consistent and
 // imports stay per-icon / tree-shakeable.

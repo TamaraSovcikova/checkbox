@@ -1,9 +1,9 @@
-// VAPID Web Push — data-less push (no RFC 8291 payload encryption).
+// VAPID Web Push - data-less push (no RFC 8291 payload encryption).
 // The service worker fetches /api/push/brief-data on receipt and builds the notification.
 //
 // Secrets required:
-//   VAPID_PUBLIC_KEY  — base64url of uncompressed P-256 point (65 bytes, no padding)
-//   VAPID_PRIVATE_KEY_JWK — JSON-stringified JWK of the P-256 EC private key
+//   VAPID_PUBLIC_KEY  - base64url of uncompressed P-256 point (65 bytes, no padding)
+//   VAPID_PRIVATE_KEY_JWK - JSON-stringified JWK of the P-256 EC private key
 // Generate both with: node scripts/gen-vapid.mjs
 
 export interface PushSub {

@@ -7,7 +7,7 @@ export const filters = new Hono<{ Bindings: Bindings }>();
 // A saved filter's query is a small JSON object. Every field is optional and
 // ANDed together:
 //   text        substring match on title/notes
-//   priority_max 1..4 — tasks at or above this priority (<=)
+//   priority_max 1..4 - tasks at or above this priority (<=)
 //   label       label name
 //   area_id / project_id
 //   due         overdue | today | week | none | any

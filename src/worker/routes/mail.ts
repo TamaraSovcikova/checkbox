@@ -33,7 +33,7 @@ function normalizeVerdict(v: unknown): Verdict {
 
 // Upsert one candidate from a WRITER, applying the precedence rules
 // (shared/mail.ts). Returns { id, created } so callers can count new rows.
-// User actions do NOT use this — they write directly and set user_locked=1.
+// User actions do NOT use this - they write directly and set user_locked=1.
 export async function upsertMailCandidate(
   db: D1Database,
   userId: string,

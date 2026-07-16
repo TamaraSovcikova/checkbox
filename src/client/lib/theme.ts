@@ -95,7 +95,7 @@ export function storePref(pref: ThemePref): void {
   try {
     localStorage.setItem(THEME_KEY, pref);
   } catch {
-    // ignore — a non-persisted choice still applies for this session.
+    // ignore - a non-persisted choice still applies for this session.
   }
 }
 
@@ -122,7 +122,7 @@ export function getStoredFont(): FontChoice {
 }
 
 // Both drive CSS variable overrides keyed off documentElement[data-palette] /
-// [data-font] — see index.css. index.html sets them pre-paint (no flash).
+// [data-font] - see index.css. index.html sets them pre-paint (no flash).
 export function applyPalette(p: Palette): void {
   document.documentElement.dataset.palette = p;
 }

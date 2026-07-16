@@ -93,7 +93,7 @@ function durationPx(start: string, end: string): number {
 }
 
 // The interval an item actually occupies on screen (its real span, floored to
-// the minimum draw height) — used for overlap packing so the lanes match what
+// the minimum draw height) - used for overlap packing so the lanes match what
 // the eye sees. Without the floor, a 15-min block drawn 15-min tall would never
 // collide, but one drawn taller (old 30-min floor) would overlay its neighbour.
 function effectiveInterval(start: string, end: string): {
@@ -611,7 +611,7 @@ export default function CalendarPage() {
   );
 
   // Left planner pane: unscheduled open tasks to drag onto the grid. Scoped to
-  // TODAY only — what you planned for today or that is due today, plus overdue
+  // TODAY only - what you planned for today or that is due today, plus overdue
   // tasks that still need doing now. Future-dated and no-date tasks are
   // deliberately excluded so the pane stays a focused "schedule today" list.
   const openUnscheduled = allTasks.filter(
@@ -719,7 +719,7 @@ export default function CalendarPage() {
       {/* Body: left planner pane + hour labels + one-or-seven day columns.
           pt-2 keeps the 06:00 label + first event off the clipped top edge. */}
       <div className="flex flex-1 gap-3 overflow-auto pt-2">
-        {/* Left planner pane — the tasks you drag onto the calendar. */}
+        {/* Left planner pane - the tasks you drag onto the calendar. */}
         <div
           className="w-52 shrink-0 overflow-y-auto border-r border-border pr-3"
           style={{ marginTop: view === "week" ? 24 : 0 }}

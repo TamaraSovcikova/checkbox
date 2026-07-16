@@ -65,7 +65,7 @@ prefs.put("/", async (c) => {
   return c.json(clean);
 });
 
-// ── MCP token — per-user bearer token for the Claude Desktop integration ──────
+// ── MCP token - per-user bearer token for the Claude Desktop integration ──────
 
 async function ensureToken(env: Bindings, userId: string): Promise<string> {
   const existing = await env.DB.prepare(
