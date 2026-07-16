@@ -9,11 +9,17 @@ import { createContext, useContext } from "react";
 export type ThemePref = "system" | "light" | "dark";
 export type Resolved = "light" | "dark";
 
-// A colour scheme, orthogonal to light/dark: it recolours the accent (primary,
-// ring, focus, active states) while the light/dark mode still owns the surfaces.
-// Keys map to the [data-palette] overrides in index.css. "indigo" is the base
-// (no override block). `swatch` is the representative dot shown in the picker.
+// A colour scheme. Two kinds, both driven by [data-palette] in index.css:
+//
+//   kind "accent" - recolours the accent and washes the default slate / warm-stone
+//     surfaces with that hue. The app still looks like itself, in a colour.
+//   kind "theme"  - a full palette: its own background, surfaces, text, borders and
+//     accent, for both light and dark. These change the whole feel, the way a VS
+//     Code or Obsidian theme does, rather than tinting the default.
+//
+// Every entry works in both light and dark: the mode picks which block applies.
 export type Palette =
+  // accents
   | "indigo"
   | "ocean"
   | "emerald"
@@ -22,7 +28,14 @@ export type Palette =
   | "rose"
   | "amber"
   | "crimson"
-  | "graphite";
+  | "graphite"
+  // full themes
+  | "nord"
+  | "dracula"
+  | "gruvbox"
+  | "solarized"
+  | "rosepine"
+  | "tokyonight";
 
 export type FontChoice = "sans" | "serif" | "rounded" | "mono";
 
@@ -30,16 +43,34 @@ export const THEME_KEY = "checkbox-theme";
 export const PALETTE_KEY = "checkbox-palette";
 export const FONT_KEY = "checkbox-font";
 
-export const PALETTES: { key: Palette; label: string; swatch: string }[] = [
-  { key: "indigo", label: "Indigo", swatch: "#6366f1" },
-  { key: "ocean", label: "Ocean", swatch: "#0ea5e9" },
-  { key: "emerald", label: "Emerald", swatch: "#10b981" },
-  { key: "teal", label: "Teal", swatch: "#14b8a6" },
-  { key: "violet", label: "Violet", swatch: "#8b5cf6" },
-  { key: "rose", label: "Rose", swatch: "#f43f5e" },
-  { key: "amber", label: "Amber", swatch: "#f59e0b" },
-  { key: "crimson", label: "Crimson", swatch: "#ef4444" },
-  { key: "graphite", label: "Graphite", swatch: "#64748b" },
+// `swatch` is the accent; `bg` is the theme's own background, so the picker can
+// preview a full theme as accent-on-background rather than a lone dot. Accents
+// have no bg of their own (they sit on the default surfaces).
+export type PaletteInfo = {
+  key: Palette;
+  label: string;
+  kind: "accent" | "theme";
+  swatch: string;
+  bg?: string;
+};
+
+export const PALETTES: PaletteInfo[] = [
+  { key: "indigo", label: "Indigo", kind: "accent", swatch: "#6366f1" },
+  { key: "ocean", label: "Ocean", kind: "accent", swatch: "#0ea5e9" },
+  { key: "emerald", label: "Emerald", kind: "accent", swatch: "#10b981" },
+  { key: "teal", label: "Teal", kind: "accent", swatch: "#14b8a6" },
+  { key: "violet", label: "Violet", kind: "accent", swatch: "#8b5cf6" },
+  { key: "rose", label: "Rose", kind: "accent", swatch: "#f43f5e" },
+  { key: "amber", label: "Amber", kind: "accent", swatch: "#f59e0b" },
+  { key: "crimson", label: "Crimson", kind: "accent", swatch: "#ef4444" },
+  { key: "graphite", label: "Graphite", kind: "accent", swatch: "#64748b" },
+  // Full themes. bg = the dark variant's background, which is what the swatch shows.
+  { key: "nord", label: "Nord", kind: "theme", swatch: "#88c0d0", bg: "#2e3440" },
+  { key: "dracula", label: "Dracula", kind: "theme", swatch: "#bd93f9", bg: "#282a36" },
+  { key: "gruvbox", label: "Gruvbox", kind: "theme", swatch: "#fabd2f", bg: "#282828" },
+  { key: "solarized", label: "Solarized", kind: "theme", swatch: "#268bd2", bg: "#002b36" },
+  { key: "rosepine", label: "Rosé Pine", kind: "theme", swatch: "#ebbcba", bg: "#191724" },
+  { key: "tokyonight", label: "Tokyo Night", kind: "theme", swatch: "#7aa2f7", bg: "#1a1b26" },
 ];
 
 export const FONTS: { key: FontChoice; label: string }[] = [

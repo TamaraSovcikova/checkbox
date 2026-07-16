@@ -37,7 +37,13 @@ import { areaColorVar } from "./lib/colors";
 import { areaIcon } from "./lib/icons";
 import { useReview } from "./lib/queries";
 import { useTaskUI, useMe } from "./lib/ui-context";
-import { useTheme, PALETTES, FONTS, type ThemePref } from "./lib/theme";
+import {
+  useTheme,
+  PALETTES,
+  FONTS,
+  type ThemePref,
+  type PaletteInfo,
+} from "./lib/theme";
 import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
 import { TodayBoard } from "./components/TodayBoard";
@@ -1225,6 +1231,52 @@ function Switch({
   );
 }
 
+// One scheme swatch. A full theme previews as its accent sitting on its own
+// background, which is the thing that actually differs; an accent is just a dot.
+function PaletteButton({
+  info,
+  active,
+  onPick,
+}: {
+  info: PaletteInfo;
+  active: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      aria-label={info.label}
+      aria-pressed={active}
+      title={info.label}
+      className={cx(
+        "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm transition-colors",
+        active
+          ? "border-primary bg-surface-2 text-foreground"
+          : "border-border text-muted hover:text-foreground"
+      )}
+    >
+      {info.bg ? (
+        <span
+          className="grid h-4 w-4 shrink-0 place-items-center rounded border border-black/20"
+          style={{ background: info.bg }}
+        >
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ background: info.swatch }}
+          />
+        </span>
+      ) : (
+        <span
+          className="h-4 w-4 shrink-0 rounded-full"
+          style={{ background: info.swatch }}
+        />
+      )}
+      {info.label}
+    </button>
+  );
+}
+
 function AppearanceSection() {
   const { pref, resolved, setPref, palette, setPalette, font, setFont } = useTheme();
   const { dimDistantTasks, setDimDistantTasks } = useViewPrefs();
@@ -1263,38 +1315,37 @@ function AppearanceSection() {
         </div>
       </div>
 
-      {/* Colour scheme: recolours the whole page, works in light + dark. */}
+      {/* Themes: full palettes. Accents: a colour on the default look. */}
       <div className="mt-4 border-t border-border pt-4">
-        <div className="text-sm text-foreground">Colour scheme</div>
+        <div className="text-sm text-foreground">Theme</div>
         <div className="text-xs text-subtle">
-          Sets the accent colour. Applies on top of your light/dark mode.
+          A full palette: its own background, surfaces and text. Each has a light and
+          a dark version, so it follows your mode above.
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {PALETTES.map((p) => {
-            const active = palette === p.key;
-            return (
-              <button
-                key={p.key}
-                type="button"
-                onClick={() => setPalette(p.key)}
-                aria-label={p.label}
-                aria-pressed={active}
-                title={p.label}
-                className={cx(
-                  "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm transition-colors",
-                  active
-                    ? "border-primary bg-surface-2 text-foreground"
-                    : "border-border text-muted hover:text-foreground"
-                )}
-              >
-                <span
-                  className="h-4 w-4 shrink-0 rounded-full"
-                  style={{ background: p.swatch }}
-                />
-                {p.label}
-              </button>
-            );
-          })}
+          {PALETTES.filter((p) => p.kind === "theme").map((p) => (
+            <PaletteButton
+              key={p.key}
+              info={p}
+              active={palette === p.key}
+              onPick={() => setPalette(p.key)}
+            />
+          ))}
+        </div>
+
+        <div className="mt-4 text-sm text-foreground">Accent</div>
+        <div className="text-xs text-subtle">
+          Keeps the default look and recolours it.
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {PALETTES.filter((p) => p.kind === "accent").map((p) => (
+            <PaletteButton
+              key={p.key}
+              info={p}
+              active={palette === p.key}
+              onPick={() => setPalette(p.key)}
+            />
+          ))}
         </div>
       </div>
 

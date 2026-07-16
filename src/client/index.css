@@ -248,6 +248,126 @@
   --primary: #475569; --primary-hover: #334155; --ring: #475569;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   FULL THEMES. Unlike the accents above, these do not tint the default slate:
+   each owns its whole palette (background, surfaces, text, borders, accent) in
+   both modes, the way a VS Code or Obsidian theme does. Each pair is the theme's
+   real dark and light siblings (Nord Polar Night / Snow Storm, Gruvbox dark /
+   light, Solarized dark / light, Rosé Pine / Dawn, Tokyo Night / Day).
+
+   Every block sets --foreground/--muted/--subtle too, which the accents leave to
+   the mode: that is what makes these read as a different app rather than a
+   recolour. Keys mirror lib/theme.ts PALETTES (kind: "theme").
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Nord: Polar Night + Frost. */
+:root[data-palette="nord"] {
+  --background: #2e3440; --surface: #3b4252; --surface-2: #434c5e;
+  --foreground: #eceff4; --muted: #d8dee9; --subtle: #7b88a1;
+  --border: #434c5e; --input: #4c566a;
+  --primary: #88c0d0; --primary-hover: #8fbcbb; --ring: #88c0d0;
+  --primary-foreground: #2e3440;
+  --success: #a3be8c; --warning: #ebcb8b; --danger: #bf616a;
+}
+:root[data-theme="light"][data-palette="nord"] {
+  --background: #eceff4; --surface: #ffffff; --surface-2: #e5e9f0;
+  --foreground: #2e3440; --muted: #4c566a; --subtle: #7b88a1;
+  --border: #d8dee9; --input: #c8d0dc;
+  --primary: #5e81ac; --primary-hover: #4c6f96; --ring: #5e81ac;
+  --primary-foreground: #ffffff;
+  --success: #7a9f5f; --warning: #b58900; --danger: #bf616a;
+}
+
+/* Dracula, with Alucard as the light sibling. */
+:root[data-palette="dracula"] {
+  --background: #282a36; --surface: #343746; --surface-2: #44475a;
+  --foreground: #f8f8f2; --muted: #bcc0d0; --subtle: #6272a4;
+  --border: #44475a; --input: #565a71;
+  --primary: #bd93f9; --primary-hover: #caa9fa; --ring: #bd93f9;
+  --primary-foreground: #282a36;
+  --success: #50fa7b; --warning: #f1fa8c; --danger: #ff5555;
+}
+:root[data-theme="light"][data-palette="dracula"] {
+  --background: #f8f8f2; --surface: #ffffff; --surface-2: #eceef4;
+  --foreground: #282a36; --muted: #5a5f7a; --subtle: #8b90a8;
+  --border: #dcdfe8; --input: #c8ccd8;
+  --primary: #6c3fd1; --primary-hover: #5a2fb0; --ring: #6c3fd1;
+  --primary-foreground: #ffffff;
+  --success: #14832f; --warning: #9a7d00; --danger: #d32f2f;
+}
+
+/* Gruvbox: warm retro, both official variants. */
+:root[data-palette="gruvbox"] {
+  --background: #282828; --surface: #32302f; --surface-2: #3c3836;
+  --foreground: #ebdbb2; --muted: #bdae93; --subtle: #928374;
+  --border: #3c3836; --input: #504945;
+  --primary: #fabd2f; --primary-hover: #ffd75f; --ring: #fabd2f;
+  --primary-foreground: #282828;
+  --success: #b8bb26; --warning: #fe8019; --danger: #fb4934;
+}
+:root[data-theme="light"][data-palette="gruvbox"] {
+  --background: #fbf1c7; --surface: #f9f5d7; --surface-2: #ebdbb2;
+  --foreground: #3c3836; --muted: #665c54; --subtle: #928374;
+  --border: #d5c4a1; --input: #bdae93;
+  --primary: #b57614; --primary-hover: #af3a03; --ring: #b57614;
+  --primary-foreground: #ffffff;
+  --success: #79740e; --warning: #b57614; --danger: #9d0006;
+}
+
+/* Solarized: the classic base03 / base3 pair. */
+:root[data-palette="solarized"] {
+  --background: #002b36; --surface: #073642; --surface-2: #0e4b5a;
+  --foreground: #93a1a1; --muted: #839496; --subtle: #586e75;
+  --border: #0e4b5a; --input: #586e75;
+  --primary: #268bd2; --primary-hover: #4fa3d9; --ring: #268bd2;
+  --primary-foreground: #ffffff;
+  --success: #859900; --warning: #b58900; --danger: #dc322f;
+}
+:root[data-theme="light"][data-palette="solarized"] {
+  --background: #fdf6e3; --surface: #ffffff; --surface-2: #eee8d5;
+  --foreground: #073642; --muted: #586e75; --subtle: #93a1a1;
+  --border: #ddd6c1; --input: #d3cbb7;
+  --primary: #268bd2; --primary-hover: #1e6fa8; --ring: #268bd2;
+  --primary-foreground: #ffffff;
+  --success: #859900; --warning: #b58900; --danger: #dc322f;
+}
+
+/* Rosé Pine, with Dawn as the light sibling. */
+:root[data-palette="rosepine"] {
+  --background: #191724; --surface: #1f1d2e; --surface-2: #26233a;
+  --foreground: #e0def4; --muted: #908caa; --subtle: #6e6a86;
+  --border: #26233a; --input: #403d52;
+  --primary: #ebbcba; --primary-hover: #f2d5d4; --ring: #ebbcba;
+  --primary-foreground: #191724;
+  --success: #9ccfd8; --warning: #f6c177; --danger: #eb6f92;
+}
+:root[data-theme="light"][data-palette="rosepine"] {
+  --background: #faf4ed; --surface: #fffaf3; --surface-2: #f2e9e1;
+  --foreground: #575279; --muted: #797593; --subtle: #9893a5;
+  --border: #dfdad9; --input: #cecacd;
+  --primary: #b4637a; --primary-hover: #96506a; --ring: #b4637a;
+  --primary-foreground: #ffffff;
+  --success: #56949f; --warning: #ea9d34; --danger: #b4637a;
+}
+
+/* Tokyo Night, with Day as the light sibling. */
+:root[data-palette="tokyonight"] {
+  --background: #1a1b26; --surface: #1f2335; --surface-2: #292e42;
+  --foreground: #c0caf5; --muted: #a9b1d6; --subtle: #565f89;
+  --border: #292e42; --input: #3b4261;
+  --primary: #7aa2f7; --primary-hover: #9eb8fa; --ring: #7aa2f7;
+  --primary-foreground: #1a1b26;
+  --success: #9ece6a; --warning: #e0af68; --danger: #f7768e;
+}
+:root[data-theme="light"][data-palette="tokyonight"] {
+  --background: #e1e2e7; --surface: #ffffff; --surface-2: #d7d8de;
+  --foreground: #343b58; --muted: #6172b0; --subtle: #8990b3;
+  --border: #cbccd1; --input: #b6b8c2;
+  --primary: #2e7de9; --primary-hover: #1a5fc4; --ring: #2e7de9;
+  --primary-foreground: #ffffff;
+  --success: #587539; --warning: #8c6c3e; --danger: #c64343;
+}
+
 /* ── Fonts ──────────────────────────────────────────────────────────────────
    System-only stacks (no web downloads, so it stays offline-safe). body reads
    --app-font; [data-font] swaps it. Defaults to the sans stack. */
