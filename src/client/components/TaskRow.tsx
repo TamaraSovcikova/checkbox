@@ -174,7 +174,10 @@ export function TaskRow({
             "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border transition-colors",
             done
               ? "border-primary bg-primary text-primary-foreground"
-              : "hover:border-primary"
+              : "hover:border-primary",
+            // Optional tasks read as lower stakes: a dashed ring rather than a
+            // solid one. Pairs with the dashed "optional" chip below.
+            !done && !!task.optional && "border-dashed"
           )}
           style={done ? undefined : { borderColor: PRIORITY_VAR[task.priority] }}
         >
@@ -244,6 +247,15 @@ export function TaskRow({
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-subtle">
             {shouldPill(task.priority) && <PriorityPill priority={task.priority} />}
+            {/* Coerce: D1 stores 0/1, and a bare `0 &&` would render a literal 0. */}
+            {!!task.optional && !done && (
+              <span
+                className="inline-flex items-center rounded border border-dashed border-input px-1 py-0.5 text-subtle"
+                title="Optional: a nice-to-have, not a commitment"
+              >
+                optional
+              </span>
+            )}
             {(area || project) && (
               <span
                 className="inline-flex items-center gap-1"

@@ -196,6 +196,7 @@ export function TaskSheet({
   const [newSub, setNewSub] = useState("");
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [nlpDate, setNlpDate] = useState("");
+  const [optional, setOptional] = useState(false);
 
   useEffect(() => {
     if (!task) return;
@@ -210,6 +211,7 @@ export function TaskSheet({
     setRecurrenceMode(task.recurrence_mode ?? "fixed");
     setSubtasks(task.subtasks ?? []);
     setNlpDate("");
+    setOptional(!!task.optional);
   }, [task]);
 
   // Inline NLP date: parse a phrase like "next tue 3pm" and set due date/time.
@@ -406,19 +408,42 @@ export function TaskSheet({
                 always visible, not buried in the Schedule section. Marks intent
                 to work on it today without touching the deadline. */}
             {task.status !== "done" && (
-              <button
-                type="button"
-                onClick={onToggleToday}
-                className={cn(
-                  "inline-flex w-fit items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm font-medium transition-colors",
-                  isInToday
-                    ? "border-primary bg-primary/15 text-primary hover:bg-primary/10"
-                    : "border-border text-foreground hover:border-primary/50 hover:bg-surface-2"
-                )}
-              >
-                <TodayIcon className="h-4 w-4" />
-                {isInToday ? "Remove from Today" : "Add to Today"}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onToggleToday}
+                  className={cn(
+                    "inline-flex w-fit items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm font-medium transition-colors",
+                    isInToday
+                      ? "border-primary bg-primary/15 text-primary hover:bg-primary/10"
+                      : "border-border text-foreground hover:border-primary/50 hover:bg-surface-2"
+                  )}
+                >
+                  <TodayIcon className="h-4 w-4" />
+                  {isInToday ? "Remove from Today" : "Add to Today"}
+                </button>
+
+                {/* Optional: a nice-to-have rather than a commitment. Dashed
+                    styling here mirrors the dashed tick + chip on the row. */}
+                <button
+                  type="button"
+                  title="Optional: a nice-to-have, not a commitment"
+                  onClick={() => {
+                    const v = !optional;
+                    setOptional(v);
+                    // D1 has no boolean type, so store 0/1.
+                    save({ optional: v ? 1 : 0 });
+                  }}
+                  className={cn(
+                    "inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-sm font-medium transition-colors",
+                    optional
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-input text-muted hover:border-primary/50 hover:bg-surface-2"
+                  )}
+                >
+                  Optional
+                </button>
+              </div>
             )}
 
             {/* Area / project - change where the task lives without leaving the

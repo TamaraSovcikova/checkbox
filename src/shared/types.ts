@@ -57,6 +57,7 @@ export interface Task {
   timer_started_at: string | null; // ISO instant a running timer began
   snoozed_until: string | null; // YYYY-MM-DD; hidden from views until this day
   blocked_until: string | null; // YYYY-MM-DD; task is blocked until this date
+  optional: boolean; // a nice-to-have rather than a commitment
   planned_date: string | null; // YYYY-MM-DD; "I intend to work on this today" (not a deadline)
   scheduled_start: string | null;
   scheduled_end: string | null;

@@ -36,6 +36,7 @@ const WRITABLE = [
   "snoozed_until",
   "planned_date",
   "blocked_until",
+  "optional",
 ];
 
 // Does this task belong to this user? Used to gate subtask + label mutations.
