@@ -115,8 +115,36 @@
    contrast is preserved automatically. Driven by [data-palette]; "indigo" is the
    base above (no block). Light blocks carry two attributes so they out-specify
    the single-attribute dark blocks in light mode. Keys mirror lib/theme.ts.
+
+   Every palette is written twice: once for :root (the whole app) and once as a
+   DESCENDANT selector, so a palette can also be scoped to a subtree. That is how
+   an area gets its own theme (areas.palette). The descendant form is qualified by
+   the root's mode, since the mode still lives on :root.
    ───────────────────────────────────────────────────────────────────────── */
-:root[data-palette="ocean"] {
+
+/* Indigo is the base, defined by the :root[data-theme] blocks above, so it has no
+   palette block of its own. A NESTED indigo needs one: an area set to Indigo while
+   the app runs Dracula has to actively undo what Dracula set, with nothing to
+   inherit it back from. Keep these in step with the :root blocks above. */
+:root:not([data-theme="light"]) [data-palette="indigo"] {
+  --background: #0b1120; --surface: #0f172a; --surface-2: #1e293b;
+  --foreground: #e2e8f0; --muted: #94a3b8; --subtle: #64748b;
+  --border: #1e293b; --input: #334155;
+  --primary: #6366f1; --primary-hover: #818cf8; --primary-foreground: #ffffff;
+  --ring: #6366f1;
+  --success: #34d399; --warning: #fbbf24; --danger: #f87171;
+}
+:root[data-theme="light"] [data-palette="indigo"] {
+  --background: #faf9f6; --surface: #ffffff; --surface-2: #f1efea;
+  --foreground: #1c1b19; --muted: #6f6a62; --subtle: #9a938a;
+  --border: #e8e3da; --input: #d9d3c8;
+  --primary: #6366f1; --primary-hover: #4f46e5; --primary-foreground: #ffffff;
+  --ring: #6366f1;
+  --success: #059669; --warning: #d97706; --danger: #dc2626;
+}
+
+:root[data-palette="ocean"],
+:root:not([data-theme="light"]) [data-palette="ocean"] {
   --primary: #0ea5e9; --primary-hover: #38bdf8; --ring: #0ea5e9;
   --background: color-mix(in oklab, #0ea5e9 15%, #0b1120);
   --surface: color-mix(in oklab, #0ea5e9 16%, #0f172a);
@@ -124,7 +152,8 @@
   --border: color-mix(in oklab, #0ea5e9 22%, #1e293b);
   --input: color-mix(in oklab, #0ea5e9 20%, #334155);
 }
-:root[data-theme="light"][data-palette="ocean"] {
+:root[data-theme="light"][data-palette="ocean"],
+:root[data-theme="light"] [data-palette="ocean"] {
   --primary: #0284c7; --primary-hover: #0369a1; --ring: #0284c7;
   --background: color-mix(in oklab, #0284c7 10%, #faf9f6);
   --surface: color-mix(in oklab, #0284c7 7%, #ffffff);
@@ -133,7 +162,8 @@
   --input: color-mix(in oklab, #0284c7 20%, #d9d3c8);
 }
 
-:root[data-palette="emerald"] {
+:root[data-palette="emerald"],
+:root:not([data-theme="light"]) [data-palette="emerald"] {
   --primary: #10b981; --primary-hover: #34d399; --ring: #10b981;
   --background: color-mix(in oklab, #10b981 15%, #0b1120);
   --surface: color-mix(in oklab, #10b981 16%, #0f172a);
@@ -141,7 +171,8 @@
   --border: color-mix(in oklab, #10b981 22%, #1e293b);
   --input: color-mix(in oklab, #10b981 20%, #334155);
 }
-:root[data-theme="light"][data-palette="emerald"] {
+:root[data-theme="light"][data-palette="emerald"],
+:root[data-theme="light"] [data-palette="emerald"] {
   --primary: #059669; --primary-hover: #047857; --ring: #059669;
   --background: color-mix(in oklab, #059669 10%, #faf9f6);
   --surface: color-mix(in oklab, #059669 7%, #ffffff);
@@ -150,7 +181,8 @@
   --input: color-mix(in oklab, #059669 20%, #d9d3c8);
 }
 
-:root[data-palette="teal"] {
+:root[data-palette="teal"],
+:root:not([data-theme="light"]) [data-palette="teal"] {
   --primary: #14b8a6; --primary-hover: #2dd4bf; --ring: #14b8a6;
   --background: color-mix(in oklab, #14b8a6 15%, #0b1120);
   --surface: color-mix(in oklab, #14b8a6 16%, #0f172a);
@@ -158,7 +190,8 @@
   --border: color-mix(in oklab, #14b8a6 22%, #1e293b);
   --input: color-mix(in oklab, #14b8a6 20%, #334155);
 }
-:root[data-theme="light"][data-palette="teal"] {
+:root[data-theme="light"][data-palette="teal"],
+:root[data-theme="light"] [data-palette="teal"] {
   --primary: #0d9488; --primary-hover: #0f766e; --ring: #0d9488;
   --background: color-mix(in oklab, #0d9488 10%, #faf9f6);
   --surface: color-mix(in oklab, #0d9488 7%, #ffffff);
@@ -167,7 +200,8 @@
   --input: color-mix(in oklab, #0d9488 20%, #d9d3c8);
 }
 
-:root[data-palette="violet"] {
+:root[data-palette="violet"],
+:root:not([data-theme="light"]) [data-palette="violet"] {
   --primary: #8b5cf6; --primary-hover: #a78bfa; --ring: #8b5cf6;
   --background: color-mix(in oklab, #8b5cf6 15%, #0b1120);
   --surface: color-mix(in oklab, #8b5cf6 16%, #0f172a);
@@ -175,7 +209,8 @@
   --border: color-mix(in oklab, #8b5cf6 22%, #1e293b);
   --input: color-mix(in oklab, #8b5cf6 20%, #334155);
 }
-:root[data-theme="light"][data-palette="violet"] {
+:root[data-theme="light"][data-palette="violet"],
+:root[data-theme="light"] [data-palette="violet"] {
   --primary: #7c3aed; --primary-hover: #6d28d9; --ring: #7c3aed;
   --background: color-mix(in oklab, #7c3aed 10%, #faf9f6);
   --surface: color-mix(in oklab, #7c3aed 7%, #ffffff);
@@ -184,7 +219,8 @@
   --input: color-mix(in oklab, #7c3aed 20%, #d9d3c8);
 }
 
-:root[data-palette="rose"] {
+:root[data-palette="rose"],
+:root:not([data-theme="light"]) [data-palette="rose"] {
   --primary: #f43f5e; --primary-hover: #fb7185; --ring: #f43f5e;
   --background: color-mix(in oklab, #f43f5e 15%, #0b1120);
   --surface: color-mix(in oklab, #f43f5e 16%, #0f172a);
@@ -192,7 +228,8 @@
   --border: color-mix(in oklab, #f43f5e 22%, #1e293b);
   --input: color-mix(in oklab, #f43f5e 20%, #334155);
 }
-:root[data-theme="light"][data-palette="rose"] {
+:root[data-theme="light"][data-palette="rose"],
+:root[data-theme="light"] [data-palette="rose"] {
   --primary: #e11d48; --primary-hover: #be123c; --ring: #e11d48;
   --background: color-mix(in oklab, #e11d48 10%, #faf9f6);
   --surface: color-mix(in oklab, #e11d48 7%, #ffffff);
@@ -203,7 +240,8 @@
 
 /* Amber is light enough that white text on it reads poorly, so flip the
    on-primary text to the warm near-black in both modes. */
-:root[data-palette="amber"] {
+:root[data-palette="amber"],
+:root:not([data-theme="light"]) [data-palette="amber"] {
   --primary: #f59e0b; --primary-hover: #fbbf24; --ring: #f59e0b;
   --primary-foreground: #1c1b19;
   --background: color-mix(in oklab, #f59e0b 15%, #0b1120);
@@ -212,7 +250,8 @@
   --border: color-mix(in oklab, #f59e0b 22%, #1e293b);
   --input: color-mix(in oklab, #f59e0b 20%, #334155);
 }
-:root[data-theme="light"][data-palette="amber"] {
+:root[data-theme="light"][data-palette="amber"],
+:root[data-theme="light"] [data-palette="amber"] {
   --primary: #d97706; --primary-hover: #b45309; --ring: #d97706;
   --primary-foreground: #ffffff;
   --background: color-mix(in oklab, #d97706 10%, #faf9f6);
@@ -222,7 +261,8 @@
   --input: color-mix(in oklab, #d97706 20%, #d9d3c8);
 }
 
-:root[data-palette="crimson"] {
+:root[data-palette="crimson"],
+:root:not([data-theme="light"]) [data-palette="crimson"] {
   --primary: #ef4444; --primary-hover: #f87171; --ring: #ef4444;
   --background: color-mix(in oklab, #ef4444 15%, #0b1120);
   --surface: color-mix(in oklab, #ef4444 16%, #0f172a);
@@ -230,7 +270,8 @@
   --border: color-mix(in oklab, #ef4444 22%, #1e293b);
   --input: color-mix(in oklab, #ef4444 20%, #334155);
 }
-:root[data-theme="light"][data-palette="crimson"] {
+:root[data-theme="light"][data-palette="crimson"],
+:root[data-theme="light"] [data-palette="crimson"] {
   --primary: #dc2626; --primary-hover: #b91c1c; --ring: #dc2626;
   --background: color-mix(in oklab, #dc2626 10%, #faf9f6);
   --surface: color-mix(in oklab, #dc2626 7%, #ffffff);
@@ -241,10 +282,12 @@
 
 /* Graphite: a restrained monochrome scheme. Accent only, surfaces stay neutral
    (the base slate ramp) for a clean, no-colour feel. */
-:root[data-palette="graphite"] {
+:root[data-palette="graphite"],
+:root:not([data-theme="light"]) [data-palette="graphite"] {
   --primary: #64748b; --primary-hover: #94a3b8; --ring: #64748b;
 }
-:root[data-theme="light"][data-palette="graphite"] {
+:root[data-theme="light"][data-palette="graphite"],
+:root[data-theme="light"] [data-palette="graphite"] {
   --primary: #475569; --primary-hover: #334155; --ring: #475569;
 }
 
@@ -261,7 +304,8 @@
    ───────────────────────────────────────────────────────────────────────── */
 
 /* Nord: Polar Night + Frost. */
-:root[data-palette="nord"] {
+:root[data-palette="nord"],
+:root:not([data-theme="light"]) [data-palette="nord"] {
   --background: #2e3440; --surface: #3b4252; --surface-2: #434c5e;
   --foreground: #eceff4; --muted: #d8dee9; --subtle: #7b88a1;
   --border: #434c5e; --input: #4c566a;
@@ -269,7 +313,8 @@
   --primary-foreground: #2e3440;
   --success: #a3be8c; --warning: #ebcb8b; --danger: #bf616a;
 }
-:root[data-theme="light"][data-palette="nord"] {
+:root[data-theme="light"][data-palette="nord"],
+:root[data-theme="light"] [data-palette="nord"] {
   --background: #eceff4; --surface: #ffffff; --surface-2: #e5e9f0;
   --foreground: #2e3440; --muted: #4c566a; --subtle: #7b88a1;
   --border: #d8dee9; --input: #c8d0dc;
@@ -279,7 +324,8 @@
 }
 
 /* Dracula, with Alucard as the light sibling. */
-:root[data-palette="dracula"] {
+:root[data-palette="dracula"],
+:root:not([data-theme="light"]) [data-palette="dracula"] {
   --background: #282a36; --surface: #343746; --surface-2: #44475a;
   --foreground: #f8f8f2; --muted: #bcc0d0; --subtle: #6272a4;
   --border: #44475a; --input: #565a71;
@@ -287,7 +333,8 @@
   --primary-foreground: #282a36;
   --success: #50fa7b; --warning: #f1fa8c; --danger: #ff5555;
 }
-:root[data-theme="light"][data-palette="dracula"] {
+:root[data-theme="light"][data-palette="dracula"],
+:root[data-theme="light"] [data-palette="dracula"] {
   --background: #f8f8f2; --surface: #ffffff; --surface-2: #eceef4;
   --foreground: #282a36; --muted: #5a5f7a; --subtle: #8b90a8;
   --border: #dcdfe8; --input: #c8ccd8;
@@ -297,7 +344,8 @@
 }
 
 /* Gruvbox: warm retro, both official variants. */
-:root[data-palette="gruvbox"] {
+:root[data-palette="gruvbox"],
+:root:not([data-theme="light"]) [data-palette="gruvbox"] {
   --background: #282828; --surface: #32302f; --surface-2: #3c3836;
   --foreground: #ebdbb2; --muted: #bdae93; --subtle: #928374;
   --border: #3c3836; --input: #504945;
@@ -305,7 +353,8 @@
   --primary-foreground: #282828;
   --success: #b8bb26; --warning: #fe8019; --danger: #fb4934;
 }
-:root[data-theme="light"][data-palette="gruvbox"] {
+:root[data-theme="light"][data-palette="gruvbox"],
+:root[data-theme="light"] [data-palette="gruvbox"] {
   --background: #fbf1c7; --surface: #f9f5d7; --surface-2: #ebdbb2;
   --foreground: #3c3836; --muted: #665c54; --subtle: #928374;
   --border: #d5c4a1; --input: #bdae93;
@@ -315,7 +364,8 @@
 }
 
 /* Solarized: the classic base03 / base3 pair. */
-:root[data-palette="solarized"] {
+:root[data-palette="solarized"],
+:root:not([data-theme="light"]) [data-palette="solarized"] {
   --background: #002b36; --surface: #073642; --surface-2: #0e4b5a;
   --foreground: #93a1a1; --muted: #839496; --subtle: #586e75;
   --border: #0e4b5a; --input: #586e75;
@@ -323,7 +373,8 @@
   --primary-foreground: #ffffff;
   --success: #859900; --warning: #b58900; --danger: #dc322f;
 }
-:root[data-theme="light"][data-palette="solarized"] {
+:root[data-theme="light"][data-palette="solarized"],
+:root[data-theme="light"] [data-palette="solarized"] {
   --background: #fdf6e3; --surface: #ffffff; --surface-2: #eee8d5;
   --foreground: #073642; --muted: #586e75; --subtle: #93a1a1;
   --border: #ddd6c1; --input: #d3cbb7;
@@ -333,7 +384,8 @@
 }
 
 /* Rosé Pine, with Dawn as the light sibling. */
-:root[data-palette="rosepine"] {
+:root[data-palette="rosepine"],
+:root:not([data-theme="light"]) [data-palette="rosepine"] {
   --background: #191724; --surface: #1f1d2e; --surface-2: #26233a;
   --foreground: #e0def4; --muted: #908caa; --subtle: #6e6a86;
   --border: #26233a; --input: #403d52;
@@ -341,7 +393,8 @@
   --primary-foreground: #191724;
   --success: #9ccfd8; --warning: #f6c177; --danger: #eb6f92;
 }
-:root[data-theme="light"][data-palette="rosepine"] {
+:root[data-theme="light"][data-palette="rosepine"],
+:root[data-theme="light"] [data-palette="rosepine"] {
   --background: #faf4ed; --surface: #fffaf3; --surface-2: #f2e9e1;
   --foreground: #575279; --muted: #797593; --subtle: #9893a5;
   --border: #dfdad9; --input: #cecacd;
@@ -351,7 +404,8 @@
 }
 
 /* Tokyo Night, with Day as the light sibling. */
-:root[data-palette="tokyonight"] {
+:root[data-palette="tokyonight"],
+:root:not([data-theme="light"]) [data-palette="tokyonight"] {
   --background: #1a1b26; --surface: #1f2335; --surface-2: #292e42;
   --foreground: #c0caf5; --muted: #a9b1d6; --subtle: #565f89;
   --border: #292e42; --input: #3b4261;
@@ -359,7 +413,8 @@
   --primary-foreground: #1a1b26;
   --success: #9ece6a; --warning: #e0af68; --danger: #f7768e;
 }
-:root[data-theme="light"][data-palette="tokyonight"] {
+:root[data-theme="light"][data-palette="tokyonight"],
+:root[data-theme="light"] [data-palette="tokyonight"] {
   --background: #e1e2e7; --surface: #ffffff; --surface-2: #d7d8de;
   --foreground: #343b58; --muted: #6172b0; --subtle: #8990b3;
   --border: #cbccd1; --input: #b6b8c2;

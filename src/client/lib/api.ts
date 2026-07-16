@@ -82,6 +82,16 @@ export const api = {
     http<Area>(`/api/areas/${id}`, { method: "PATCH", body: JSON.stringify(b) }),
   deleteArea: (id: string) =>
     http(`/api/areas/${id}`, { method: "DELETE" }),
+  // Banner: raw image bytes, the same shape as uploadAttachment. The browser sets
+  // Content-Type from the File itself, which the Worker checks is an image/*.
+  uploadAreaBanner: (id: string, file: File) =>
+    http<{ banner: string }>(`/api/areas/${id}/banner`, {
+      method: "POST",
+      body: file,
+      headers: {},
+    }),
+  deleteAreaBanner: (id: string) =>
+    http(`/api/areas/${id}/banner`, { method: "DELETE" }),
 
   // projects
   listProjects: (areaId?: string) =>

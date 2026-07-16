@@ -11,6 +11,11 @@ export interface Area {
   icon: string | null;
   position: number;
   archived_at: string | null;
+  // Look of this area's own page. `palette` is a key from client/lib/theme.ts,
+  // null meaning "follow the app"; `banner` is an https image URL, or our own
+  // /api/areas/<id>/banner when the image was uploaded.
+  palette: string | null;
+  banner: string | null;
 }
 
 export interface Project {

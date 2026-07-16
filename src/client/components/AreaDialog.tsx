@@ -5,7 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { Area } from "../../shared/types";
 import { api } from "../lib/api";
 import { AREA_COLORS } from "../lib/colors";
-import { AREA_ICONS, CloseIcon, CheckIcon } from "../lib/icons";
+import { PALETTES } from "../lib/theme";
+import { AREA_ICONS, CloseIcon, CheckIcon, TrashIcon } from "../lib/icons";
 import { Button, Input } from "./ui";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +26,10 @@ export function AreaDialog({
   const [name, setName] = useState("");
   const [color, setColor] = useState<string | null>(null);
   const [icon, setIcon] = useState<string | null>(null);
+  const [palette, setPalette] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
@@ -33,6 +37,9 @@ export function AreaDialog({
       setName(existing?.name ?? "");
       setColor(existing?.color ?? "indigo");
       setIcon(existing?.icon ?? null);
+      setPalette(existing?.palette ?? null);
+      setBanner(existing?.banner ?? null);
+      setUploadError(null);
       setConfirmDelete(false);
     }
   }, [open, existing]);
@@ -54,11 +61,30 @@ export function AreaDialog({
     }
   }
 
+  // Uploading needs an area id to key the R2 object on, so it is only offered on
+  // an existing area. A new one gets a banner on its second visit to this dialog.
+  async function pickFile(file: File) {
+    if (!existing) return;
+    setBusy(true);
+    setUploadError(null);
+    try {
+      const { banner: url } = await api.uploadAreaBanner(existing.id, file);
+      // Cache-bust: the URL is stable across re-uploads, so without this the
+      // browser would keep showing the image you just replaced.
+      setBanner(`${url}?v=${Date.now()}`);
+      qc.invalidateQueries({ queryKey: ["areas"] });
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submit() {
     if (!name.trim()) return;
     setBusy(true);
     try {
-      const body = { name: name.trim(), color, icon };
+      const body = { name: name.trim(), color, icon, palette, banner };
       if (existing) await api.updateArea(existing.id, body);
       else await api.createArea(body);
       qc.invalidateQueries({ queryKey: ["areas"] });
@@ -155,6 +181,108 @@ export function AreaDialog({
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="mt-4">
+            <span className="text-xs text-muted">Theme</span>
+            <p className="mb-1.5 mt-0.5 text-[11px] text-subtle">
+              Just this area&rsquo;s page. Leave on App to follow your global theme.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPalette(null)}
+                className={cn(
+                  "h-7 rounded-md border px-2 text-[11px] transition-colors",
+                  palette === null
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border text-muted hover:bg-surface-2"
+                )}
+              >
+                App
+              </button>
+              {PALETTES.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => setPalette(p.key)}
+                  title={p.label}
+                  aria-label={p.label}
+                  className={cn(
+                    "grid h-7 w-7 place-items-center rounded-md border transition-transform hover:scale-110",
+                    palette === p.key ? "border-primary" : "border-border"
+                  )}
+                  // Full themes preview as accent-on-their-own-background; accents
+                  // have no background of their own, so they show as a plain swatch.
+                  style={{ background: p.bg ?? p.swatch }}
+                >
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ background: p.swatch }}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <span className="text-xs text-muted">Banner</span>
+            {banner && (
+              <div className="relative mt-1.5 overflow-hidden rounded-md border border-border">
+                <img src={banner} alt="" className="h-20 w-full object-cover" />
+                <button
+                  type="button"
+                  title="Remove banner"
+                  aria-label="Remove banner"
+                  onClick={async () => {
+                    // A stored upload has bytes in R2 to reclaim; a pasted link
+                    // has nothing but the field, so just clear it.
+                    if (existing && banner.startsWith("/api/")) {
+                      await api.deleteAreaBanner(existing.id);
+                      qc.invalidateQueries({ queryKey: ["areas"] });
+                    }
+                    setBanner(null);
+                  }}
+                  className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded bg-black/50 text-white hover:bg-black/70"
+                >
+                  <TrashIcon className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            <div className="mt-1.5 flex gap-1.5">
+              <Input
+                value={banner?.startsWith("/api/") ? "" : banner ?? ""}
+                onChange={(e) => setBanner(e.target.value.trim() || null)}
+                placeholder={
+                  banner?.startsWith("/api/") ? "Uploaded image" : "Paste an image URL"
+                }
+                disabled={banner?.startsWith("/api/")}
+              />
+              <label
+                className={cn(
+                  "grid h-9 shrink-0 cursor-pointer place-items-center rounded-md border border-border px-2.5 text-xs text-muted transition-colors hover:bg-surface-2",
+                  !existing && "pointer-events-none opacity-50"
+                )}
+                title={
+                  existing ? "Upload an image" : "Save the area first, then upload"
+                }
+              >
+                Upload
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) pickFile(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {uploadError && (
+              <p className="mt-1 text-[11px] text-danger">{uploadError}</p>
+            )}
           </div>
 
           {confirmDelete ? (

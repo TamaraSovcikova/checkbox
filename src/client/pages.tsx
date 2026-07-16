@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { format, parseISO } from "date-fns";
+import { cn } from "@/lib/utils";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Project, Task, TriageSuggestion } from "../shared/types";
@@ -738,7 +739,29 @@ export function AreaPage() {
     useTaskCollection(`area:${id}`, tasks, "No loose tasks in this area.", false);
 
   return (
-    <div>
+    // The area's own theme is scoped to this subtree via [data-palette] (see the
+    // descendant palette selectors in index.css), so the sidebar and the rest of
+    // the app keep the global theme. Painting --background here is what makes the
+    // page read as themed rather than as themed cards on the app's background.
+    <div
+      data-palette={area?.palette ?? undefined}
+      style={area?.palette ? { background: "var(--background)" } : undefined}
+      className={cn(area?.palette && "-mx-4 -mt-4 px-4 pt-4 md:-mx-6 md:-mt-6 md:px-6 md:pt-6")}
+    >
+      {area?.banner && (
+        <div className="mb-4 overflow-hidden rounded-xl border border-border">
+          <img
+            src={area.banner}
+            alt=""
+            className="h-28 w-full object-cover md:h-36"
+            // A pasted link can rot or 404; drop the frame rather than leave a
+            // broken-image icon sitting at the top of the page.
+            onError={(e) => {
+              e.currentTarget.parentElement?.remove();
+            }}
+          />
+        </div>
+      )}
       <Header
         title={area?.name ?? "Area"}
         icon={
