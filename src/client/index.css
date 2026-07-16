@@ -3,10 +3,10 @@
 @import "react-day-picker/style.css";
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Design tokens — dual theme, single indigo accent.
+   Design tokens - dual theme, single indigo accent.
    Single source of truth for color; JS mirror lives in lib/colors.ts.
    shadcn/ui (added in T2) consumes these same CSS variables, so the whole
-   app — rows, cards, drawer, board, AND calendar — themes from one place.
+   app - rows, cards, drawer, board, AND calendar - themes from one place.
 
    Dark is the default (:root). Light is a "warm stone" ramp: an off-white,
    paper-toned surface with a warm near-black text, applied via
@@ -38,13 +38,13 @@
   --warning: #fbbf24; /* amber-400 */
   --danger: #f87171;  /* red-400 */
 
-  /* priority scale — identical in list, card, drawer, AND calendar */
+  /* priority scale - identical in list, card, drawer, AND calendar */
   --pri-1: #f87171; /* red-400     urgent */
   --pri-2: #fb923c; /* orange-400  high   */
   --pri-3: #fbbf24; /* amber-400   medium */
   --pri-4: #94a3b8; /* slate-400   low    */
 
-  /* area accent palette — user-pickable per area for at-a-glance scanning.
+  /* area accent palette - user-pickable per area for at-a-glance scanning.
      Muted 400-level hues so a colored dot reads clearly on the dark surface
      without clashing with the single indigo primary. Referenced by key from
      lib/colors.ts (AREA_COLORS); never hardcode these hexes at call sites. */
@@ -63,7 +63,7 @@
   --radius: 0.5rem;
 }
 
-/* Light — "warm stone": a sophisticated off-white with a faint paper/warm
+/* Light - "warm stone": a sophisticated off-white with a faint paper/warm
    undertone (not clinical slate-50, not stark pure white) and a warm near-black
    text. State + priority + area hues step down to 500/600 so they keep contrast
    on the light surface instead of washing out at their dark 400 levels. */
@@ -107,67 +107,140 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Colour schemes (palettes). Orthogonal to light/dark: a palette only recolours
-   the ACCENT (primary / hover / ring / focus + the primary-foreground text on
-   it). The light/dark mode still owns every surface + text token, so each
-   palette works in both modes. Driven by [data-palette]; "indigo" is the base
-   above (no block). Light blocks carry two attributes so they out-specify the
-   single-attribute dark blocks in light mode. Keys mirror lib/theme.ts PALETTES.
+   Colour schemes (palettes). Orthogonal to light/dark: a palette recolours the
+   accent AND washes the whole surface ramp (background, surfaces, borders) with
+   that hue, so the theme changes the entire page, not just the accent. The
+   light/dark mode still owns the base tone + text colour, so every palette works
+   in both modes. Surfaces are derived with color-mix from the base neutrals, so
+   contrast is preserved automatically. Driven by [data-palette]; "indigo" is the
+   base above (no block). Light blocks carry two attributes so they out-specify
+   the single-attribute dark blocks in light mode. Keys mirror lib/theme.ts.
    ───────────────────────────────────────────────────────────────────────── */
 :root[data-palette="ocean"] {
   --primary: #0ea5e9; --primary-hover: #38bdf8; --ring: #0ea5e9;
+  --background: color-mix(in oklab, #0ea5e9 7%, #0b1120);
+  --surface: color-mix(in oklab, #0ea5e9 7%, #0f172a);
+  --surface-2: color-mix(in oklab, #0ea5e9 9%, #1e293b);
+  --border: color-mix(in oklab, #0ea5e9 10%, #1e293b);
+  --input: color-mix(in oklab, #0ea5e9 10%, #334155);
 }
 :root[data-theme="light"][data-palette="ocean"] {
   --primary: #0284c7; --primary-hover: #0369a1; --ring: #0284c7;
+  --background: color-mix(in oklab, #0284c7 5%, #faf9f6);
+  --surface: color-mix(in oklab, #0284c7 4%, #ffffff);
+  --surface-2: color-mix(in oklab, #0284c7 8%, #f1efea);
+  --border: color-mix(in oklab, #0284c7 10%, #e8e3da);
+  --input: color-mix(in oklab, #0284c7 12%, #d9d3c8);
 }
 
 :root[data-palette="emerald"] {
   --primary: #10b981; --primary-hover: #34d399; --ring: #10b981;
+  --background: color-mix(in oklab, #10b981 7%, #0b1120);
+  --surface: color-mix(in oklab, #10b981 7%, #0f172a);
+  --surface-2: color-mix(in oklab, #10b981 9%, #1e293b);
+  --border: color-mix(in oklab, #10b981 10%, #1e293b);
+  --input: color-mix(in oklab, #10b981 10%, #334155);
 }
 :root[data-theme="light"][data-palette="emerald"] {
   --primary: #059669; --primary-hover: #047857; --ring: #059669;
+  --background: color-mix(in oklab, #059669 5%, #faf9f6);
+  --surface: color-mix(in oklab, #059669 4%, #ffffff);
+  --surface-2: color-mix(in oklab, #059669 8%, #f1efea);
+  --border: color-mix(in oklab, #059669 10%, #e8e3da);
+  --input: color-mix(in oklab, #059669 12%, #d9d3c8);
 }
 
 :root[data-palette="teal"] {
   --primary: #14b8a6; --primary-hover: #2dd4bf; --ring: #14b8a6;
+  --background: color-mix(in oklab, #14b8a6 7%, #0b1120);
+  --surface: color-mix(in oklab, #14b8a6 7%, #0f172a);
+  --surface-2: color-mix(in oklab, #14b8a6 9%, #1e293b);
+  --border: color-mix(in oklab, #14b8a6 10%, #1e293b);
+  --input: color-mix(in oklab, #14b8a6 10%, #334155);
 }
 :root[data-theme="light"][data-palette="teal"] {
   --primary: #0d9488; --primary-hover: #0f766e; --ring: #0d9488;
+  --background: color-mix(in oklab, #0d9488 5%, #faf9f6);
+  --surface: color-mix(in oklab, #0d9488 4%, #ffffff);
+  --surface-2: color-mix(in oklab, #0d9488 8%, #f1efea);
+  --border: color-mix(in oklab, #0d9488 10%, #e8e3da);
+  --input: color-mix(in oklab, #0d9488 12%, #d9d3c8);
 }
 
 :root[data-palette="violet"] {
   --primary: #8b5cf6; --primary-hover: #a78bfa; --ring: #8b5cf6;
+  --background: color-mix(in oklab, #8b5cf6 7%, #0b1120);
+  --surface: color-mix(in oklab, #8b5cf6 7%, #0f172a);
+  --surface-2: color-mix(in oklab, #8b5cf6 9%, #1e293b);
+  --border: color-mix(in oklab, #8b5cf6 10%, #1e293b);
+  --input: color-mix(in oklab, #8b5cf6 10%, #334155);
 }
 :root[data-theme="light"][data-palette="violet"] {
   --primary: #7c3aed; --primary-hover: #6d28d9; --ring: #7c3aed;
+  --background: color-mix(in oklab, #7c3aed 5%, #faf9f6);
+  --surface: color-mix(in oklab, #7c3aed 4%, #ffffff);
+  --surface-2: color-mix(in oklab, #7c3aed 8%, #f1efea);
+  --border: color-mix(in oklab, #7c3aed 10%, #e8e3da);
+  --input: color-mix(in oklab, #7c3aed 12%, #d9d3c8);
 }
 
 :root[data-palette="rose"] {
   --primary: #f43f5e; --primary-hover: #fb7185; --ring: #f43f5e;
+  --background: color-mix(in oklab, #f43f5e 7%, #0b1120);
+  --surface: color-mix(in oklab, #f43f5e 7%, #0f172a);
+  --surface-2: color-mix(in oklab, #f43f5e 9%, #1e293b);
+  --border: color-mix(in oklab, #f43f5e 10%, #1e293b);
+  --input: color-mix(in oklab, #f43f5e 10%, #334155);
 }
 :root[data-theme="light"][data-palette="rose"] {
   --primary: #e11d48; --primary-hover: #be123c; --ring: #e11d48;
+  --background: color-mix(in oklab, #e11d48 5%, #faf9f6);
+  --surface: color-mix(in oklab, #e11d48 4%, #ffffff);
+  --surface-2: color-mix(in oklab, #e11d48 8%, #f1efea);
+  --border: color-mix(in oklab, #e11d48 10%, #e8e3da);
+  --input: color-mix(in oklab, #e11d48 12%, #d9d3c8);
 }
 
-/* Amber is light enough that white text on it reads poorly — flip the on-primary
+/* Amber is light enough that white text on it reads poorly, flip the on-primary
    text to the warm near-black in both modes. */
 :root[data-palette="amber"] {
   --primary: #f59e0b; --primary-hover: #fbbf24; --ring: #f59e0b;
   --primary-foreground: #1c1b19;
+  --background: color-mix(in oklab, #f59e0b 6%, #0b1120);
+  --surface: color-mix(in oklab, #f59e0b 6%, #0f172a);
+  --surface-2: color-mix(in oklab, #f59e0b 8%, #1e293b);
+  --border: color-mix(in oklab, #f59e0b 9%, #1e293b);
+  --input: color-mix(in oklab, #f59e0b 9%, #334155);
 }
 :root[data-theme="light"][data-palette="amber"] {
   --primary: #d97706; --primary-hover: #b45309; --ring: #d97706;
   --primary-foreground: #ffffff;
+  --background: color-mix(in oklab, #d97706 5%, #faf9f6);
+  --surface: color-mix(in oklab, #d97706 4%, #ffffff);
+  --surface-2: color-mix(in oklab, #d97706 8%, #f1efea);
+  --border: color-mix(in oklab, #d97706 10%, #e8e3da);
+  --input: color-mix(in oklab, #d97706 12%, #d9d3c8);
 }
 
 :root[data-palette="crimson"] {
   --primary: #ef4444; --primary-hover: #f87171; --ring: #ef4444;
+  --background: color-mix(in oklab, #ef4444 7%, #0b1120);
+  --surface: color-mix(in oklab, #ef4444 7%, #0f172a);
+  --surface-2: color-mix(in oklab, #ef4444 9%, #1e293b);
+  --border: color-mix(in oklab, #ef4444 10%, #1e293b);
+  --input: color-mix(in oklab, #ef4444 10%, #334155);
 }
 :root[data-theme="light"][data-palette="crimson"] {
   --primary: #dc2626; --primary-hover: #b91c1c; --ring: #dc2626;
+  --background: color-mix(in oklab, #dc2626 5%, #faf9f6);
+  --surface: color-mix(in oklab, #dc2626 4%, #ffffff);
+  --surface-2: color-mix(in oklab, #dc2626 8%, #f1efea);
+  --border: color-mix(in oklab, #dc2626 10%, #e8e3da);
+  --input: color-mix(in oklab, #dc2626 12%, #d9d3c8);
 }
 
-/* Graphite: a restrained monochrome accent for a minimalist, no-colour feel. */
+/* Graphite: a restrained monochrome scheme. Accent only, surfaces stay neutral
+   (the base slate ramp) for a clean, no-colour feel. */
 :root[data-palette="graphite"] {
   --primary: #64748b; --primary-hover: #94a3b8; --ring: #64748b;
 }
