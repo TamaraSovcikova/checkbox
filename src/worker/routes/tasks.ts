@@ -77,12 +77,28 @@ async function badRefs(
   return null;
 }
 
-// LIST with filters: ?project_id= &area_id= &status= &backlog=1
+// LIST with filters: ?project_id= &area_id= &status= &backlog=1 &ids=a,b,c
 tasks.get("/", async (c) => {
   const userId = await getUserId(c);
   const q = c.req.query();
   let sql = "SELECT * FROM tasks WHERE user_id = ? AND parent_task_id IS NULL";
   const binds: unknown[] = [userId];
+
+  // ?ids= asks for specific tasks and answers with them whatever their status:
+  // the caller already named the tasks it wants, so the "hide done" default
+  // below would just lie to it. Pins resolving their linked tasks need this,
+  // otherwise ticking a linked task off makes it look deleted.
+  if (q.ids != null) {
+    const ids = q.ids
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 200); // bound the IN list
+    if (ids.length === 0) return c.json([]);
+    sql += ` AND id IN (${ids.map(() => "?").join(",")})`;
+    binds.push(...ids);
+  }
+
   if (q.backlog === "1") sql += " AND area_id IS NULL AND project_id IS NULL";
   if (q.project_id) {
     sql += " AND project_id = ?";
@@ -95,7 +111,7 @@ tasks.get("/", async (c) => {
   if (q.status) {
     sql += " AND status = ?";
     binds.push(q.status);
-  } else {
+  } else if (q.ids == null) {
     sql += " AND status != 'done'";
   }
   sql += " ORDER BY position, priority, created_at";

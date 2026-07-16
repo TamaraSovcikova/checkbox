@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import type { Pin, PinItem } from "../../shared/types";
+import type { Pin, PinItem, Task } from "../../shared/types";
 import {
   usePins,
   useCreatePin,
   useUpdatePin,
   useDeletePin,
   useAreas,
+  useTasks,
+  useTasksByIds,
+  useCompleteTask,
 } from "../lib/queries";
+import { useTaskUI } from "../lib/ui-context";
 import { AREA_COLORS, areaColorVar } from "../lib/colors";
 import { pinsForScope, scopeLabel, scopeOptions } from "../lib/pinScope";
 import { cn } from "@/lib/utils";
@@ -27,7 +31,9 @@ import {
   MoreIcon,
   SearchIcon,
   ChevronDownIcon,
+  LinkIcon,
 } from "../lib/icons";
+import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
 
 const newItem = (text: string): PinItem => ({
   id: crypto.randomUUID(),
@@ -132,6 +138,139 @@ function PinMenu({
   );
 }
 
+// Pick an open task to put on a pin. Searches titles; the pin stores only the id,
+// so the task's own title stays the source of truth afterwards.
+function TaskPicker({
+  tasks,
+  exclude,
+  onPick,
+}: {
+  tasks: Task[];
+  exclude: Set<string>;
+  onPick: (t: Task) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+
+  const matches = tasks
+    .filter((t) => t.status !== "done" && !exclude.has(t.id))
+    .filter((t) => !q || t.title.toLowerCase().includes(q.toLowerCase()))
+    .slice(0, 8);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          aria-label="Link a task"
+          title="Link a task"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded text-subtle transition-colors hover:bg-surface-2 hover:text-foreground data-[state=open]:bg-surface-2"
+        >
+          <LinkIcon className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64 p-1.5">
+        <input
+          value={q}
+          autoFocus
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search open tasks"
+          className="mb-1 h-8 w-full rounded border border-input bg-surface px-2 text-xs text-foreground outline-none placeholder:text-subtle focus:border-primary"
+        />
+        <div className="max-h-56 overflow-y-auto">
+          {matches.length === 0 ? (
+            <p className="px-1 py-2 text-[11px] text-subtle">
+              {q ? "No open task matches." : "No open tasks to link."}
+            </p>
+          ) : (
+            matches.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  onPick(t);
+                  setQ("");
+                  setOpen(false);
+                }}
+                className="block w-full truncate rounded px-1.5 py-1 text-left text-xs text-foreground hover:bg-surface-2"
+              >
+                {t.title}
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// A pin line that IS a task. The task row is authoritative: live title, live
+// status, and ticking it here completes the task itself rather than the line.
+function LinkedTaskLine({
+  item,
+  task,
+  onUnlink,
+}: {
+  item: PinItem;
+  task: Task | undefined;
+  onUnlink: () => void;
+}) {
+  const complete = useCompleteTask();
+  const { open } = useTaskUI();
+
+  // Linked task deleted from under us. Say so instead of rendering a ghost line,
+  // and offer the only useful action left.
+  if (!task) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 flex-1 truncate text-[13px] text-subtle line-through">
+          {item.text || "(task deleted)"}
+        </span>
+        <button
+          onClick={onUnlink}
+          aria-label="Remove line"
+          title="This task no longer exists"
+          className="shrink-0 text-subtle hover:text-danger"
+        >
+          <TrashIcon className="h-3 w-3" />
+        </button>
+      </div>
+    );
+  }
+
+  const isDone = task.status === "done";
+  return (
+    <div className="group/line flex items-center gap-2">
+      <input
+        type="checkbox"
+        checked={isDone}
+        onChange={() => complete.mutate({ id: task.id, done: !isDone })}
+        className="h-3.5 w-3.5 shrink-0 [accent-color:var(--primary)]"
+        aria-label={task.title}
+      />
+      <button
+        onClick={() => open(task)}
+        title="Open task"
+        className={cn(
+          "min-w-0 flex-1 truncate text-left text-[13px] text-foreground",
+          isDone && "text-subtle line-through"
+        )}
+      >
+        {task.title}
+      </button>
+      {/* A link icon marks this as a task, not a line you typed. */}
+      <LinkIcon className="h-3 w-3 shrink-0 text-subtle opacity-60" />
+      <button
+        onClick={onUnlink}
+        aria-label="Unlink task"
+        title="Unlink (does not delete the task)"
+        className="hidden shrink-0 text-subtle hover:text-danger group-hover/line:block"
+      >
+        <TrashIcon className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
 // Pins in a strip lay out on a 4-column grid, so a pin can be a quarter, a half
 // (the default, and what every pin was before sizing existed) or the full width.
 export const PIN_COLS = 4;
@@ -157,6 +296,9 @@ function PinCard({
   const update = useUpdatePin();
   const del = useDeletePin();
   const { data: areas = [] } = useAreas();
+  // Open tasks, for the picker to search. Shared across every pin: TanStack
+  // dedupes on the ["tasks", {}] key, so this is one fetch for the page.
+  const { data: allTasks = [] } = useTasks({});
   const [title, setTitle] = useState(pin.title ?? "");
   const [items, setItems] = useState<PinItem[]>(pin.items ?? []);
   const [body, setBody] = useState(pin.body ?? "");
@@ -231,7 +373,22 @@ function PinCard({
   const span = drag?.span ?? pin.span ?? 2;
   const height = drag?.height ?? pin.height ?? null;
 
-  const done = items.filter((i) => i.done).length;
+  const linkedIds = new Set(
+    items.map((i) => i.task_id).filter((x): x is string => !!x)
+  );
+  const linkedItems = items.filter((i) => i.task_id);
+  // Resolved by id rather than from the open-task list above, which omits done
+  // tasks: a linked task you tick off must stay put, ticked, not read as deleted.
+  const { data: linkedTasks = [] } = useTasksByIds([...linkedIds]);
+  const taskById = new Map(linkedTasks.map((t) => [t.id, t]));
+  const addTaskItem = (t: Task) =>
+    // `text` is a fallback label only, for if the task is later deleted.
+    saveItems([...items, { id: crypto.randomUUID(), text: t.title, done: false, task_id: t.id }]);
+
+  // A linked line is done when its TASK is done, not when the line says so.
+  const isItemDone = (i: PinItem) =>
+    i.task_id ? taskById.get(i.task_id)?.status === "done" : i.done;
+  const done = items.filter(isItemDone).length;
   const accent = pin.color ? areaColorVar(pin.color) : null;
   const [editingTitle, setEditingTitle] = useState(false);
   // Titles are optional and take NO space when absent: show the input only when
@@ -292,6 +449,7 @@ function PinCard({
             {done}/{items.length}
           </span>
         )}
+        <TaskPicker tasks={allTasks} exclude={linkedIds} onPick={addTaskItem} />
         <ColorPicker
           color={pin.color}
           onPick={(c) => update.mutate({ id: pin.id, body: { color: c } })}
@@ -308,7 +466,15 @@ function PinCard({
       <div className="min-h-0 flex-1 overflow-y-auto">
       {pin.kind === "list" ? (
         <div className="space-y-0.5">
-          {items.map((it) => (
+          {items.map((it) =>
+            it.task_id ? (
+              <LinkedTaskLine
+                key={it.id}
+                item={it}
+                task={taskById.get(it.task_id)}
+                onUnlink={() => removeItem(it.id)}
+              />
+            ) : (
             <div key={it.id} className="group flex items-center gap-2">
               <input
                 type="checkbox"
@@ -334,7 +500,8 @@ function PinCard({
                 <TrashIcon className="h-3 w-3" />
               </button>
             </div>
-          ))}
+            )
+          )}
           <div className="mt-1 flex items-center gap-2">
             <AddIcon className="h-3.5 w-3.5 shrink-0 text-subtle" />
             <input
@@ -375,6 +542,21 @@ function PinCard({
         >
           {body}
         </button>
+      )}
+
+      {/* A reminder's linked tasks. A note has no lines of its own, so these sit
+          under the text rather than in it, and it stays a reminder, not a list. */}
+      {pin.kind === "note" && linkedItems.length > 0 && (
+        <div className="mt-2 space-y-0.5 border-t border-border pt-2">
+          {linkedItems.map((it) => (
+            <LinkedTaskLine
+              key={it.id}
+              item={it}
+              task={taskById.get(it.task_id as string)}
+              onUnlink={() => removeItem(it.id)}
+            />
+          ))}
+        </div>
       )}
       </div>
 

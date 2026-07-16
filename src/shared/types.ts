@@ -269,6 +269,11 @@ export interface PinItem {
   id: string;
   text: string;
   done: boolean;
+  // Set when this line IS a task rather than a note to self. The task row stays
+  // authoritative: `text` is only a fallback label and `done` is ignored, since
+  // the live title and status are read from the task. Ticking the line completes
+  // the task itself. An unset task_id is a plain hand-typed line.
+  task_id?: string;
 }
 export interface Pin {
   id: string;

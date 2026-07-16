@@ -38,6 +38,19 @@ export const useTasks = (params: Record<string, string>) =>
     queryFn: () => api.listTasks(params),
   });
 
+// Resolve specific tasks by id, INCLUDING done ones (the plain list hides those).
+// Used by pins to render their linked tasks: a linked task that gets ticked off
+// must stay on the pin, ticked, rather than vanish as if it had been deleted.
+export const useTasksByIds = (ids: string[]) => {
+  // Sorted + joined so the key is stable regardless of the order they were added.
+  const key = [...ids].sort().join(",");
+  return useQuery({
+    queryKey: ["tasks", { ids: key }],
+    queryFn: () => api.listTasks({ ids: key }),
+    enabled: ids.length > 0,
+  });
+};
+
 // Invalidate everything task-shaped after a write (cheap for a personal app).
 export function useTaskInvalidate() {
   const qc = useQueryClient();
