@@ -35,10 +35,15 @@ export function TaskRow({
   task,
   onOpen,
   selection,
+  // Inside a single area or project every row would carry the SAME area colour,
+  // which is just noise. Those pages pass false; mixed views (Today, Backlog,
+  // Upcoming) keep it, which is where the colour actually tells you something.
+  tintArea = true,
 }: {
   task: Task;
   onOpen: (t: Task) => void;
   selection?: RowSelection;
+  tintArea?: boolean;
 }) {
   const complete = useCompleteTask();
   const update = useUpdateTask();
@@ -126,8 +131,8 @@ export function TaskRow({
   // (selection/cursor are separate ring/bg layers on the inner row). The inner
   // row's hover/selection backgrounds are semi-transparent, so they compose over
   // this. Tasks with no area stay plain.
-  const tint = areaTintBg(area?.color, 12);
-  const accent = area ? areaColorVar(area.color) : undefined;
+  const tint = tintArea ? areaTintBg(area?.color, 12) : undefined;
+  const accent = tintArea && area ? areaColorVar(area.color) : undefined;
   return (
     <div
       className={cn(
@@ -150,7 +155,7 @@ export function TaskRow({
         {...attributes}
         {...listeners}
         className={cn(
-          "group flex touch-none items-start gap-1 rounded-md px-2 py-1.5 transition-colors",
+          "group flex touch-none items-start gap-2 rounded-md px-2.5 py-2.5 transition-colors",
           isDragging ? "cursor-grabbing" : "cursor-grab",
           selection?.cursor
             ? "bg-surface-2/70 ring-1 ring-primary/50"
@@ -227,7 +232,7 @@ export function TaskRow({
         >
           <div
             className={cn(
-              "text-sm",
+              "text-sm leading-snug",
               done
                 ? "text-subtle line-through"
                 : blocked
@@ -237,7 +242,7 @@ export function TaskRow({
           >
             {task.title}
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-subtle">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-subtle">
             {shouldPill(task.priority) && <PriorityPill priority={task.priority} />}
             {(area || project) && (
               <span

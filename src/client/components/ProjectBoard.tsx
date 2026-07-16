@@ -113,9 +113,11 @@ export function ProjectBoard({
 
   if (view === "list") {
     return (
-      <div className="max-w-2xl">
+      // Inside one project every task shares an area, so the area tint would say
+      // nothing here; skip it and let the rows breathe instead.
+      <div className="max-w-2xl space-y-1">
         {tasks.map((t) => (
-          <TaskRow key={t.id} task={t} onOpen={onOpen} />
+          <TaskRow key={t.id} task={t} onOpen={onOpen} tintArea={false} />
         ))}
       </div>
     );

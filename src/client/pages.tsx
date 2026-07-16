@@ -88,23 +88,27 @@ function TaskList({
   empty,
   controls,
   indexOffset = 0,
+  tintArea = true,
 }: {
   tasks: Task[];
   empty: string;
   controls?: TaskControls;
   indexOffset?: number;
+  tintArea?: boolean;
 }) {
   const { open } = useTaskUI();
   if (tasks.length === 0)
     return <p className="px-2 text-sm text-subtle">{empty}</p>;
   return (
-    <div className="max-w-2xl">
+    // space-y gives rows room to breathe; packed rows were hard to scan.
+    <div className="max-w-2xl space-y-1">
       {tasks.map((t, i) => (
         <TaskRow
           key={t.id}
           task={t}
           onOpen={open}
           selection={controls?.rowFor(t, indexOffset + i)}
+          tintArea={tintArea}
         />
       ))}
     </div>
@@ -244,7 +248,14 @@ function filterTasks(tasks: Task[], key: FilterKey): Task[] {
 // multi-select controls. ViewPage, AreaPage and ProjectPage all use this so the
 // three surfaces behave identically and each remembers its own preferences
 // (persisted per `prefsKey` in UserPrefs.viewDefaults).
-function useTaskCollection(prefsKey: string, tasks: Task[], empty: string) {
+function useTaskCollection(
+  prefsKey: string,
+  tasks: Task[],
+  empty: string,
+  // Area/project pages set this false: every row there shares one area colour, so
+  // tinting them all says nothing and just makes the list heavy.
+  tintArea = true
+) {
   const { data: areas = [] } = useAreas();
   const { data: projects = [] } = useProjects();
   const { viewDefault, setViewDefault } = useViewPrefs();
@@ -286,7 +297,13 @@ function useTaskCollection(prefsKey: string, tasks: Task[], empty: string) {
   function renderBody(list: Task[], offset: number) {
     if (view === "grid") return <TaskGrid tasks={list} empty={empty} />;
     return (
-      <TaskList tasks={list} empty={empty} controls={controls} indexOffset={offset} />
+      <TaskList
+        tasks={list}
+        empty={empty}
+        controls={controls}
+        indexOffset={offset}
+        tintArea={tintArea}
+      />
     );
   }
 
@@ -719,7 +736,7 @@ export function AreaPage() {
   const [newProject, setNewProject] = useState(false);
   const AreaIcon = areaIcon(area?.icon);
   const { view, setView, controls, body, sortMenu, groupMenu, filterMenu } =
-    useTaskCollection(`area:${id}`, tasks, "No loose tasks in this area.");
+    useTaskCollection(`area:${id}`, tasks, "No loose tasks in this area.", false);
 
   return (
     <div>
