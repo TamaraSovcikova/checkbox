@@ -224,6 +224,9 @@ export async function syncCalendar(
   if (!account) return;
   try {
     await syncCalendarInner(env, userId, account);
+    // Pull first, then clean up: the pull refreshes the cache this reads, so a
+    // task deleted or completed since the last sync is caught here.
+    await reconcileTaskEvents(env, userId);
   } catch (e) {
     await noteCalendarError(env, account.id, String((e as Error).message));
     throw e;
@@ -458,9 +461,9 @@ export async function pushTaskToGcal(
 
   // Nothing to reconcile: no event wanted and none exists.
   if (!wantEvent && !task.gcal_event_id) return;
-  // A completed task keeps whatever event it already has (a record of what was
-  // done): never create or update an event for a done task. Unscheduling below
-  // still removes one.
+  // Never create or update an event for a done task. Completing now REMOVES the
+  // event outright (see the complete route + reconcileTaskEvents): a finished task
+  // should not keep occupying the calendar. Unscheduling below still removes one.
   if (wantEvent && task.status === "done") return;
 
   const accessToken = await getValidAccessToken(env, account);
@@ -543,6 +546,56 @@ export async function pushTaskToGcal(
 }
 
 // ── Delete a GCal event when a task is removed or unscheduled ─────────────────
+
+// Sweep away Google events Checkbox created that no longer deserve one: the task
+// was deleted, or it is done. SAFETY: it only ever considers rows with
+// is_checkbox_owned = 1, which is set solely from our own checkbox_task_id tag on
+// the event, so a user's own calendar entries can never be touched. Runs on every
+// sync, which also cleans up strays left behind by older builds that did not
+// remove the event on complete/delete.
+export async function reconcileTaskEvents(
+  env: Bindings,
+  userId: string
+): Promise<number> {
+  const account = await getCalendarAccount(env, userId);
+  if (!account) return 0;
+  const { results } = await env.DB.prepare(
+    `SELECT c.gcal_event_id, c.calendar_id, c.task_id
+       FROM calendar_events_cache c
+       LEFT JOIN tasks t ON t.id = c.task_id
+      WHERE c.user_id = ? AND c.is_checkbox_owned = 1
+        AND (c.task_id IS NULL OR t.id IS NULL OR t.status = 'done')`
+  )
+    .bind(userId)
+    .all<{ gcal_event_id: string; calendar_id: string; task_id: string | null }>();
+  if (!results?.length) return 0;
+
+  const accessToken = await getValidAccessToken(env, account);
+  let removed = 0;
+  for (const row of results) {
+    try {
+      await deleteEvent(accessToken, row.calendar_id, row.gcal_event_id);
+      await env.DB.prepare(
+        "DELETE FROM calendar_events_cache WHERE gcal_event_id = ? AND calendar_id = ?"
+      )
+        .bind(row.gcal_event_id, row.calendar_id)
+        .run();
+      // Drop the stale linkage so a later re-open/uncomplete pushes a fresh event.
+      if (row.task_id) {
+        await env.DB.prepare(
+          "UPDATE tasks SET gcal_event_id = NULL, gcal_calendar_id = NULL WHERE id = ? AND user_id = ?"
+        )
+          .bind(row.task_id, userId)
+          .run();
+      }
+      removed++;
+    } catch (e) {
+      // A 404/410 just means it is already gone; keep going either way.
+      console.error("reconcileTaskEvents", e);
+    }
+  }
+  return removed;
+}
 
 export async function deleteTaskGcalEvent(
   env: Bindings,

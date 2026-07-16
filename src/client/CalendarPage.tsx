@@ -392,18 +392,70 @@ function ConnectCalendar() {
 
 // ── All-day event strip ───────────────────────────────────────────────────────
 
+// All-day entries from Google, in a box you can fold away. Collapsed by default:
+// these are usually standing reminders rather than things you act on here, and a
+// day with several of them used to push the grid down the page. The open/closed
+// choice sticks (localStorage) so it stays how you left it.
+const ALLDAY_OPEN_KEY = "checkbox-allday-open";
+
 function AllDayStrip({ events }: { events: CalendarEvent[] }) {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(ALLDAY_OPEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  function toggle() {
+    setOpen((o) => {
+      const next = !o;
+      try {
+        localStorage.setItem(ALLDAY_OPEN_KEY, next ? "1" : "0");
+      } catch {
+        // a non-persisted choice still applies for this session
+      }
+      return next;
+    });
+  }
+
   if (events.length === 0) return null;
   return (
-    <div className="mb-2 flex flex-wrap gap-1 rounded-md border border-border bg-surface px-2 py-1.5">
-      {events.map((e) => (
-        <span
-          key={e.id}
-          className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-foreground"
-        >
-          {e.title ?? "(all-day)"}
+    <div className="mb-2 rounded-md border border-border bg-surface">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 px-2 py-1.5 text-left"
+      >
+        <ChevronRightIcon
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-muted transition-transform",
+            open && "rotate-90"
+          )}
+        />
+        <span className="text-xs font-medium text-foreground">All-day</span>
+        <span className="rounded-full bg-surface-2 px-1.5 text-[11px] tabular-nums text-muted">
+          {events.length}
         </span>
-      ))}
+        {!open && (
+          <span className="ml-1 min-w-0 flex-1 truncate text-[11px] text-subtle">
+            {events.map((e) => e.title ?? "(all-day)").join(" · ")}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="flex flex-wrap gap-1 px-2 pb-2">
+          {events.map((e) => (
+            <span
+              key={e.id}
+              className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-foreground"
+            >
+              {e.title ?? "(all-day)"}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -597,7 +649,11 @@ export default function CalendarPage() {
   const sync = useCalendarSync();
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
-  const allDayEvents = calEvents.filter((e) => e.all_day);
+  // Only genuine external all-day entries. Checkbox pushes every due-dated task
+  // to Google as an all-day event, so without this filter a task would show both
+  // as a task and again as an all-day chip. Mirrors the timed layer, which has
+  // always excluded our own events.
+  const allDayEvents = calEvents.filter((e) => e.all_day && !e.is_checkbox_owned);
 
   // "Plan my day" time-blocks TODAY's open tasks, so it always works off today
   // regardless of which day/week the grid is showing.

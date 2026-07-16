@@ -269,11 +269,41 @@ tasks.post("/:id/complete", async (c) => {
     }
   }
 
+  // Grab the GCal linkage before the status flips: a completed task should not
+  // keep occupying the calendar. Without this, every finished task left its event
+  // behind forever, which is where the stale entries came from.
+  const linked = await c.env.DB.prepare(
+    "SELECT gcal_event_id, gcal_calendar_id FROM tasks WHERE id = ? AND user_id = ?"
+  )
+    .bind(id, userId)
+    .first<{ gcal_event_id: string | null; gcal_calendar_id: string | null }>();
+
   await c.env.DB.prepare(
     `UPDATE tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ? AND user_id = ?`
   )
     .bind(done ? "done" : "todo", done ? now() : null, now(), id, userId)
     .run();
+
+  if (done && linked?.gcal_event_id) {
+    // Clear the linkage too, so un-completing pushes a fresh event rather than
+    // trying to PATCH one that no longer exists.
+    await c.env.DB.prepare(
+      "UPDATE tasks SET gcal_event_id = NULL, gcal_calendar_id = NULL WHERE id = ? AND user_id = ?"
+    )
+      .bind(id, userId)
+      .run();
+    c.executionCtx?.waitUntil(
+      deleteTaskGcalEvent(
+        c.env,
+        linked.gcal_event_id,
+        linked.gcal_calendar_id,
+        userId
+      ).catch(console.error)
+    );
+  } else if (!done) {
+    // Re-opened: put it back on the calendar if it still has a date/time-block.
+    c.executionCtx?.waitUntil(pushTaskToGcal(c.env, id, userId).catch(console.error));
+  }
   return c.json({ ok: true, recurred: false });
 });
 
@@ -287,6 +317,9 @@ tasks.post("/:id/reschedule", async (c) => {
   )
     .bind(b.due_date, b.due_time ?? null, now(), id, userId)
     .run();
+  // Move (or remove) the Google event to match. Without this the event kept the
+  // OLD date, which is the other way stale entries piled up.
+  c.executionCtx?.waitUntil(pushTaskToGcal(c.env, id, userId).catch(console.error));
   return c.json({ ok: true });
 });
 
