@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { format, parseISO } from "date-fns";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Project, Task, TriageSuggestion } from "../shared/types";
@@ -919,21 +920,32 @@ export function FilterPage() {
 
 // ── Weekly review ─────────────────────────────────────────────────────────────
 
+// Weekly review. Laid out as a readable report rather than four near-identical
+// dense lists: a headline row of numbers, then each list in its own card with a
+// coloured rule, roomy rows and the date right-aligned so titles stay scannable.
 export function ReviewPage() {
   const { data, isLoading } = useReview();
+  const { data: areas = [] } = useAreas();
+
+  function fmtRange(from: string, to: string) {
+    try {
+      return `${format(parseISO(from), "d MMM")} to ${format(parseISO(to), "d MMM yyyy")}`;
+    } catch {
+      return `${from} to ${to}`;
+    }
+  }
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-3xl pb-10">
       <Header title="Weekly review" icon={<ReviewIcon className={ICON_SIZE} />} />
 
       {isLoading || !data ? (
         <p className="px-2 text-sm text-subtle">Loading…</p>
       ) : (
-        <div className="space-y-6">
-          <p className="text-xs text-subtle">
-            {data.period.from} → {data.period.to}
-          </p>
+        <div className="space-y-8">
+          <p className="text-sm text-muted">{fmtRange(data.period.from, data.period.to)}</p>
 
+          {/* Headline numbers. */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <ReviewStat value={data.stats.completed} label="Completed" tone="success" />
             <ReviewStat value={data.stats.slipped} label="Slipped" tone="danger" />
@@ -941,63 +953,80 @@ export function ReviewPage() {
             <ReviewStat value={data.stats.created} label="Created" tone="muted" />
           </div>
 
-          <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
-              Progress
-            </h2>
+          <ReviewCard title="Progress">
             <StatsWidget />
-          </section>
+          </ReviewCard>
 
           {data.by_area.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
-                Completed by area
-              </h2>
-              <div className="space-y-1.5">
+            <ReviewCard title="Completed by area">
+              <div className="space-y-3">
                 {data.by_area.map((a) => {
                   const pct = Math.round(
                     (a.completed / Math.max(1, data.stats.completed)) * 100
                   );
+                  const colour = areaColorVar(
+                    areas.find((x) => x.name === a.area)?.color
+                  );
                   return (
-                    <div key={a.area} className="flex items-center gap-3 text-sm">
-                      <span className="w-28 shrink-0 truncate text-muted">{a.area}</span>
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
+                    <div key={a.area}>
+                      <div className="mb-1.5 flex items-baseline justify-between gap-3 text-sm">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ background: colour }}
+                          />
+                          <span className="truncate text-foreground">{a.area}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums text-muted">
+                          {a.completed}
+                          <span className="ml-1 text-subtle">({pct}%)</span>
+                        </span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-surface-2">
                         <div
-                          className="h-full rounded-full bg-success"
-                          style={{ width: `${pct}%` }}
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${pct}%`, background: colour }}
                         />
                       </div>
-                      <span className="w-6 text-right tabular-nums text-subtle">
-                        {a.completed}
-                      </span>
                     </div>
                   );
                 })}
               </div>
-            </section>
+            </ReviewCard>
           )}
 
           <ReviewList
             title="Done this week"
             tasks={data.completed_tasks}
             empty="Nothing completed yet this week."
+            tone="success"
           />
           <ReviewList
-            title="Slipped (overdue, still open)"
+            title="Slipped"
+            hint="Overdue and still open"
             tasks={data.slipped_tasks}
             empty="Nothing overdue. Nice."
-            danger
+            tone="danger"
           />
           <ReviewList
-            title="Coming up (next 7 days)"
+            title="Coming up"
+            hint="Next 7 days"
             tasks={data.upcoming_tasks}
             empty="Nothing scheduled in the next week."
+            tone="primary"
           />
         </div>
       )}
     </div>
   );
 }
+
+const REVIEW_TONE: Record<string, string> = {
+  success: "var(--success)",
+  danger: "var(--danger)",
+  primary: "var(--primary)",
+  muted: "var(--muted)",
+};
 
 function ReviewStat({
   value,
@@ -1008,50 +1037,84 @@ function ReviewStat({
   label: string;
   tone: "success" | "danger" | "primary" | "muted";
 }) {
-  const color =
-    tone === "success"
-      ? "text-success"
-      : tone === "danger"
-      ? "text-danger"
-      : tone === "primary"
-      ? "text-primary"
-      : "text-foreground";
   return (
-    <div className="rounded-lg border border-border bg-surface/60 p-3">
-      <div className={cx("text-2xl font-semibold tabular-nums", color)}>{value}</div>
-      <div className="text-[11px] uppercase tracking-wide text-subtle">{label}</div>
+    <div className="rounded-xl border border-border bg-surface/60 p-4">
+      <div
+        className="text-3xl font-semibold tabular-nums leading-none"
+        style={{ color: REVIEW_TONE[tone] }}
+      >
+        {value}
+      </div>
+      <div className="mt-2 text-xs text-muted">{label}</div>
     </div>
+  );
+}
+
+// A titled card. Gives each block of the review a clear edge and its own space.
+function ReviewCard({
+  title,
+  hint,
+  count,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  count?: number;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-border bg-surface/40">
+      <header className="flex items-baseline justify-between gap-3 border-b border-border px-4 py-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          {title}
+          {hint && <span className="ml-2 text-xs font-normal text-subtle">{hint}</span>}
+        </h2>
+        {count != null && (
+          <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-xs tabular-nums text-muted">
+            {count}
+          </span>
+        )}
+      </header>
+      <div className="p-4">{children}</div>
+    </section>
   );
 }
 
 function ReviewList({
   title,
+  hint,
   tasks,
   empty,
-  danger,
+  tone,
 }: {
   title: string;
+  hint?: string;
   tasks: { id: string; title: string; due_date?: string | null }[];
   empty: string;
-  danger?: boolean;
+  tone: "success" | "danger" | "primary";
 }) {
   return (
-    <section>
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
-        {title} <span className="text-subtle">{tasks.length}</span>
-      </h2>
+    <ReviewCard title={title} hint={hint} count={tasks.length}>
       {tasks.length === 0 ? (
-        <p className="px-2 text-sm text-subtle">{empty}</p>
+        <p className="text-sm text-subtle">{empty}</p>
       ) : (
-        <ul className="space-y-0.5">
+        // Read-only: the review summarises. These rows carry only a task ref, not
+        // a full task, so there is nothing safe to open from here.
+        <ul className="divide-y divide-border/60">
           {tasks.map((t) => (
-            <li
-              key={t.id}
-              className="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-foreground"
-            >
-              <span className="flex-1 truncate">{t.title}</span>
+            <li key={t.id} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                style={{ background: REVIEW_TONE[tone] }}
+              />
+              <span className="min-w-0 flex-1 text-sm leading-snug text-foreground">
+                {t.title}
+              </span>
               {t.due_date && (
-                <span className={cx("text-[11px]", danger ? "text-danger" : "text-subtle")}>
+                <span
+                  className="shrink-0 text-xs tabular-nums"
+                  style={{ color: tone === "danger" ? "var(--danger)" : "var(--subtle)" }}
+                >
                   {t.due_date}
                 </span>
               )}
@@ -1059,7 +1122,7 @@ function ReviewList({
           ))}
         </ul>
       )}
-    </section>
+    </ReviewCard>
   );
 }
 
