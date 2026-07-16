@@ -4,6 +4,8 @@ import type { Task, Subtask, Priority } from "../../shared/types";
 import { api } from "../lib/api";
 import {
   PRIORITY_LABEL,
+  useAreas,
+  useProjects,
   useDeleteTask,
   useTaskInvalidate,
   useUpdateTask,
@@ -36,7 +38,13 @@ import { DependencyEditor } from "./DependencyEditor";
 import { AttachmentList } from "./AttachmentList";
 import { useSnoozeTask } from "../lib/queries";
 
-// Lazy — react-day-picker only loads when a date picker is actually opened.
+// Subtask priority cycles none → P1 → P2 → P3 → P4 → none on tap.
+const PRI_CYCLE: (Priority | null)[] = [null, 1, 2, 3, 4];
+function nextPriority(p: Priority | null): Priority | null {
+  return PRI_CYCLE[(PRI_CYCLE.indexOf(p ?? null) + 1) % PRI_CYCLE.length];
+}
+
+// Lazy - react-day-picker only loads when a date picker is actually opened.
 const Calendar = lazy(() =>
   import("./ui/calendar").then((m) => ({ default: m.Calendar }))
 );
@@ -66,7 +74,7 @@ function DueDatePicker({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
-        {/* Quick presets — the common reschedules without opening the grid. */}
+        {/* Quick presets - the common reschedules without opening the grid. */}
         <div className="mb-2 flex flex-wrap gap-1">
           {[
             { label: "Today", days: 0 },
@@ -116,7 +124,7 @@ function DueDatePicker({
 }
 
 // A collapsible detail section. Collapsed by default, and its header shows a
-// one-line summary of what is inside — so a due date or a blocker count stays
+// one-line summary of what is inside - so a due date or a blocker count stays
 // visible even when the section is shut. This is what keeps the sheet from being
 // eleven equal-weight blocks: the work (notes, subtasks) stays open, everything
 // set-once folds away but still reports itself.
@@ -172,6 +180,8 @@ export function TaskSheet({
   const snooze = useSnoozeTask();
   const invalidate = useTaskInvalidate();
   const { toast } = useToast();
+  const { data: areas = [] } = useAreas();
+  const { data: projects = [] } = useProjects();
 
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
@@ -277,6 +287,26 @@ export function TaskSheet({
   // toggle can actually remove it. Add sets a plan; Remove clears every trigger.
   const isInToday = task ? inToday(task, todayStr()) : false;
 
+  // Where the task lives. A project carries its area; an area clears any project;
+  // "none" drops both, sending the task to the Backlog.
+  const sectionValue = task?.project_id
+    ? `proj:${task.project_id}`
+    : task?.area_id
+    ? `area:${task.area_id}`
+    : "";
+  function setSection(value: string) {
+    if (!task) return;
+    if (value.startsWith("proj:")) {
+      const id = value.slice(5);
+      const p = projects.find((x) => x.id === id);
+      save({ project_id: id, area_id: p?.area_id ?? null });
+    } else if (value.startsWith("area:")) {
+      save({ area_id: value.slice(5), project_id: null });
+    } else {
+      save({ area_id: null, project_id: null });
+    }
+  }
+
   function onToggleToday() {
     if (!task) return;
     if (isInToday) {
@@ -290,7 +320,7 @@ export function TaskSheet({
     }
   }
 
-  // Section summaries — what each collapsed section reports about itself.
+  // Section summaries - what each collapsed section reports about itself.
   const scheduleSummary =
     [
       dueDate ? format(parseISO(dueDate), "d MMM") + (dueTime ? ` ${dueTime}` : "") : null,
@@ -301,23 +331,6 @@ export function TaskSheet({
     ]
       .filter(Boolean)
       .join(" · ") || "Not scheduled";
-
-  const trackingSummary =
-    (task?.time_spent_min ?? 0) > 0
-      ? `${task!.time_spent_min}m${task?.time_estimate_min ? ` / ${task.time_estimate_min}m` : ""}`
-      : task?.time_estimate_min
-      ? `~${task.time_estimate_min}m est`
-      : "No estimate";
-
-  const nBlockers = (task?.depends_on ?? []).length;
-  const nBlocks = (task?.blocks ?? []).length;
-  const linksSummary =
-    [
-      nBlockers ? `${nBlockers} blocker${nBlockers > 1 ? "s" : ""}` : null,
-      nBlocks ? `blocks ${nBlocks}` : null,
-    ]
-      .filter(Boolean)
-      .join(" · ") || "None";
 
   // Gmail thread handles (present only for email-derived tasks).
   const gmailThread = task?.gmail_thread_id ?? null;
@@ -338,7 +351,7 @@ export function TaskSheet({
     : null;
   const awaitingUrl = gmailThread
     ? `https://claude.ai/new?q=${encodeURIComponent(
-        `Apply my "Awaiting" label to Gmail thread ${gmailThread} (Gmail MCP label_thread) — ` +
+        `Apply my "Awaiting" label to Gmail thread ${gmailThread} (Gmail MCP label_thread) - ` +
           "I'm waiting on a reply. Do not send anything."
       )}`
     : null;
@@ -361,7 +374,7 @@ export function TaskSheet({
               className="w-full bg-transparent pr-8 text-lg font-semibold text-foreground outline-none"
             />
 
-            {/* Priority: quick to set, worth scanning — stays visible. */}
+            {/* Priority: quick to set, worth scanning - stays visible. */}
             <div className="flex items-center gap-1">
               {[1, 2, 3, 4].map((p) => {
                 const on = priority === p;
@@ -389,7 +402,7 @@ export function TaskSheet({
               </span>
             </div>
 
-            {/* Add to Today — one of the most-used actions, so it lives up top,
+            {/* Add to Today - one of the most-used actions, so it lives up top,
                 always visible, not buried in the Schedule section. Marks intent
                 to work on it today without touching the deadline. */}
             {task.status !== "done" && (
@@ -408,13 +421,53 @@ export function TaskSheet({
               </button>
             )}
 
+            {/* Area / project - change where the task lives without leaving the
+                sheet. "No section" sends it to the Backlog. */}
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <span className="shrink-0">In</span>
+              <select
+                value={sectionValue}
+                onChange={(e) => setSection(e.target.value)}
+                className="h-9 flex-1 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
+              >
+                <option value="">No section (Backlog)</option>
+                {areas.length > 0 && (
+                  <optgroup label="Areas">
+                    {areas.map((a) => (
+                      <option key={a.id} value={`area:${a.id}`}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {projects.length > 0 && (
+                  <optgroup label="Projects">
+                    {projects.map((p) => (
+                      <option key={p.id} value={`proj:${p.id}`}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </label>
+
             {/* Notes: rendered markdown when idle, textarea on click/focus.
                 Blur commits and returns to the rendered preview. */}
             {editingNotes || !notes.trim() ? (
               <textarea
                 value={notes}
                 autoFocus={editingNotes}
-                onChange={(e) => setNotes(e.target.value)}
+                onFocus={() => setEditingNotes(true)}
+                // Mark editing in the SAME change as the keystroke. Otherwise the
+                // first character (which makes notes non-empty) would flip the
+                // ternary back to the preview and yank focus - the old bug where an
+                // empty note only accepted one character. React batches both, so
+                // editingNotes is already true when the row re-renders.
+                onChange={(e) => {
+                  setNotes(e.target.value);
+                  setEditingNotes(true);
+                }}
                 onBlur={() => {
                   setEditingNotes(false);
                   if (notes !== (task.notes ?? "")) save({ notes });
@@ -454,59 +507,58 @@ export function TaskSheet({
                   />
                 </div>
               )}
-              <div className="mt-2 space-y-1.5">
+              <div className="mt-2 space-y-1">
                 {subtasks.map((s) => (
-                  <div key={s.id} className="group">
-                    <div className="flex items-center gap-2 text-sm text-foreground">
-                      <input
-                        type="checkbox"
-                        checked={s.done}
-                        onChange={(e) => toggleSub(s.id, e.target.checked)}
-                        className="h-4 w-4 [accent-color:var(--primary)]"
-                      />
-                      <span className={cn("flex-1", s.done && "text-subtle line-through")}>
-                        {s.title}
-                      </span>
-                      <button
-                        onClick={() => deleteSub(s.id)}
-                        aria-label="Delete subtask"
-                        className="hidden shrink-0 text-subtle hover:text-danger group-hover:block"
-                      >
-                        <TrashIcon className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    {/* Per-subtask due date + priority. Compact, indented under
-                        the title so a checklist item can be scheduled/ranked. */}
-                    <div className="ml-6 mt-1 flex flex-wrap items-center gap-2">
-                      <input
-                        type="date"
-                        value={s.due_date ?? ""}
-                        onChange={(e) =>
-                          editSub(s.id, { due_date: e.target.value || null })
-                        }
-                        aria-label="Subtask due date"
-                        className="h-7 rounded border border-input bg-surface px-2 text-[11px] text-foreground outline-none focus:border-primary"
-                      />
-                      <select
-                        value={s.priority ?? ""}
-                        onChange={(e) =>
-                          editSub(s.id, {
-                            priority: e.target.value
-                              ? (Number(e.target.value) as Priority)
-                              : null,
-                          })
-                        }
-                        aria-label="Subtask priority"
-                        className="h-7 rounded border border-input bg-surface px-1.5 text-[11px] text-foreground outline-none focus:border-primary"
-                      >
-                        <option value="">No priority</option>
-                        <option value="1">P1</option>
-                        <option value="2">P2</option>
-                        <option value="3">P3</option>
-                        <option value="4">P4</option>
-                      </select>
-                      {shouldPill(s.priority) && <PriorityPill priority={s.priority} />}
-                    </div>
+                  <div
+                    key={s.id}
+                    className="group flex items-center gap-2 text-sm text-foreground"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={s.done}
+                      onChange={(e) => toggleSub(s.id, e.target.checked)}
+                      className="h-4 w-4 shrink-0 [accent-color:var(--primary)]"
+                    />
+                    <span
+                      className={cn("flex-1 truncate", s.done && "text-subtle line-through")}
+                    >
+                      {s.title}
+                    </span>
+                    {/* Compact per-subtask priority (tap to cycle none→P1..P4) and
+                        a slim due date, on the title line instead of a bulky row. */}
+                    <button
+                      type="button"
+                      title="Cycle priority"
+                      onClick={() => editSub(s.id, { priority: nextPriority(s.priority) })}
+                      className="shrink-0"
+                    >
+                      {shouldPill(s.priority) ? (
+                        <PriorityPill priority={s.priority} />
+                      ) : (
+                        <span className="grid h-5 min-w-[1.25rem] place-items-center rounded border border-border px-1 text-[10px] text-subtle transition-colors hover:text-foreground">
+                          P
+                        </span>
+                      )}
+                    </button>
+                    <input
+                      type="date"
+                      value={s.due_date ?? ""}
+                      onChange={(e) => editSub(s.id, { due_date: e.target.value || null })}
+                      aria-label="Subtask due date"
+                      className={cn(
+                        "h-6 w-[6.5rem] shrink-0 rounded border bg-surface px-1 text-[11px] outline-none focus:border-primary",
+                        s.due_date
+                          ? "border-input text-foreground"
+                          : "border-border text-subtle"
+                      )}
+                    />
+                    <button
+                      onClick={() => deleteSub(s.id)}
+                      aria-label="Delete subtask"
+                      className="hidden shrink-0 text-subtle hover:text-danger group-hover:block"
+                    >
+                      <TrashIcon className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -607,7 +659,7 @@ export function TaskSheet({
                 </label>
               </div>
 
-              {/* Inline NLP date — type a phrase, Enter (or ↵ button) to set. */}
+              {/* Inline NLP date - type a phrase, Enter (or ↵ button) to set. */}
               <input
                 value={nlpDate}
                 onChange={(e) => setNlpDate(e.target.value)}
@@ -639,7 +691,7 @@ export function TaskSheet({
                 </div>
               )}
 
-              {/* Snooze — hide until a chosen day. */}
+              {/* Snooze - hide until a chosen day. */}
               <div>
                 <span className="flex items-center gap-1.5 text-xs text-muted">
                   <SnoozeIcon className="h-3.5 w-3.5" /> Snooze
@@ -723,9 +775,11 @@ export function TaskSheet({
               </div>
             </Section>
 
-            <Section title="Tracking" summary={trackingSummary}>
-              <label className="block text-xs text-muted">
-                Time estimate (min)
+            {/* Tracking - a discreet inline strip, not a whole section: the
+                start/stop timer with a small estimate field beside it. */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3">
+              <TimeTracker task={task} />
+              <label className="flex items-center gap-1 text-xs text-subtle">
                 <input
                   type="number"
                   value={estimate}
@@ -735,16 +789,18 @@ export function TaskSheet({
                   onBlur={() =>
                     save({ time_estimate_min: estimate === "" ? null : Number(estimate) })
                   }
-                  className="mt-1 h-9 w-full rounded-md border border-input bg-surface px-3 text-sm text-foreground outline-none focus:border-primary"
+                  placeholder="–"
+                  className="h-7 w-14 rounded-md border border-input bg-surface px-2 text-xs text-foreground outline-none focus:border-primary"
                 />
+                min est
               </label>
-              <TimeTracker task={task} />
-            </Section>
+            </div>
 
-            <Section title="Links & files" summary={linksSummary}>
+            {/* Links & files - used often, so always open (not folded away). */}
+            <div className="space-y-3 border-t border-border pt-3">
               <DependencyEditor task={task} />
               <AttachmentList taskId={task.id} />
-            </Section>
+            </div>
 
             <div className="mt-2 border-t border-border pt-4">
               <Button

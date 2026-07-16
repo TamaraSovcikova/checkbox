@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { Task } from "../../shared/types";
 import { api } from "../lib/api";
 import { useTaskInvalidate } from "../lib/queries";
-import { TimerIcon, PlayIcon, StopIcon } from "../lib/icons";
+import { PlayIcon, StopIcon } from "../lib/icons";
 import { cn } from "@/lib/utils";
 
 function fmtMin(total: number) {
@@ -56,10 +56,7 @@ export function TimeTracker({ task }: { task: Task }) {
 
   return (
     <div>
-      <span className="flex items-center gap-1.5 text-xs text-muted">
-        <TimerIcon className="h-3.5 w-3.5" /> Time
-      </span>
-      <div className="mt-1.5 flex items-center gap-3">
+      <div className="flex items-center gap-3">
         <button
           onClick={toggle}
           disabled={busy}
