@@ -185,6 +185,11 @@ export interface UserPrefs {
   // Dim tasks due more than a month out so the far future doesn't pull the eye.
   // Undefined is treated as on. Toggled in Settings › Appearance.
   dimDistantTasks?: boolean;
+  // All-day Google entries you have chosen not to see on the Calendar page.
+  // Keyed by TITLE, not event id: these are usually standing reminders that
+  // recur, and every instance gets its own id, so hiding by id would only hide
+  // today's. Hiding by title keeps it hidden every day.
+  hiddenAllDayTitles?: string[];
   // What Checkbox pushes to Google Calendar. Both default on (undefined ⇒ on).
   // timeBlocks = time-blocked tasks as timed events; dueDates = due-dated tasks
   // as all-day events. Toggled in Settings › Google Calendar.

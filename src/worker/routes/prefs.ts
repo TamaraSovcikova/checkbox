@@ -21,6 +21,11 @@ const cleanFallback = (v: unknown): string | null =>
 const cleanDim = (v: unknown): boolean => (v === false ? false : true);
 const cleanOnByDefault = (v: unknown): boolean => (v === false ? false : true);
 
+// Prefs are whitelisted in BOTH directions, so any new field has to be added here
+// as well or it is silently dropped on save and on read.
+const cleanStrings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+
 function parsePrefs(raw: unknown): UserPrefs {
   if (typeof raw !== "string") return { ...EMPTY };
   try {
@@ -33,6 +38,7 @@ function parsePrefs(raw: unknown): UserPrefs {
       dimDistantTasks: cleanDim(p.dimDistantTasks),
       gcalSyncTimeBlocks: cleanOnByDefault(p.gcalSyncTimeBlocks),
       gcalSyncDueDates: cleanOnByDefault(p.gcalSyncDueDates),
+      hiddenAllDayTitles: cleanStrings(p.hiddenAllDayTitles),
     };
   } catch {
     return { ...EMPTY };
@@ -58,6 +64,7 @@ prefs.put("/", async (c) => {
     dimDistantTasks: cleanDim(body.dimDistantTasks),
     gcalSyncTimeBlocks: cleanOnByDefault(body.gcalSyncTimeBlocks),
     gcalSyncDueDates: cleanOnByDefault(body.gcalSyncDueDates),
+    hiddenAllDayTitles: cleanStrings(body.hiddenAllDayTitles),
   };
   await c.env.DB.prepare("UPDATE users SET prefs = ? WHERE id = ?")
     .bind(JSON.stringify(clean), userId)

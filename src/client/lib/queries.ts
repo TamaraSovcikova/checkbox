@@ -507,6 +507,17 @@ export function useViewPrefs() {
   const setGcalSync = (patch: Partial<UserPrefs>) =>
     save.mutate({ ...prefs, ...patch });
 
+  // All-day Google entries hidden from the Calendar page, by title.
+  const hiddenAllDayTitles = prefs.hiddenAllDayTitles ?? [];
+  const isAllDayHidden = (title: string) => hiddenAllDayTitles.includes(title);
+  const toggleAllDayTitle = (title: string) =>
+    save.mutate({
+      ...prefs,
+      hiddenAllDayTitles: hiddenAllDayTitles.includes(title)
+        ? hiddenAllDayTitles.filter((t) => t !== title)
+        : [...hiddenAllDayTitles, title],
+    });
+
   return {
     prefs,
     hide,
@@ -520,6 +531,9 @@ export function useViewPrefs() {
     gcalSyncTimeBlocks,
     gcalSyncDueDates,
     setGcalSync,
+    hiddenAllDayTitles,
+    isAllDayHidden,
+    toggleAllDayTitle,
   };
 }
 

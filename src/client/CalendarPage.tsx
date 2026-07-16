@@ -16,6 +16,7 @@ import {
   useCalendarFeeds,
   useSetCalendarFeed,
   useTasks,
+  useViewPrefs,
 } from "./lib/queries";
 import { useTaskUI } from "./lib/ui-context";
 import { PRIORITY_VAR } from "./lib/colors";
@@ -35,6 +36,7 @@ import {
   RefreshIcon,
   CalendarIcon,
   CloseIcon,
+  AddIcon,
 } from "./lib/icons";
 
 // ── Grid constants ────────────────────────────────────────────────────────────
@@ -392,67 +394,77 @@ function ConnectCalendar() {
 
 // ── All-day event strip ───────────────────────────────────────────────────────
 
-// All-day entries from Google, in a box you can fold away. Collapsed by default:
-// these are usually standing reminders rather than things you act on here, and a
-// day with several of them used to push the grid down the page. The open/closed
-// choice sticks (localStorage) so it stays how you left it.
-const ALLDAY_OPEN_KEY = "checkbox-allday-open";
-
+// All-day entries from Google, with per-entry visibility: each chip has an x to
+// hide it, and hidden ones fold into a "N hidden" toggle you can restore from.
+// Hiding is keyed by TITLE (see UserPrefs.hiddenAllDayTitles), because these are
+// usually standing reminders that recur and every instance carries its own event
+// id, so hiding by id would only ever hide today's.
 function AllDayStrip({ events }: { events: CalendarEvent[] }) {
-  const [open, setOpen] = useState(() => {
-    try {
-      return localStorage.getItem(ALLDAY_OPEN_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-
-  function toggle() {
-    setOpen((o) => {
-      const next = !o;
-      try {
-        localStorage.setItem(ALLDAY_OPEN_KEY, next ? "1" : "0");
-      } catch {
-        // a non-persisted choice still applies for this session
-      }
-      return next;
-    });
-  }
+  const { isAllDayHidden, toggleAllDayTitle } = useViewPrefs();
+  const [showHidden, setShowHidden] = useState(false);
 
   if (events.length === 0) return null;
+  const titleOf = (e: CalendarEvent) => e.title ?? "(all-day)";
+  const visible = events.filter((e) => !isAllDayHidden(titleOf(e)));
+  const hidden = events.filter((e) => isAllDayHidden(titleOf(e)));
+
   return (
-    <div className="mb-2 rounded-md border border-border bg-surface">
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 px-2 py-1.5 text-left"
-      >
-        <ChevronRightIcon
-          className={cn(
-            "h-3.5 w-3.5 shrink-0 text-muted transition-transform",
-            open && "rotate-90"
-          )}
-        />
+    <div className="mb-2 rounded-md border border-border bg-surface px-2 py-1.5">
+      <div className="flex items-center gap-2">
         <span className="text-xs font-medium text-foreground">All-day</span>
         <span className="rounded-full bg-surface-2 px-1.5 text-[11px] tabular-nums text-muted">
-          {events.length}
+          {visible.length}
         </span>
-        {!open && (
-          <span className="ml-1 min-w-0 flex-1 truncate text-[11px] text-subtle">
-            {events.map((e) => e.title ?? "(all-day)").join(" · ")}
-          </span>
+        {hidden.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowHidden((v) => !v)}
+            className="ml-auto text-[11px] text-subtle transition-colors hover:text-foreground"
+          >
+            {hidden.length} hidden {showHidden ? "▴" : "▾"}
+          </button>
         )}
-      </button>
-      {open && (
-        <div className="flex flex-wrap gap-1 px-2 pb-2">
-          {events.map((e) => (
+      </div>
+
+      {visible.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {visible.map((e) => (
             <span
               key={e.id}
-              className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-foreground"
+              className="group inline-flex items-center gap-1 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-foreground"
             >
-              {e.title ?? "(all-day)"}
+              {titleOf(e)}
+              <button
+                type="button"
+                aria-label={`Hide "${titleOf(e)}"`}
+                title="Hide this entry (every day)"
+                onClick={() => toggleAllDayTitle(titleOf(e))}
+                className="text-subtle transition-colors hover:text-danger"
+              >
+                <CloseIcon className="h-3 w-3" />
+              </button>
             </span>
+          ))}
+        </div>
+      )}
+      {visible.length === 0 && (
+        <p className="mt-1.5 text-[11px] text-subtle">All entries hidden for this day.</p>
+      )}
+
+      {/* Hidden entries, restorable. */}
+      {showHidden && hidden.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1 border-t border-border pt-1.5">
+          {hidden.map((e) => (
+            <button
+              key={e.id}
+              type="button"
+              onClick={() => toggleAllDayTitle(titleOf(e))}
+              title="Show this entry again"
+              className="inline-flex items-center gap-1 rounded border border-dashed border-input px-1.5 py-0.5 text-xs text-subtle transition-colors hover:text-foreground"
+            >
+              {titleOf(e)}
+              <AddIcon className="h-3 w-3" />
+            </button>
           ))}
         </div>
       )}
