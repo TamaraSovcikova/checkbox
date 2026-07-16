@@ -177,7 +177,9 @@ export interface TriageSuggestion {
 
 // Per-view display defaults (grid vs list, sort key, group key), keyed by view.
 export interface ViewDefault {
-  mode?: "grid" | "list" | "board"; // "board" is Today-only (To do/Doing/Done)
+  // "board" is Today-only (To do/Doing/Done); "recurring" is area-only (routines
+  // parked out of the list until due, see client/lib/recurring).
+  mode?: "grid" | "list" | "board" | "recurring";
   sort?: string;
   group?: string;
   filter?: string; // "all" | "p1".."p4" | "overdue" | "planned"

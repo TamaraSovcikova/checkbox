@@ -34,8 +34,9 @@ import { StatsWidget } from "./components/StatsWidget";
 import { CheatSheet } from "./components/CheatSheet";
 import { NotesInbox } from "./components/NotesInbox";
 import { InstallHint } from "./components/InstallHint";
-import { FilterIcon, SnoozeIcon, ReviewIcon } from "./lib/icons";
+import { FilterIcon, SnoozeIcon, ReviewIcon, RepeatIcon } from "./lib/icons";
 import { TodayTimeline } from "./components/TodayTimeline";
+import { isRecurring, isDormant, splitDormantRecurring } from "./lib/recurring";
 import { areaColorVar } from "./lib/colors";
 import { areaIcon } from "./lib/icons";
 import { useReview } from "./lib/queries";
@@ -396,11 +397,17 @@ function TaskGrid({ tasks, empty }: { tasks: Task[]; empty: string }) {
   );
 }
 
-type ViewMode = "grid" | "list" | "board";
+type ViewMode = "grid" | "list" | "board" | "recurring";
 
 const LIST_GRID_TABS: Tab<ViewMode>[] = [
   { id: "grid", label: "Grid", icon: <GridIcon className={ICON_SIZE} /> },
   { id: "list", label: "List", icon: <ListIcon className={ICON_SIZE} /> },
+];
+// Areas also offer a Recurring tab: the routines filed there, out of the way of
+// the list until one is actually due. See lib/recurring.
+const AREA_TABS: Tab<ViewMode>[] = [
+  ...LIST_GRID_TABS,
+  { id: "recurring", label: "Recurring", icon: <RepeatIcon className={ICON_SIZE} /> },
 ];
 // Today also offers a To do / Doing / Done board you can drag between.
 const TODAY_TABS: Tab<ViewMode>[] = [
@@ -747,6 +754,64 @@ function ProjectCard({ project }: { project: Project }) {
   );
 }
 
+// The area's routines: every recurring task filed here, dormant or live, with its
+// cadence and when it next comes round. The list/grid tabs show the work of now;
+// this shows the shape of the week.
+function RecurringPanel({ tasks, today }: { tasks: Task[]; today: string }) {
+  const { open } = useTaskUI();
+  const recurring = tasks.filter(isRecurring);
+
+  if (recurring.length === 0) {
+    return (
+      <p className="max-w-2xl rounded-xl border border-border bg-surface/40 p-6 text-center text-sm text-subtle">
+        No recurring tasks in this area. Capture one with a cadence (&ldquo;water the plants
+        every monday&rdquo;) and it will wait here until it is due.
+      </p>
+    );
+  }
+
+  // Live ones first: those are the ones asking for something today.
+  const live = recurring.filter((t) => !isDormant(t, today));
+  const dormant = recurring.filter((t) => isDormant(t, today));
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      {live.length > 0 && (
+        <section>
+          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-subtle">
+            Due now
+            <span className="ml-2 rounded-full bg-surface-2 px-1.5 text-[11px] font-normal tabular-nums text-muted">
+              {live.length}
+            </span>
+          </h3>
+          <div className="space-y-1">
+            {live.map((t) => (
+              <TaskRow key={t.id} task={t} onOpen={open} tintArea={false} />
+            ))}
+          </div>
+        </section>
+      )}
+      <section>
+        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-subtle">
+          Waiting
+          <span className="ml-2 rounded-full bg-surface-2 px-1.5 text-[11px] font-normal tabular-nums text-muted">
+            {dormant.length}
+          </span>
+        </h3>
+        {dormant.length === 0 ? (
+          <p className="text-xs text-subtle">Nothing waiting: every routine here is due.</p>
+        ) : (
+          <div className="space-y-1">
+            {dormant.map((t) => (
+              <TaskRow key={t.id} task={t} onOpen={open} tintArea={false} />
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export function AreaPage() {
   const { id = "" } = useParams();
   const { data: areas = [] } = useAreas();
@@ -756,8 +821,16 @@ export function AreaPage() {
   const [editArea, setEditArea] = useState(false);
   const [newProject, setNewProject] = useState(false);
   const AreaIcon = areaIcon(area?.icon);
+
+  // Routines that are not due yet come out of the list and live in the Recurring
+  // tab instead. A recurring task that IS due stays put: at that point it is work
+  // like any other, and tucking it away is how you would miss it.
+  const today = todayStr();
+  const { active, dormant } = splitDormantRecurring(tasks, today);
+
   const { view, setView, controls, body, sortMenu, groupMenu, filterMenu } =
-    useTaskCollection(`area:${id}`, tasks, "No loose tasks in this area.", false);
+    useTaskCollection(`area:${id}`, active, "No loose tasks in this area.", false);
+  const showRecurring = view === "recurring";
 
   return (
     // The area's own theme is scoped to this subtree via [data-palette] (see the
@@ -795,12 +868,14 @@ export function AreaPage() {
             />
           )
         }
-        tabs={LIST_GRID_TABS}
+        tabs={AREA_TABS}
         activeTab={view}
         onTab={setView}
-        sort={sortMenu}
-        group={groupMenu}
-        filter={filterMenu}
+        // Sort/group/filter drive the task collection, which the Recurring tab
+        // does not use, so they would be dead controls there.
+        sort={showRecurring ? undefined : sortMenu}
+        group={showRecurring ? undefined : groupMenu}
+        filter={showRecurring ? undefined : filterMenu}
         menu={[{ label: "Edit area", onSelect: () => setEditArea(true) }]}
       />
       {area && (
@@ -836,13 +911,33 @@ export function AreaPage() {
           </div>
 
           <div className="mb-2 text-xs uppercase tracking-wide text-subtle">
-            Loose tasks
+            {showRecurring ? "Recurring" : "Loose tasks"}
           </div>
-          <div className="mb-3 max-w-2xl">
-            <QuickCapture defaultAreaId={id} />
-          </div>
-          {body}
-          {view === "list" && <BulkActionBar controls={controls} />}
+          {!showRecurring && (
+            <div className="mb-3 max-w-2xl">
+              <QuickCapture defaultAreaId={id} />
+            </div>
+          )}
+          {showRecurring ? (
+            <RecurringPanel tasks={tasks} today={today} />
+          ) : (
+            <>
+              {body}
+              {/* Say what is being kept out of the list. Tasks quietly vanishing
+                  is exactly how a filter like this turns into a bug report. */}
+              {dormant.length > 0 && (
+                <button
+                  onClick={() => setView("recurring")}
+                  className="mt-2 flex items-center gap-1.5 text-xs text-subtle transition-colors hover:text-foreground"
+                >
+                  <RepeatIcon className="h-3.5 w-3.5" />
+                  {dormant.length} recurring task{dormant.length === 1 ? "" : "s"} waiting
+                  their turn
+                </button>
+              )}
+              {view === "list" && <BulkActionBar controls={controls} />}
+            </>
+          )}
         </div>
         <PinsSide scope={scopeForArea(id)} />
       </div>
