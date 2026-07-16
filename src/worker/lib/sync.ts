@@ -559,39 +559,79 @@ export async function reconcileTaskEvents(
 ): Promise<number> {
   const account = await getCalendarAccount(env, userId);
   if (!account) return 0;
-  const { results } = await env.DB.prepare(
+  const fallbackCal = account.primary_calendar_id ?? "primary";
+
+  // Two passes, because neither source sees everything on its own.
+  //
+  // (a) DONE tasks that still hold an event. The linkage on the task row is
+  //     authoritative, so this catches them whether or not the event is cached.
+  //     The cache only covers a -30/+90 day window and gets rebuilt, so keying
+  //     this off the cache alone silently missed real strays.
+  // (b) Cached checkbox-owned events whose task is GONE. A deleted task leaves no
+  //     row to read (the FK nulls task_id), so the cache is the only trace here.
+  const done = await env.DB.prepare(
+    `SELECT id AS task_id, gcal_event_id, gcal_calendar_id AS calendar_id
+       FROM tasks
+      WHERE user_id = ? AND status = 'done' AND gcal_event_id IS NOT NULL`
+  )
+    .bind(userId)
+    .all<{ task_id: string; gcal_event_id: string; calendar_id: string | null }>();
+
+  const orphaned = await env.DB.prepare(
     `SELECT c.gcal_event_id, c.calendar_id, c.task_id
        FROM calendar_events_cache c
        LEFT JOIN tasks t ON t.id = c.task_id
       WHERE c.user_id = ? AND c.is_checkbox_owned = 1
-        AND (c.task_id IS NULL OR t.id IS NULL OR t.status = 'done')`
+        AND (c.task_id IS NULL OR t.id IS NULL)`
   )
     .bind(userId)
     .all<{ gcal_event_id: string; calendar_id: string; task_id: string | null }>();
-  if (!results?.length) return 0;
+
+  const targets = [
+    ...(done.results ?? []).map((r) => ({
+      taskId: r.task_id as string | null,
+      eventId: r.gcal_event_id,
+      calId: r.calendar_id ?? fallbackCal,
+    })),
+    ...(orphaned.results ?? []).map((r) => ({
+      taskId: r.task_id,
+      eventId: r.gcal_event_id,
+      calId: r.calendar_id ?? fallbackCal,
+    })),
+  ];
+  // The two passes can name the same event; only act on each once.
+  const seen = new Set<string>();
+  const unique = targets.filter((t) => {
+    const key = `${t.calId}:${t.eventId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (!unique.length) return 0;
 
   const accessToken = await getValidAccessToken(env, account);
   let removed = 0;
-  for (const row of results) {
+  for (const t of unique) {
     try {
-      await deleteEvent(accessToken, row.calendar_id, row.gcal_event_id);
-      await env.DB.prepare(
-        "DELETE FROM calendar_events_cache WHERE gcal_event_id = ? AND calendar_id = ?"
-      )
-        .bind(row.gcal_event_id, row.calendar_id)
-        .run();
-      // Drop the stale linkage so a later re-open/uncomplete pushes a fresh event.
-      if (row.task_id) {
-        await env.DB.prepare(
-          "UPDATE tasks SET gcal_event_id = NULL, gcal_calendar_id = NULL WHERE id = ? AND user_id = ?"
-        )
-          .bind(row.task_id, userId)
-          .run();
-      }
+      await deleteEvent(accessToken, t.calId, t.eventId);
       removed++;
     } catch (e) {
-      // A 404/410 just means it is already gone; keep going either way.
+      // A 404/410 just means it is already gone. Fall through and clear our own
+      // rows anyway, otherwise a deleted-in-Google event retries forever.
       console.error("reconcileTaskEvents", e);
+    }
+    await env.DB.prepare(
+      "DELETE FROM calendar_events_cache WHERE gcal_event_id = ? AND calendar_id = ?"
+    )
+      .bind(t.eventId, t.calId)
+      .run();
+    // Drop the stale linkage so re-opening the task pushes a fresh event.
+    if (t.taskId) {
+      await env.DB.prepare(
+        "UPDATE tasks SET gcal_event_id = NULL, gcal_calendar_id = NULL WHERE id = ? AND user_id = ?"
+      )
+        .bind(t.taskId, userId)
+        .run();
     }
   }
   return removed;
