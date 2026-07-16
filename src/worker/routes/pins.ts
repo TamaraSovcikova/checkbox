@@ -14,6 +14,8 @@ type PinRow = {
   placement: string;
   color: string | null;
   position: number;
+  span: number;
+  height: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -95,6 +97,8 @@ const WRITABLE = [
   "color",
   "position",
   "scope",
+  "span",
+  "height",
 ] as const;
 
 pins.patch("/:id", async (c) => {
@@ -108,6 +112,16 @@ pins.patch("/:id", async (c) => {
   if (!owns) return c.json({ error: "not found" }, 404);
 
   const b = await c.req.json<Record<string, unknown>>();
+  // Size comes from a drag, so clamp it rather than trust it: a bad span would
+  // break the grid, and a bad height could make a pin unclickably small or huge.
+  if ("span" in b)
+    b.span = Math.max(1, Math.min(4, Math.round(Number(b.span) || 2)));
+  if ("height" in b)
+    b.height =
+      b.height == null
+        ? null
+        : Math.max(60, Math.min(800, Math.round(Number(b.height) || 0)));
+
   const sets: string[] = [];
   const binds: unknown[] = [];
   for (const f of WRITABLE) {

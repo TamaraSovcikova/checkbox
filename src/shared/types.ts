@@ -274,6 +274,10 @@ export interface Pin {
   // `placement` then says where on that page. See lib/pinScope.ts.
   scope: string;
   color: string | null; // colour token (see lib/colors)
+  // Size in the views: `span` = columns of the 4-wide pin grid (1-4);
+  // `height` = fixed body height in px, or null to grow with the content.
+  span: number;
+  height: number | null;
   position: number;
   created_at: string;
   updated_at: string;

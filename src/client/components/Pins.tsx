@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Pin, PinItem } from "../../shared/types";
 import {
   usePins,
@@ -130,9 +130,28 @@ function PinMenu({
   );
 }
 
+// Pins in a strip lay out on a 4-column grid, so a pin can be a quarter, a half
+// (the default, and what every pin was before sizing existed) or the full width.
+export const PIN_COLS = 4;
+const PIN_GAP = 8; // matches gap-2 on the strip grid
+
+// How a pin may be resized where it is being shown:
+//   "both"   - strip: drag width (snaps to grid columns) and height
+//   "height" - side column: fixed width, so height only
+//   "none"   - Pins page: that page is for organising, not laying out
+type ResizeMode = "none" | "height" | "both";
+
 // One pin: a living checklist ('list') or a standing reminder ('note'). Used on
 // the Pins page (full) and in the Today strip / side column (compact).
-function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
+function PinCard({
+  pin,
+  compact,
+  resize = "none",
+}: {
+  pin: Pin;
+  compact?: boolean;
+  resize?: ResizeMode;
+}) {
   const update = useUpdatePin();
   const del = useDeletePin();
   const { data: areas = [] } = useAreas();
@@ -165,6 +184,51 @@ function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
     setNewLine("");
   }
 
+  // ── Resize ──────────────────────────────────────────────────────────────────
+  // Live size while dragging; null means "use what's stored". Committing on
+  // pointerup (not on every move) keeps this to one write per drag.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<{ span: number; height: number } | null>(null);
+
+  function onResizeDown(e: ReactPointerEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = cardRef.current;
+    if (!el) return;
+    const startRect = el.getBoundingClientRect();
+    // Column width is derived from the grid we are actually sitting in, so the
+    // snap stays honest at any window width.
+    const gridW = el.parentElement?.getBoundingClientRect().width ?? startRect.width;
+    const colW = (gridW - PIN_GAP * (PIN_COLS - 1)) / PIN_COLS;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startSpan = pin.span ?? 2;
+    const startH = startRect.height;
+
+    let next = { span: startSpan, height: startH };
+    const onMove = (ev: PointerEvent) => {
+      const w = startRect.width + (ev.clientX - startX);
+      const span =
+        resize === "both"
+          ? Math.max(1, Math.min(PIN_COLS, Math.round((w + PIN_GAP) / (colW + PIN_GAP))))
+          : startSpan;
+      const height = Math.max(60, Math.min(800, Math.round(startH + (ev.clientY - startY))));
+      next = { span, height };
+      setDrag(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setDrag(null);
+      update.mutate({ id: pin.id, body: next });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  const span = drag?.span ?? pin.span ?? 2;
+  const height = drag?.height ?? pin.height ?? null;
+
   const done = items.filter((i) => i.done).length;
   const accent = pin.color ? areaColorVar(pin.color) : null;
   const [editingTitle, setEditingTitle] = useState(false);
@@ -176,14 +240,22 @@ function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
 
   return (
     <div
-      className={cn("group rounded-lg border bg-surface p-3", compact && "bg-surface/60")}
-      style={
-        accent
+      ref={cardRef}
+      className={cn(
+        "group relative flex flex-col rounded-lg border bg-surface p-3",
+        compact && "bg-surface/60",
+        drag && "select-none"
+      )}
+      style={{
+        ...(accent
           ? { borderLeftColor: accent, borderLeftWidth: 3 }
-          : { borderColor: "var(--border)" }
-      }
+          : { borderColor: "var(--border)" }),
+        // A pin only spans columns where there IS a grid to span (the strip).
+        ...(resize === "both" ? { gridColumn: `span ${span}` } : null),
+        ...(resize !== "none" && height ? { height } : null),
+      }}
     >
-      <div className="mb-1.5 flex items-center gap-2">
+      <div className="mb-1.5 flex shrink-0 items-center gap-2">
         <span className="shrink-0 text-subtle">
           {pin.kind === "list" ? (
             <SubtaskIcon className="h-3.5 w-3.5" />
@@ -229,6 +301,9 @@ function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
         />
       </div>
 
+      {/* min-h-0 so this can actually shrink inside the flex column: without it
+          a fixed-height pin would be pushed taller by its own content. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
       {pin.kind === "list" ? (
         <div className="space-y-0.5">
           {items.map((it) => (
@@ -299,6 +374,7 @@ function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
           {body}
         </button>
       )}
+      </div>
 
       {/* Which page this pin lives on. Only on the Pins page (full card): that is
           where you organise, and it would be noise on the pin itself in situ. */}
@@ -318,6 +394,25 @@ function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
           </select>
         </label>
       )}
+
+      {/* Corner grip. Stays out of the way until you hover the pin. */}
+      {resize !== "none" && (
+        <div
+          onPointerDown={onResizeDown}
+          role="separator"
+          aria-label="Resize pin"
+          title={resize === "both" ? "Drag to resize" : "Drag to set height"}
+          className={cn(
+            "absolute bottom-0 right-0 h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100",
+            resize === "both" ? "cursor-nwse-resize" : "cursor-ns-resize",
+            drag && "opacity-100"
+          )}
+        >
+          <svg viewBox="0 0 10 10" className="h-full w-full text-subtle" aria-hidden="true">
+            <path d="M9 3 L3 9 M9 6.5 L6.5 9" stroke="currentColor" strokeWidth="1" fill="none" />
+          </svg>
+        </div>
+      )}
     </div>
   );
 }
@@ -329,9 +424,9 @@ export function PinsStrip({ scope = "today" }: { scope?: string }) {
   const top = pinsForScope(pins, scope).filter((p) => p.placement === "top");
   if (top.length === 0) return null;
   return (
-    <div className="mb-4 grid max-w-2xl gap-2 sm:grid-cols-2">
+    <div className="mb-4 grid max-w-2xl grid-cols-2 gap-2 sm:grid-cols-4">
       {top.map((p) => (
-        <PinCard key={p.id} pin={p} compact />
+        <PinCard key={p.id} pin={p} compact resize="both" />
       ))}
     </div>
   );
@@ -345,7 +440,7 @@ export function PinsSide({ scope = "today" }: { scope?: string }) {
   return (
     <aside className="mt-4 space-y-2 lg:mt-0 lg:w-64 lg:shrink-0">
       {side.map((p) => (
-        <PinCard key={p.id} pin={p} compact />
+        <PinCard key={p.id} pin={p} compact resize="height" />
       ))}
     </aside>
   );
