@@ -2,6 +2,11 @@
 // the sidebar, view titles, and calendar. Call sites import named aliases from
 // here (never the lucide barrel directly) so the icon set stays consistent and
 // imports stay per-icon / tree-shakeable.
+
+// The brand mark is ours, not lucide's, but it is exported from here so call
+// sites keep importing LogoIcon from one place.
+export { LogoMark as LogoIcon } from "../components/LogoMark";
+
 export {
   Sun as TodayIcon,
   CalendarDays as CalendarIcon,
@@ -20,7 +25,6 @@ export {
   Plus as AddIcon,
   X as CloseIcon,
   Menu as MenuIcon,
-  CheckSquare as LogoIcon,
   GripVertical as DragIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,

@@ -1,105 +1,65 @@
 #!/usr/bin/env node
-// Generate the PWA icon set from scratch (no image deps) — a full-bleed indigo
-// tile with a white checkmark, matching the app's single-indigo brand. Full-bleed
-// square is correct for both iOS (rounds apple-touch-icon itself) and Android
-// maskable (the platform masks to its shape). Run: node scripts/gen-icons.mjs
-import zlib from "node:zlib";
+// Generate the favicon / apple-touch / PWA icon set from the Checkbox mark:
+// a rounded box whose tick breaks out through the top-right corner.
+// Run: node scripts/gen-icons.mjs
+//
+// The geometry below mirrors src/client/components/LogoMark.tsx. Keep the two in
+// sync: the component is what the app renders, this is what the OS renders.
+// Rasterising the same SVG (via sharp) rather than hand-plotting pixels is what
+// keeps them identical, and is why the arcs + round caps survive at 32px.
+//
+// App icons are a white mark on the brand indigo: a bare outline would disappear
+// against a dark home screen. The favicon is the mark alone in indigo, so it
+// reads on both light and dark browser chrome.
+import sharp from "sharp";
 import fs from "node:fs";
 import path from "node:path";
 
 const OUT = path.resolve("public");
 fs.mkdirSync(OUT, { recursive: true });
 
-// ── minimal PNG encoder ──────────────────────────────────────────────────────
-const CRC = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[n] = c >>> 0;
-  }
-  return t;
-})();
-function crc32(buf) {
-  let c = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) c = CRC[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-}
-function chunk(type, data) {
-  const len = Buffer.alloc(4);
-  len.writeUInt32BE(data.length, 0);
-  const typeBuf = Buffer.from(type, "ascii");
-  const crcBuf = Buffer.alloc(4);
-  crcBuf.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
-  return Buffer.concat([len, typeBuf, data, crcBuf]);
-}
-function encodePNG(w, h, rgba) {
-  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(w, 0);
-  ihdr.writeUInt32BE(h, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // RGBA
-  const raw = Buffer.alloc(h * (w * 4 + 1));
-  for (let y = 0; y < h; y++) {
-    raw[y * (w * 4 + 1)] = 0; // filter: none
-    rgba.copy(raw, y * (w * 4 + 1) + 1, y * w * 4, (y + 1) * w * 4);
-  }
-  const idat = zlib.deflateSync(raw, { level: 9 });
-  return Buffer.concat([
-    sig,
-    chunk("IHDR", ihdr),
-    chunk("IDAT", idat),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
+const INDIGO = "#6366f1";
+const BOX =
+  "M15.5 3.5 H6.5 A3 3 0 0 0 3.5 6.5 V17.5 A3 3 0 0 0 6.5 20.5 H17.5 A3 3 0 0 0 20.5 17.5 V12.5";
+const TICK = "M7.6 11.8 l3.4 3.4 L21.4 4";
+
+// `pad` insets the 24-unit artboard: more padding means the mark sits further
+// from the edge, which is what a maskable icon needs so the platform's mask
+// (circle, squircle, ...) cannot clip it.
+function markSvg({ size, colour, bg = null, pad = 0, radius = 0 }) {
+  const min = -pad;
+  const span = 24 + pad * 2;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${min} ${min} ${span} ${span}">
+  ${bg ? `<rect x="${min}" y="${min}" width="${span}" height="${span}" rx="${radius}" fill="${bg}"/>` : ""}
+  <g fill="none" stroke="${colour}" stroke-linecap="round" stroke-linejoin="round">
+    <path d="${BOX}" stroke-width="1.9"/>
+    <path d="${TICK}" stroke-width="2.3"/>
+  </g>
+</svg>`;
 }
 
-// ── draw the icon ────────────────────────────────────────────────────────────
-function distToSeg(px, py, ax, ay, bx, by) {
-  const dx = bx - ax, dy = by - ay;
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
-  const cx = ax + t * dx, cy = ay + t * dy;
-  return Math.hypot(px - cx, py - cy);
-}
-function drawIcon(size) {
-  const bg = [99, 102, 241]; // indigo-500
-  const fg = [255, 255, 255];
-  const SS = 4; // supersample for smooth edges
-  const rgba = Buffer.alloc(size * size * 4);
-  // checkmark polyline in unit coords + stroke half-width
-  const p = [[0.28, 0.52], [0.44, 0.68], [0.74, 0.33]];
-  const half = 0.052;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      let cov = 0;
-      for (let sy = 0; sy < SS; sy++) {
-        for (let sx = 0; sx < SS; sx++) {
-          const ux = (x + (sx + 0.5) / SS) / size;
-          const uy = (y + (sy + 0.5) / SS) / size;
-          const d = Math.min(
-            distToSeg(ux, uy, p[0][0], p[0][1], p[1][0], p[1][1]),
-            distToSeg(ux, uy, p[1][0], p[1][1], p[2][0], p[2][1])
-          );
-          if (d <= half) cov++;
-        }
-      }
-      cov /= SS * SS;
-      const i = (y * size + x) * 4;
-      for (let c = 0; c < 3; c++) rgba[i + c] = Math.round(bg[c] * (1 - cov) + fg[c] * cov);
-      rgba[i + 3] = 255;
-    }
-  }
-  return encodePNG(size, size, rgba);
-}
+const write = (svg, file) =>
+  sharp(Buffer.from(svg))
+    .png()
+    .toFile(path.join(OUT, file))
+    .then(() => console.log("wrote", file));
 
-const targets = [
-  ["icon-192.png", 192],
-  ["icon-512.png", 512],
-  ["icon-maskable-512.png", 512],
-  ["apple-touch-icon.png", 180],
-  ["favicon-32.png", 32],
-];
-for (const [name, size] of targets) {
-  fs.writeFileSync(path.join(OUT, name), drawIcon(size));
-  console.log("wrote", name, `(${size}x${size})`);
-}
+await Promise.all([
+  // Favicon: bare mark, transparent background, indigo stroke.
+  write(markSvg({ size: 32, colour: INDIGO, pad: 1 }), "favicon-32.png"),
+
+  // Home screen / PWA "any": white mark on indigo. iOS rounds the corners of
+  // apple-touch-icon itself, so a full-bleed tile is correct there.
+  write(
+    markSvg({ size: 180, colour: "#ffffff", bg: INDIGO, pad: 4 }),
+    "apple-touch-icon.png"
+  ),
+  write(markSvg({ size: 192, colour: "#ffffff", bg: INDIGO, pad: 4 }), "icon-192.png"),
+  write(markSvg({ size: 512, colour: "#ffffff", bg: INDIGO, pad: 4 }), "icon-512.png"),
+
+  // Maskable: extra padding keeps the mark inside the ~80% safe zone.
+  write(
+    markSvg({ size: 512, colour: "#ffffff", bg: INDIGO, pad: 9 }),
+    "icon-maskable-512.png"
+  ),
+]);
