@@ -50,6 +50,7 @@ pins.post("/", async (c) => {
     items?: unknown[];
     placement?: string;
     color?: string | null;
+    scope?: string;
   }>();
   const id = uuid();
   // New pins go to the top (lowest position).
@@ -62,8 +63,8 @@ pins.post("/", async (c) => {
   const placement =
     b.placement === "top" || b.placement === "side" ? b.placement : "unpinned";
   await c.env.DB.prepare(
-    `INSERT INTO pins (id, user_id, kind, title, body, items, placement, color, pinned_today, position)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO pins (id, user_id, kind, title, body, items, placement, color, pinned_today, position, scope)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       id,
@@ -75,7 +76,9 @@ pins.post("/", async (c) => {
       placement,
       b.color ?? null,
       placement === "top" ? 1 : 0,
-      position
+      position,
+      // Created from whichever page you were on; Today when unspecified.
+      typeof b.scope === "string" && b.scope ? b.scope : "today"
     )
     .run();
   const row = await c.env.DB.prepare("SELECT * FROM pins WHERE id = ?")
@@ -91,6 +94,7 @@ const WRITABLE = [
   "placement",
   "color",
   "position",
+  "scope",
 ] as const;
 
 pins.patch("/:id", async (c) => {

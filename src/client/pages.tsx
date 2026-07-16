@@ -28,6 +28,7 @@ import { ProjectDialog } from "./components/ProjectDialog";
 import { CalendarSyncBanner } from "./components/CalendarSyncBanner";
 import { SuggestToday } from "./components/SuggestToday";
 import { PinsStrip, PinsSide } from "./components/Pins";
+import { scopeForView, scopeForArea } from "./lib/pinScope";
 import { StatsWidget } from "./components/StatsWidget";
 import { CheatSheet } from "./components/CheatSheet";
 import { NotesInbox } from "./components/NotesInbox";
@@ -416,6 +417,7 @@ export function ViewPage({ name }: { name: string }) {
     useTaskCollection(`/${name}`, tasks, meta.empty);
   const isToday = name === "today";
   const showBoard = isToday && view === "board";
+  const pinScope = scopeForView(name);
 
   return (
     <div>
@@ -440,38 +442,28 @@ export function ViewPage({ name }: { name: string }) {
           ) : undefined
         }
       />
-      {isToday ? (
-        // Today can carry pins on the side, so it lays out as main column + rail.
-        <div className="lg:flex lg:gap-5">
-          <div className="min-w-0 lg:flex-1">
-            <InstallHint />
-            <PinsStrip />
-            <CheatSheet />
-            <SuggestToday />
-            {showBoard ? (
-              // The board's Done column already shows today's completed tasks, so
-              // the separate CompletedToday strip is redundant here.
-              <TodayBoard open={tasks} done={completedToday} />
-            ) : (
-              <>
-                {body}
-                {view === "list" && <BulkActionBar controls={controls} />}
-                <CompletedToday />
-              </>
-            )}
-          </div>
-          <PinsSide />
-        </div>
-      ) : (
-        <>
-          {name === "backlog" ? (
-            <BacklogBody tasks={tasks} list={body} />
+      {/* Every view lays out as main column + rail, because any view can now carry
+          pins (scoped to it), not just Today. */}
+      <div className="lg:flex lg:gap-5">
+        <div className="min-w-0 lg:flex-1">
+          {isToday && <InstallHint />}
+          <PinsStrip scope={pinScope} />
+          {isToday && <CheatSheet />}
+          {isToday && <SuggestToday />}
+          {isToday && showBoard ? (
+            // The board's Done column already shows today's completed tasks, so
+            // the separate CompletedToday strip is redundant here.
+            <TodayBoard open={tasks} done={completedToday} />
           ) : (
-            body
+            <>
+              {name === "backlog" ? <BacklogBody tasks={tasks} list={body} /> : body}
+              {view === "list" && <BulkActionBar controls={controls} />}
+              {isToday && <CompletedToday />}
+            </>
           )}
-          {view === "list" && <BulkActionBar controls={controls} />}
-        </>
-      )}
+        </div>
+        <PinsSide scope={pinScope} />
+      </div>
     </div>
   );
 }
@@ -772,33 +764,44 @@ export function AreaPage() {
       )}
       <ProjectDialog open={newProject} onOpenChange={setNewProject} areaId={id} />
 
-      <div className="mb-5">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs uppercase tracking-wide text-subtle">
-            Projects
-          </span>
-          <button onClick={() => setNewProject(true)} className="text-sm text-primary">
-            + New project
-          </button>
-        </div>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-          {projects.map((p) => (
-            <ProjectCard key={p.id} project={p} />
-          ))}
-          {projects.length === 0 && (
-            <p className="text-sm text-subtle">No projects yet.</p>
-          )}
-        </div>
-      </div>
+      {/* Main column + rail, so an area can carry its own pins. */}
+      <div className="lg:flex lg:gap-5">
+        <div className="min-w-0 lg:flex-1">
+          <PinsStrip scope={scopeForArea(id)} />
 
-      <div className="mb-2 text-xs uppercase tracking-wide text-subtle">
-        Loose tasks
+          <div className="mb-5">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs uppercase tracking-wide text-subtle">
+                Projects
+              </span>
+              <button
+                onClick={() => setNewProject(true)}
+                className="text-sm text-primary"
+              >
+                + New project
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+              {projects.map((p) => (
+                <ProjectCard key={p.id} project={p} />
+              ))}
+              {projects.length === 0 && (
+                <p className="text-sm text-subtle">No projects yet.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mb-2 text-xs uppercase tracking-wide text-subtle">
+            Loose tasks
+          </div>
+          <div className="mb-3 max-w-2xl">
+            <QuickCapture defaultAreaId={id} />
+          </div>
+          {body}
+          {view === "list" && <BulkActionBar controls={controls} />}
+        </div>
+        <PinsSide scope={scopeForArea(id)} />
       </div>
-      <div className="mb-3 max-w-2xl">
-        <QuickCapture defaultAreaId={id} />
-      </div>
-      {body}
-      {view === "list" && <BulkActionBar controls={controls} />}
     </div>
   );
 }

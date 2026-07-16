@@ -270,6 +270,9 @@ export interface Pin {
   items: PinItem[]; // list lines
   pinned_today: number; // legacy; use `placement`
   placement: "unpinned" | "top" | "side";
+  // Which page the pin lives on: 'today' | 'view:<name>' | 'area:<id>'.
+  // `placement` then says where on that page. See lib/pinScope.ts.
+  scope: string;
   color: string | null; // colour token (see lib/colors)
   position: number;
   created_at: string;

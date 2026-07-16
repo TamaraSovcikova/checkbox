@@ -1,0 +1,12 @@
+-- Where a pin shows up. Until now every pin lived on Today; this lets a pin belong
+-- to any view or area, so a shopping list can sit on Health and a reading list on
+-- Learning, instead of everything piling onto Today.
+--
+-- One column, three shapes:
+--   'today'        the Today page (the default, and what every existing pin was)
+--   'view:<name>'  a task view, e.g. 'view:backlog', 'view:upcoming'
+--   'area:<id>'    an area page
+--
+-- `placement` still says WHERE on that page (top strip or side column), so scope
+-- and placement compose: scope picks the page, placement picks the spot.
+ALTER TABLE pins ADD COLUMN scope TEXT NOT NULL DEFAULT 'today';

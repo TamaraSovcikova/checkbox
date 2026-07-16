@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import type { Pin, PinItem } from "../../shared/types";
-import { usePins, useCreatePin, useUpdatePin, useDeletePin } from "../lib/queries";
+import {
+  usePins,
+  useCreatePin,
+  useUpdatePin,
+  useDeletePin,
+  useAreas,
+} from "../lib/queries";
 import { AREA_COLORS, areaColorVar } from "../lib/colors";
+import { pinsForScope, scopeLabel, scopeOptions } from "../lib/pinScope";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import {
@@ -128,6 +135,7 @@ function PinMenu({
 function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
   const update = useUpdatePin();
   const del = useDeletePin();
+  const { data: areas = [] } = useAreas();
   const [title, setTitle] = useState(pin.title ?? "");
   const [items, setItems] = useState<PinItem[]>(pin.items ?? []);
   const [body, setBody] = useState(pin.body ?? "");
@@ -266,7 +274,14 @@ function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
         <textarea
           value={body}
           autoFocus={editingBody}
-          onChange={(e) => setBody(e.target.value)}
+          onFocus={() => setEditingBody(true)}
+          // Mark editing in the SAME change as the keystroke: the first character
+          // makes body non-empty, which would otherwise flip this back to the
+          // preview and yank focus (the same trap the task notes had).
+          onChange={(e) => {
+            setBody(e.target.value);
+            setEditingBody(true);
+          }}
           onBlur={() => {
             setEditingBody(false);
             if (body !== (pin.body ?? "")) update.mutate({ id: pin.id, body: { body } });
@@ -284,14 +299,34 @@ function PinCard({ pin, compact }: { pin: Pin; compact?: boolean }) {
           {body}
         </button>
       )}
+
+      {/* Which page this pin lives on. Only on the Pins page (full card): that is
+          where you organise, and it would be noise on the pin itself in situ. */}
+      {!compact && (
+        <label className="mt-2 flex items-center gap-2 border-t border-border pt-2 text-[11px] text-subtle">
+          <span className="shrink-0">Show on</span>
+          <select
+            value={pin.scope || "today"}
+            onChange={(e) => update.mutate({ id: pin.id, body: { scope: e.target.value } })}
+            className="h-7 min-w-0 flex-1 rounded border border-input bg-surface px-1.5 text-[11px] text-foreground outline-none focus:border-primary"
+          >
+            {scopeOptions(areas).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
     </div>
   );
 }
 
-// Full-width strip at the top of Today: pins placed 'top'.
-export function PinsStrip() {
+// Full-width strip at the top of a page: that page's pins placed 'top'.
+// `scope` names the page (see lib/pinScope); defaults to Today.
+export function PinsStrip({ scope = "today" }: { scope?: string }) {
   const { data: pins = [] } = usePins();
-  const top = pins.filter((p) => p.placement === "top");
+  const top = pinsForScope(pins, scope).filter((p) => p.placement === "top");
   if (top.length === 0) return null;
   return (
     <div className="mb-4 grid max-w-2xl gap-2 sm:grid-cols-2">
@@ -302,10 +337,10 @@ export function PinsStrip() {
   );
 }
 
-// Narrow right column on Today: pins placed 'side'.
-export function PinsSide() {
+// Narrow right column: that page's pins placed 'side'.
+export function PinsSide({ scope = "today" }: { scope?: string }) {
   const { data: pins = [] } = usePins();
-  const side = pins.filter((p) => p.placement === "side");
+  const side = pinsForScope(pins, scope).filter((p) => p.placement === "side");
   if (side.length === 0) return null;
   return (
     <aside className="mt-4 space-y-2 lg:mt-0 lg:w-64 lg:shrink-0">
@@ -319,7 +354,24 @@ export function PinsSide() {
 // The Pins management page (sidebar → Pins).
 export function PinsPage() {
   const { data: pins = [] } = usePins();
+  const { data: areas = [] } = useAreas();
   const create = useCreatePin();
+
+  // Group by scope, in the picker's order, so the page always lists pages in the
+  // same sequence rather than jumping around as pins move.
+  const order = scopeOptions(areas).map((o) => o.value);
+  const groups = [...new Set(pins.map((p) => p.scope || "today"))]
+    .sort((a, b) => {
+      const ia = order.indexOf(a);
+      const ib = order.indexOf(b);
+      // A scope we do not recognise (e.g. a deleted area) sorts last.
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+    })
+    .map((scope) => ({
+      scope,
+      label: scopeLabel(scope, areas),
+      pins: pins.filter((p) => (p.scope || "today") === scope),
+    }));
 
   return (
     <div className="max-w-2xl pt-4 md:pt-6">
@@ -329,8 +381,9 @@ export function PinsPage() {
       </div>
       <p className="mb-4 text-sm text-subtle">
         Lists you edit day to day and reminders you want on your eyes, kept beside
-        your tasks. Use the Top / Side toggle to place each one on your Today page,
-        and colour them so they stand apart.
+        your tasks. &ldquo;Show on&rdquo; picks the page a pin lives on (Today, a view, or
+        an area); the Top / Side toggle picks where on that page; colour them so
+        they stand apart.
       </p>
 
       <div className="mb-4 flex gap-2">
@@ -359,9 +412,23 @@ export function PinsPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {pins.map((p) => (
-            <PinCard key={p.id} pin={p} />
+        // Grouped by the page each pin lives on, so this reads as "what is on
+        // Today, what is on Health" rather than one undifferentiated pile.
+        <div className="space-y-6">
+          {groups.map((g) => (
+            <section key={g.scope}>
+              <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-subtle">
+                {g.label}
+                <span className="rounded-full bg-surface-2 px-1.5 text-[11px] font-normal tabular-nums text-muted">
+                  {g.pins.length}
+                </span>
+              </h2>
+              <div className="space-y-2">
+                {g.pins.map((p) => (
+                  <PinCard key={p.id} pin={p} />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}
