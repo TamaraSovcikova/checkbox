@@ -17,6 +17,7 @@ import {
   useSetCalendarFeed,
   useTasks,
   useViewPrefs,
+  useUpdateTask,
 } from "./lib/queries";
 import { useTaskUI } from "./lib/ui-context";
 import { PRIORITY_VAR } from "./lib/colors";
@@ -393,28 +394,109 @@ function ConnectCalendar() {
 
 // ── Sync-broken banner ────────────────────────────────────────────────────────
 
-// ── All-day event strip ───────────────────────────────────────────────────────
+// ── All-day box ───────────────────────────────────────────────────────────────
 
-// The all-day box above the grid: every all-day entry on the visible days, each
-// one a toggle. Click a chip to hide it, expand "N hidden" to click it back.
+// A chip in the all-day box. Two kinds, which hide very differently:
 //
-// Hiding is keyed by TITLE (see UserPrefs.hiddenAllDayTitles), not id: these are
-// usually standing reminders that recur, and every instance carries its own event
-// id, so hiding by id would only ever hide today's.
-function AllDayBox({ events }: { events: CalendarEvent[] }) {
+//   "task"     - an event CHECKBOX created for one of your tasks. Hiding it sets
+//                tasks.gcal_hidden, so the Worker DELETES the event from Google
+//                and stops re-creating it. The task's due date is untouched, so
+//                un-hiding pushes a fresh event back.
+//   "external" - an entry from the rest of your calendar. Not ours to delete, so
+//                hiding is local only (UserPrefs.hiddenAllDayTitles), keyed by
+//                title: these are usually standing reminders that recur, and each
+//                instance gets its own event id, so hiding by id would only ever
+//                hide today's.
+type AllDayChip = {
+  key: string;
+  label: string;
+  day: string; // YYYY-MM-DD
+  kind: "task" | "external";
+  taskId?: string;
+  hidden: boolean;
+};
+
+// `events` are the all-day events on the visible days; `tasks` is needed as well
+// because a hidden task has NO event any more (we deleted it from Google), so it
+// cannot come from the cache and would be unrecoverable if we only read events.
+// `dedupeTaskIds` are tasks already listed in the "To schedule" pane: showing them
+// here too is the duplication that made this box noisy.
+function AllDayBox({
+  events,
+  tasks,
+  days,
+  dedupeTaskIds,
+}: {
+  events: CalendarEvent[];
+  tasks: Task[];
+  days: string[];
+  dedupeTaskIds: Set<string>;
+}) {
   const { isAllDayHidden, toggleAllDayTitle } = useViewPrefs();
+  const updateTask = useUpdateTask();
+  const qc = useQueryClient();
   const [showHidden, setShowHidden] = useState(false);
 
-  if (events.length === 0) return null;
-  const titleOf = (e: CalendarEvent) => e.title ?? "(all-day)";
-  const visible = events.filter((e) => !isAllDayHidden(titleOf(e)));
-  const hidden = events.filter((e) => isAllDayHidden(titleOf(e)));
+  const inRange = (d: string | null) => !!d && days.includes(d);
+
+  // Hidden-ness is read from the TASK ROW, never from the event cache. Hiding
+  // deletes the Google event server-side, but the cached row lingers until the
+  // next calendar fetch, so a cache-derived chip would still show as visible AND
+  // appear again in the hidden list. The task row is the authoritative answer.
+  const hiddenTaskIds = new Set(
+    tasks.filter((t) => t.gcal_hidden).map((t) => t.id)
+  );
+
+  const chips: AllDayChip[] = [
+    ...events.flatMap((e): AllDayChip[] => {
+      const day = e.start.slice(0, 10);
+      const label = e.title ?? "(all-day)";
+      if (e.is_checkbox_owned) {
+        // Ours. Skip it if hidden (the row below rebuilds it from the task), or
+        // if the To schedule pane is already showing this task.
+        if (!e.task_id || hiddenTaskIds.has(e.task_id) || dedupeTaskIds.has(e.task_id))
+          return [];
+        return [{ key: e.id, label, day, kind: "task", taskId: e.task_id, hidden: false }];
+      }
+      return [{ key: e.id, label, day, kind: "external", hidden: isAllDayHidden(label) }];
+    }),
+    // Hidden tasks, rebuilt from the task rows. Deliberately NOT deduped against
+    // the To schedule pane: a hidden task has no chip anywhere else, so this list
+    // is the only way back. It is collapsed by default, so it costs no noise.
+    ...tasks
+      .filter((t) => t.gcal_hidden && t.status !== "done" && inRange(t.due_date))
+      .map((t): AllDayChip => ({
+        key: `task:${t.id}`,
+        label: t.title,
+        day: t.due_date as string,
+        kind: "task",
+        taskId: t.id,
+        hidden: true,
+      })),
+  ];
+
+  if (chips.length === 0) return null;
+  const visible = chips.filter((c) => !c.hidden);
+  const hidden = chips.filter((c) => c.hidden);
+
+  function toggle(chip: AllDayChip) {
+    if (chip.kind === "task" && chip.taskId) {
+      updateTask.mutate(
+        { id: chip.taskId, body: { gcal_hidden: chip.hidden ? 0 : 1 } },
+        // The Worker deletes/recreates the Google event in the background, so the
+        // event cache is stale either way; refetch it so the rest of the page
+        // agrees. The chip itself does not wait on this (see hiddenTaskIds).
+        { onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }) }
+      );
+    } else {
+      toggleAllDayTitle(chip.label);
+    }
+  }
 
   // In week view the chips span seven days, so date them. In day view that would
   // repeat the same date on every chip, so don't.
-  const days = new Set(events.map((e) => e.start.slice(0, 10)));
-  const dayOf = (e: CalendarEvent) =>
-    days.size > 1 ? format(parseISO(e.start.slice(0, 10)), "EEE d") : null;
+  const dayOf = (c: AllDayChip) =>
+    days.length > 1 ? format(parseISO(c.day), "EEE d") : null;
 
   return (
     <div className="mb-2 rounded-lg border border-border bg-surface px-2.5 py-2">
@@ -439,22 +521,26 @@ function AllDayBox({ events }: { events: CalendarEvent[] }) {
 
       {visible.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
-          {visible.map((e) => (
+          {visible.map((c) => (
             <button
-              key={e.id}
+              key={c.key}
               type="button"
-              onClick={() => toggleAllDayTitle(titleOf(e))}
-              title={`Hide "${titleOf(e)}"`}
+              onClick={() => toggle(c)}
+              title={
+                c.kind === "task"
+                  ? `Hide "${c.label}" and remove it from Google Calendar`
+                  : `Hide "${c.label}" here (stays on Google Calendar)`
+              }
               className="group inline-flex max-w-full items-center gap-1.5 rounded border border-border bg-surface-2 px-1.5 py-0.5 text-xs text-foreground transition-colors hover:border-danger/40"
             >
-              {/* Ours vs the rest of your calendar: a tick means it is a Checkbox task. */}
-              {e.is_checkbox_owned && (
+              {/* A tick means it is one of your Checkbox tasks. */}
+              {c.kind === "task" && (
                 <CheckIcon className="h-3 w-3 shrink-0 text-primary" />
               )}
-              {dayOf(e) && (
-                <span className="shrink-0 tabular-nums text-subtle">{dayOf(e)}</span>
+              {dayOf(c) && (
+                <span className="shrink-0 tabular-nums text-subtle">{dayOf(c)}</span>
               )}
-              <span className="truncate">{titleOf(e)}</span>
+              <span className="truncate">{c.label}</span>
               <CloseIcon className="h-3 w-3 shrink-0 text-subtle transition-colors group-hover:text-danger" />
             </button>
           ))}
@@ -462,22 +548,26 @@ function AllDayBox({ events }: { events: CalendarEvent[] }) {
       )}
       {visible.length === 0 && (
         <p className="mt-1.5 text-[11px] text-subtle">
-          Every all-day entry is hidden. Use &ldquo;{hidden.length} hidden&rdquo; to bring one back.
+          Nothing to show. Anything due today that still needs a time is in To schedule.
         </p>
       )}
 
-      {/* Hidden entries, restorable. */}
+      {/* Hidden entries, restorable. A hidden task gets its Google event back. */}
       {showHidden && hidden.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1 border-t border-border pt-1.5">
-          {hidden.map((e) => (
+          {hidden.map((c) => (
             <button
-              key={e.id}
+              key={c.key}
               type="button"
-              onClick={() => toggleAllDayTitle(titleOf(e))}
-              title="Show this entry again"
+              onClick={() => toggle(c)}
+              title={
+                c.kind === "task"
+                  ? "Show again, and put it back on Google Calendar"
+                  : "Show this entry again"
+              }
               className="inline-flex max-w-full items-center gap-1.5 rounded border border-dashed border-input px-1.5 py-0.5 text-xs text-subtle transition-colors hover:text-foreground"
             >
-              <span className="truncate">{titleOf(e)}</span>
+              <span className="truncate">{c.label}</span>
               <AddIcon className="h-3 w-3 shrink-0" />
             </button>
           ))}
@@ -798,7 +888,15 @@ export default function CalendarPage() {
       <PlanMyDay tasks={planCandidates} />
 
       {/* All-day strip (across the visible range) */}
-      <AllDayBox events={allDayEvents} />
+      <AllDayBox
+        events={allDayEvents}
+        tasks={allTasks}
+        days={days.map((d) => format(d, "yyyy-MM-dd"))}
+        // Anything the To schedule pane is already listing: showing it as an
+        // all-day chip as well is the duplicate. It keeps its Google all-day
+        // event either way, until you give it a time slot.
+        dedupeTaskIds={new Set([...today, ...overdue].map((t) => t.id))}
+      />
 
       {/* Body: left planner pane + hour labels + one-or-seven day columns.
           pt-2 keeps the 06:00 label + first event off the clipped top edge. */}
