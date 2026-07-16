@@ -136,7 +136,9 @@ export function TaskRow({
   return (
     <div
       className={cn(
-        "rounded-md",
+        // A hairline border so each row reads as its own card against the page,
+        // rather than text floating on the background.
+        "rounded-md border border-border",
         isDragging && "opacity-40",
         // Dim the far future; hover restores full opacity so it never feels lost.
         distant && !isDragging && "opacity-45 transition-opacity hover:opacity-100"
