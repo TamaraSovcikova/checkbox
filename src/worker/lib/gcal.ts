@@ -1,12 +1,12 @@
 // Google Calendar API v3 client for Cloudflare Workers.
-// All networking is plain fetch - no googleapis SDK (incompatible with Workers).
+// All networking is plain fetch, no googleapis SDK (incompatible with Workers).
 
 import type { Task } from "../../shared/types";
 
 // dateTime/date/timeZone allow null so a PATCH can explicitly CLEAR the opposite
 // representation: Google merges the start/end objects, so converting an all-day
 // event to timed (or back) must null the field it's replacing or the event ends
-// up with both date and dateTime set - a 400 "Invalid start time."
+// up with both date and dateTime set: a 400 "Invalid start time."
 export type GCalEvent = {
   id: string;
   summary?: string;
@@ -152,7 +152,7 @@ export async function getPrimaryCalendarId(
 ): Promise<string> {
   // The calendarList endpoint requires the broad `calendar`/`calendar.readonly`
   // scope, but we only request `calendar.events`. When that call is rejected,
-  // fall back to the "primary" alias - every events API endpoint accepts it,
+  // fall back to the "primary" alias: every events API endpoint accepts it,
   // so we never actually need to resolve the concrete calendar id.
   const res = await fetch(`${GCAL_BASE}/users/me/calendarList`, {
     headers: { Authorization: `Bearer ${accessToken}` },

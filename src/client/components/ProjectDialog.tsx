@@ -10,7 +10,7 @@ import { Button, Input } from "./ui";
 
 // Create or edit a project (sprint). The update API (PATCH /api/projects/:id)
 // already existed; this is the missing client surface. Board columns are edited
-// as a comma-separated list - enough control without a full column editor.
+// as a comma-separated list, enough control without a full column editor.
 export function ProjectDialog({
   open,
   onOpenChange,
@@ -73,7 +73,7 @@ export function ProjectDialog({
         .split(",")
         .map((c) => c.trim())
         .filter(Boolean);
-      // Only send board_columns when there is at least one - an empty array would
+      // Only send board_columns when there is at least one, an empty array would
       // wipe the board. The PATCH route includes any key present in the body, so
       // omit it entirely rather than passing undefined.
       const body: Partial<Project> = {

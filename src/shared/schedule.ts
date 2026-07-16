@@ -1,7 +1,7 @@
 // Pure, timezone-agnostic day scheduler shared by the client (lib/plan.ts, using
 // local Date maths) and the Worker (lib/planner.ts, using tz-computed instants).
 // Everything is epoch-milliseconds in and out so there is no Date/tz coupling
-// here - the caller is responsible for building the window + busy intervals in
+// here: the caller is responsible for building the window + busy intervals in
 // whatever timezone it cares about.
 
 export interface SchedTask {

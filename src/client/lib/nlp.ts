@@ -62,7 +62,7 @@ function extractRecurrence(text: string): { spec: string | null; rest: string } 
 
 // chrono in casual mode is eager: a bare time-of-day or vague temporal word
 // mentioned in prose ("review the morning notes", "ask about this later") gets
-// read as a due date. These words, matched ALONE, are not a date - they are
+// read as a due date. These words, matched ALONE, are not a date, they are
 // almost always part of the title. Reject them, but keep every real phrase
 // ("tomorrow", "next tue", "in 2 weeks", "on friday", "3pm", "jan 5").
 const WEAK_DATE = new Set([
@@ -121,7 +121,7 @@ export function parseCapture(
     return "";
   });
 
-  // category: #name - resolves to an area OR project. Match the longest known
+  // category: #name (resolves to an area OR project). Match the longest known
   // multi-word name first (so "#Health & Home" works), else a single token.
   let projectName: string | null = null;
   const hashIdx = boundaryHashIndex(text);
@@ -155,7 +155,7 @@ export function parseCapture(
   let due_date: string | null = null;
   let due_time: string | null = null;
   let dateText: string | null = null;
-  // The title as it stands before the date is stripped - the fallback if the
+  // The title as it stands before the date is stripped, the fallback if the
   // user dismisses the detected date.
   const titleWithDate = text.replace(/\s{2,}/g, " ").trim();
   const r = firstConfidentDate(text);
@@ -193,7 +193,7 @@ export function parseCapture(
 //   - `@` tokens end at whitespace (labels are single words).
 //   - `#` tokens run to the caret and may contain spaces (categories are often
 //     multi-word), but close once the query exactly matches a known name and a
-//     space has been typed after it - so the menu dismisses after a pick.
+//     space has been typed after it, so the menu dismisses after a pick.
 // `start` is the index of the trigger char; the query spans from there to the
 // caret. Returns null when the caret is not in a token.
 export function activeCaptureToken(

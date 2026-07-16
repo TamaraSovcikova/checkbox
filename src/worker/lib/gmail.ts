@@ -248,7 +248,7 @@ export async function syncGmail(
     // the coverage list. Pull recently-trashed messages and drop any still-
     // pending row for them. Rows a human has ruled on (filed/skipped, locked)
     // are a deliberate record and stay. Emptying the trash (permanent delete)
-    // isn't covered - those messages no longer appear in any search.
+    // isn't covered: those messages no longer appear in any search.
     await removeTrashedPending(env, userId, token);
 
     await env.DB.prepare(

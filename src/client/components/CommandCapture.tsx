@@ -50,7 +50,7 @@ export function CommandCapture() {
     [areas, projects]
   );
 
-  // Debounced task search - only queries once ≥2 chars have settled for 200ms.
+  // Debounced task search: only queries once ≥2 chars have settled for 200ms.
   const [debounced, setDebounced] = useState("");
   useEffect(() => {
     const t = setTimeout(() => setDebounced(text.trim()), 200);
@@ -71,7 +71,7 @@ export function CommandCapture() {
       }
     };
     // Touch clients have no Cmd-K; the mobile add button dispatches this instead.
-    // The header search box dispatches `checkbox:search` - same palette, which
+    // The header search box dispatches `checkbox:search`, same palette, which
     // already searches whatever is typed, so the two entry points converge here.
     const onCapture = () => setOpen(true);
     window.addEventListener("keydown", onKey);

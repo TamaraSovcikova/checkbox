@@ -19,7 +19,7 @@ function addDaysStr(date: string, n: number): string {
 
 // Weekly review: what got done, what slipped (past-due still open), what's
 // coming up in the next 7 days, and a per-area completion breakdown. Read-only
-// aggregation - the UI screen renders it; no writes here.
+// aggregation: the UI screen renders it; no writes here.
 review.get("/", async (c) => {
   const userId = await getUserId(c);
   const today = todayStr();

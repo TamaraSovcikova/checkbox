@@ -541,7 +541,7 @@ export const useCalendarEvents = (dateStr: string) => {
   });
 };
 
-// Events across an arbitrary [start, endExclusive) range - powers the week view.
+// Events across an arbitrary [start, endExclusive) range: powers the week view.
 // The API + route already accept start/end; this just widens the window.
 export const useCalendarRange = (startStr: string, endStr: string) =>
   useQuery({

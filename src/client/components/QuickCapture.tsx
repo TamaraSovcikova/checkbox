@@ -241,7 +241,7 @@ export function QuickCapture({
       {chips.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-1">
           {chips.map((ch, i) =>
-            // The date chip is removable - one click drops a wrong guess and
+            // The date chip is removable: one click drops a wrong guess and
             // returns the words to the title.
             ch.kind === "date" ? (
               <button

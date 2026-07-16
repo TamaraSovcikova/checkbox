@@ -115,7 +115,7 @@ function AmbientPlanCard({
   );
 }
 
-// "Plan my day" - proposes time-blocks for today's open tasks around the
+// "Plan my day": proposes time-blocks for today's open tasks around the
 // calendar. Prefers the ambient (server-drafted) plan when one is waiting;
 // otherwise offers on-demand client-side planning.
 export function PlanMyDay({ tasks }: { tasks: Task[] }) {
@@ -195,7 +195,7 @@ export function PlanMyDay({ tasks }: { tasks: Task[] }) {
       {!cal?.connected && (
         <p className="mb-3 flex items-center gap-1.5 text-[11px] text-subtle">
           <CalendarIcon className="h-3.5 w-3.5" />
-          Calendar not connected - planning around an empty day. Connect it in
+          Calendar not connected: planning around an empty day. Connect it in
           Settings to work around meetings.
         </p>
       )}

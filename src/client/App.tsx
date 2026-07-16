@@ -18,12 +18,12 @@ import {
 import { MailInboxPage } from "./components/MailInbox";
 import { PinsPage } from "./components/Pins";
 
-// Lazy - the calendar pulls in its own timeline code; keep it out of the
+// Lazy: the calendar pulls in its own timeline code; keep it out of the
 // initial bundle (capture-first PWA).
 const CalendarPage = lazy(() => import("./CalendarPage"));
 
 // refetchOnWindowFocus is on so switching back to a browser tab (or reopening the
-// PWA) pulls anything added on another device without a manual reload - the whole
+// PWA) pulls anything added on another device without a manual reload, the whole
 // point of "add on phone, see it on web". staleTime keeps it from refetching on
 // every trivial focus. reconnect refetch covers waking from sleep / regaining net.
 const qc = new QueryClient({

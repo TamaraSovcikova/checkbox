@@ -3,10 +3,10 @@
 @import "react-day-picker/style.css";
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Design tokens - dual theme, single indigo accent.
+   Design tokens: dual theme, single indigo accent.
    Single source of truth for color; JS mirror lives in lib/colors.ts.
    shadcn/ui (added in T2) consumes these same CSS variables, so the whole
-   app - rows, cards, drawer, board, AND calendar - themes from one place.
+   app (rows, cards, drawer, board, AND calendar) themes from one place.
 
    Dark is the default (:root). Light is a "warm stone" ramp: an off-white,
    paper-toned surface with a warm near-black text, applied via
@@ -38,13 +38,13 @@
   --warning: #fbbf24; /* amber-400 */
   --danger: #f87171;  /* red-400 */
 
-  /* priority scale - identical in list, card, drawer, AND calendar */
+  /* priority scale: identical in list, card, drawer, AND calendar */
   --pri-1: #f87171; /* red-400     urgent */
   --pri-2: #fb923c; /* orange-400  high   */
   --pri-3: #fbbf24; /* amber-400   medium */
   --pri-4: #94a3b8; /* slate-400   low    */
 
-  /* area accent palette - user-pickable per area for at-a-glance scanning.
+  /* area accent palette: user-pickable per area for at-a-glance scanning.
      Muted 400-level hues so a colored dot reads clearly on the dark surface
      without clashing with the single indigo primary. Referenced by key from
      lib/colors.ts (AREA_COLORS); never hardcode these hexes at call sites. */
@@ -63,7 +63,7 @@
   --radius: 0.5rem;
 }
 
-/* Light - "warm stone": a sophisticated off-white with a faint paper/warm
+/* Light ("warm stone"): a sophisticated off-white with a faint paper/warm
    undertone (not clinical slate-50, not stark pure white) and a warm near-black
    text. State + priority + area hues step down to 500/600 so they keep contrast
    on the light surface instead of washing out at their dark 400 levels. */
@@ -201,8 +201,8 @@
   --input: color-mix(in oklab, #e11d48 12%, #d9d3c8);
 }
 
-/* Amber is light enough that white text on it reads poorly, flip the on-primary
-   text to the warm near-black in both modes. */
+/* Amber is light enough that white text on it reads poorly, so flip the
+   on-primary text to the warm near-black in both modes. */
 :root[data-palette="amber"] {
   --primary: #f59e0b; --primary-hover: #fbbf24; --ring: #f59e0b;
   --primary-foreground: #1c1b19;

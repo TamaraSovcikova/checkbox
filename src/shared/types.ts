@@ -335,7 +335,7 @@ export interface CaptureParse {
   // The raw text chrono matched for the date (e.g. "tomorrow 3pm"), so a capture
   // UI can offer to dismiss a wrong guess and put the words back in the title.
   dateText: string | null;
-  // The title with the date left in place - what to fall back to if the user
+  // The title with the date left in place: what to fall back to if the user
   // dismisses the detected date.
   titleWithDate: string;
   priority: Priority | null;

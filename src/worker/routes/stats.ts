@@ -18,7 +18,7 @@ function addDaysStr(date: string, n: number): string {
 }
 
 // Progress + streaks. Completions are bucketed by the Brussels calendar day of
-// completed_at (substr of the stored UTC ISO - good enough for a personal app in
+// completed_at (substr of the stored UTC ISO, good enough for a personal app in
 // a positive-offset tz; midnight-edge completions may land a day off).
 stats.get("/", async (c) => {
   const userId = await getUserId(c);

@@ -44,7 +44,7 @@ function nextPriority(p: Priority | null): Priority | null {
   return PRI_CYCLE[(PRI_CYCLE.indexOf(p ?? null) + 1) % PRI_CYCLE.length];
 }
 
-// Lazy - react-day-picker only loads when a date picker is actually opened.
+// Lazy: react-day-picker only loads when a date picker is actually opened.
 const Calendar = lazy(() =>
   import("./ui/calendar").then((m) => ({ default: m.Calendar }))
 );
@@ -74,7 +74,7 @@ function DueDatePicker({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
-        {/* Quick presets - the common reschedules without opening the grid. */}
+        {/* Quick presets: the common reschedules without opening the grid. */}
         <div className="mb-2 flex flex-wrap gap-1">
           {[
             { label: "Today", days: 0 },
@@ -124,7 +124,7 @@ function DueDatePicker({
 }
 
 // A collapsible detail section. Collapsed by default, and its header shows a
-// one-line summary of what is inside - so a due date or a blocker count stays
+// one-line summary of what is inside, so a due date or a blocker count stays
 // visible even when the section is shut. This is what keeps the sheet from being
 // eleven equal-weight blocks: the work (notes, subtasks) stays open, everything
 // set-once folds away but still reports itself.
@@ -320,7 +320,7 @@ export function TaskSheet({
     }
   }
 
-  // Section summaries - what each collapsed section reports about itself.
+  // Section summaries: what each collapsed section reports about itself.
   const scheduleSummary =
     [
       dueDate ? format(parseISO(dueDate), "d MMM") + (dueTime ? ` ${dueTime}` : "") : null,
@@ -351,7 +351,7 @@ export function TaskSheet({
     : null;
   const awaitingUrl = gmailThread
     ? `https://claude.ai/new?q=${encodeURIComponent(
-        `Apply my "Awaiting" label to Gmail thread ${gmailThread} (Gmail MCP label_thread) - ` +
+        `Apply my "Awaiting" label to Gmail thread ${gmailThread} (Gmail MCP label_thread). ` +
           "I'm waiting on a reply. Do not send anything."
       )}`
     : null;
@@ -374,7 +374,7 @@ export function TaskSheet({
               className="w-full bg-transparent pr-8 text-lg font-semibold text-foreground outline-none"
             />
 
-            {/* Priority: quick to set, worth scanning - stays visible. */}
+            {/* Priority: quick to set, worth scanning, stays visible. */}
             <div className="flex items-center gap-1">
               {[1, 2, 3, 4].map((p) => {
                 const on = priority === p;
@@ -402,7 +402,7 @@ export function TaskSheet({
               </span>
             </div>
 
-            {/* Add to Today - one of the most-used actions, so it lives up top,
+            {/* Add to Today: one of the most-used actions, so it lives up top,
                 always visible, not buried in the Schedule section. Marks intent
                 to work on it today without touching the deadline. */}
             {task.status !== "done" && (
@@ -659,7 +659,7 @@ export function TaskSheet({
                 </label>
               </div>
 
-              {/* Inline NLP date - type a phrase, Enter (or ↵ button) to set. */}
+              {/* Inline NLP date: type a phrase, Enter (or ↵ button) to set. */}
               <input
                 value={nlpDate}
                 onChange={(e) => setNlpDate(e.target.value)}
@@ -691,7 +691,7 @@ export function TaskSheet({
                 </div>
               )}
 
-              {/* Snooze - hide until a chosen day. */}
+              {/* Snooze: hide until a chosen day. */}
               <div>
                 <span className="flex items-center gap-1.5 text-xs text-muted">
                   <SnoozeIcon className="h-3.5 w-3.5" /> Snooze

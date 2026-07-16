@@ -44,7 +44,7 @@ export function AppShell() {
   // Mouse: a 6px move starts a drag, so a plain click still opens the task.
   // Touch: press-and-hold ~180ms starts a drag, so a normal swipe scrolls the
   // list instead of being hijacked. Without the TouchSensor, dragging was
-  // impossible on the phone - the app's primary surface.
+  // impossible on the phone, the app's primary surface.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, {
@@ -123,7 +123,7 @@ export function AppShell() {
             </div>
           </main>
 
-          {/* Capture FAB - thumb-reachable on mobile (capture-first PWA).
+          {/* Capture FAB: thumb-reachable on mobile (capture-first PWA).
               Hidden on desktop where Cmd-K / the header input suffice. */}
           <button
             type="button"

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { planDay } from "../lib/plan";
 import type { CalendarEvent, Task } from "../../shared/types";
 
-// Minimal task factory - only the fields the scheduler reads.
+// Minimal task factory: only the fields the scheduler reads.
 function task(id: string, over: Partial<Task> = {}): Task {
   return {
     id,

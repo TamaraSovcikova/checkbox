@@ -18,7 +18,7 @@ cleanupOutdatedCaches();
 // Workbox's precache route treats any same-origin, extensionless navigation
 // as an SPA route and serves the cached index.html for it by default
 // (`cleanURLs`). That silently hijacks real server routes like
-// /api/auth/google - the browser never leaves the app shell, so the Google
+// /api/auth/google: the browser never leaves the app shell, so the Google
 // OAuth redirect (and any other /api/* or /mcp navigation) never happens.
 // Registering this NetworkOnly route before precacheAndRoute() gives it
 // priority (workbox-routing matches in registration order), so these paths
@@ -42,7 +42,7 @@ self.addEventListener("push", (event) => {
           ? `${data.total} task${data.total !== 1 ? "s" : ""} today${
               data.overdue ? ` · ${data.overdue} overdue` : ""
             }${data.urgent ? ` · ${data.urgent} urgent` : ""}`
-          : "Nothing due today - enjoy! 🎉";
+          : "Nothing due today. Enjoy! 🎉";
 
       return self.registration.showNotification(`Checkbox · ${data.date}`, {
         body,

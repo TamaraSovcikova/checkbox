@@ -2,7 +2,7 @@ import { addMinutes, format, parseISO } from "date-fns";
 import type { Project, Task } from "../../shared/types";
 
 // Drag-drop routing for the single app-level DndContext. Kept pure (no network,
-// no React) so every branch is unit-testable - see test/dnd.test.ts.
+// no React) so every branch is unit-testable. See test/dnd.test.ts.
 
 export type DragData =
   | { type?: string; task?: Task; project?: Project }

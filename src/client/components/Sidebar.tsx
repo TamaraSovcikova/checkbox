@@ -63,7 +63,7 @@ const SidebarNavContext = createContext<() => void>(() => {});
 const useSidebarNav = () => useContext(SidebarNavContext);
 
 // Regrouped: task filters live under "Tasks"; the calendar is its own tool under
-// "Plan" (no longer a peer of "Overdue"). Settings is gone from the nav - it
+// "Plan" (no longer a peer of "Overdue"). Settings is gone from the nav, it
 // lives once, in the profile menu at the bottom.
 const TASK_VIEWS: NavDef[] = [
   { to: "/today", label: "Today", icon: TodayIcon },
@@ -361,7 +361,7 @@ function ProfileCard() {
   );
 }
 
-// The sidebar body - header, scrollable nav, profile card. Rendered inside the
+// The sidebar body: header, scrollable nav, profile card. Rendered inside the
 // desktop rail (Sidebar) and inside the mobile drawer (MobileSidebar), so it must
 // stretch to fill a flex-column parent (both provide h-full).
 function SidebarInner() {

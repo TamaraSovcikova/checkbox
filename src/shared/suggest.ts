@@ -1,6 +1,6 @@
 import type { Task } from "./types";
 
-// "Suggest for today" - the zero-cost, no-AI half of plan-my-day. You click it
+// "Suggest for today": the zero-cost, no-AI half of plan-my-day. You click it
 // when Today feels too empty, so it is deliberately NOT picky: it ranks EVERY
 // eligible open task and always returns the best available, even when nothing is
 // pressing. The score is what makes the ranking defensible (deadline pressure,
@@ -53,12 +53,12 @@ export function suggestForToday(
     let reason: string;
 
     if (dueIn !== null && dueIn <= HORIZON_DAYS) {
-      // Approaching deadline - the strongest signal.
+      // Approaching deadline: the strongest signal.
       score += dueIn === 1 ? 40 : dueIn === 2 ? 30 : 20;
       reason = dueIn === 1 ? "Due tomorrow" : `Due in ${dueIn} days`;
       if (t.priority <= 2) reason += ` · P${t.priority}`;
     } else if (dueIn !== null) {
-      // Has a deadline, just further out - a mild nudge over no-deadline tasks.
+      // Has a deadline, just further out: a mild nudge over no-deadline tasks.
       score += 5;
       reason = `Due ${t.due_date}${t.priority <= 2 ? ` · P${t.priority}` : ""}`;
     } else if (t.priority === 1) {

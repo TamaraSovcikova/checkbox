@@ -36,7 +36,7 @@ export function CheatSheet() {
         <CloseIcon className="h-4 w-4" />
       </button>
       <p className="mb-3 text-sm font-medium text-foreground">
-        Capture faster - type it all in one line
+        Capture faster: type it all in one line
       </p>
       <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
         {ROWS.map((r) => (

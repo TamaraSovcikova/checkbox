@@ -140,7 +140,7 @@ export function DependencyEditor({ task }: { task: Task }) {
         </button>
       )}
 
-      {/* Blocked until a DATE - e.g. "wait until next Saturday". Independent of
+      {/* Blocked until a DATE, e.g. "wait until next Saturday". Independent of
           task blockers; either one keeps the task blocked. */}
       <div className="mt-3">
         <span className="flex items-center gap-1.5 text-xs text-muted">

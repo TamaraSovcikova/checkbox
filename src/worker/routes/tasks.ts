@@ -6,7 +6,7 @@ import { nextDueDate } from "../../shared/recurrence";
 
 export const tasks = new Hono<{ Bindings: Bindings }>();
 
-// Today (Europe/Brussels) as YYYY-MM-DD - the anchor for after-completion recurrence.
+// Today (Europe/Brussels) as YYYY-MM-DD: the anchor for after-completion recurrence.
 function todayStr(tz = "Europe/Brussels") {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: tz,
@@ -399,7 +399,7 @@ tasks.post("/:id/snooze", async (c) => {
 });
 
 // --- time tracking ---
-// Start a timer: stamp timer_started_at now (idempotent - keeps an existing start).
+// Start a timer: stamp timer_started_at now (idempotent, keeps an existing start).
 tasks.post("/:id/timer/start", async (c) => {
   const userId = await getUserId(c);
   const id = c.req.param("id");

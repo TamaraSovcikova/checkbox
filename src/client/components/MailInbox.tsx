@@ -109,7 +109,7 @@ function ThreadRow({ head, count }: Thread) {
                 dismiss.mutate(head.id, { onSuccess: () => toast("Dismissed") })
               }
               aria-label="Dismiss"
-              title="Not task-worthy - dismiss (stays dismissed)"
+              title="Not task-worthy: dismiss (stays dismissed)"
               className="grid h-7 w-7 place-items-center rounded-md text-subtle hover:bg-surface-2 hover:text-foreground"
             >
               <CloseIcon className="h-4 w-4" />
@@ -176,8 +176,8 @@ export function MailInboxPage() {
             onClick={() =>
               refresh.mutate(undefined, {
                 onSuccess: (r) =>
-                  toast(`Refreshed - ${r.upserted} thread${r.upserted === 1 ? "" : "s"} checked`),
-                onError: () => toast("Gmail refresh failed - check Settings"),
+                  toast(`Refreshed: ${r.upserted} thread${r.upserted === 1 ? "" : "s"} checked`),
+                onError: () => toast("Gmail refresh failed. Check Settings"),
               })
             }
           >
@@ -188,7 +188,7 @@ export function MailInboxPage() {
       </div>
       <p className="mb-4 text-sm text-subtle">
         Every email thread the planner reviewed in the last 7 days, with what it
-        did. Confirm nothing slipped, or file the ones it missed - without opening
+        did. Confirm nothing slipped, or file the ones it missed, without opening
         Gmail. Populated by the planner via the <code className="rounded bg-surface-2 px-1 text-[11px]">add_mail_candidates</code> tool.
       </p>
 
@@ -231,7 +231,7 @@ export function MailInboxPage() {
             </h2>
             {needsReview.length === 0 ? (
               <p className="text-xs text-subtle">
-                All caught up - nothing waiting on you.
+                All caught up: nothing waiting on you.
               </p>
             ) : (
               <div className="space-y-1.5">

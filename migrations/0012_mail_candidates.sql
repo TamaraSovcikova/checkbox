@@ -2,7 +2,7 @@
 --
 -- The planner Claude already reads Gmail every morning and files tasks. This
 -- table gives every thread it saw a VERDICT (filed / skipped / pending) so
--- coverage is auditable at a glance - "did anything slip through?" - without a
+-- coverage is auditable at a glance ("did anything slip through?") without a
 -- mail client. No Gmail OAuth, no scopes: rows are written over MCP by whoever
 -- has the reach (the planner today; a live sync in Phase B).
 --
@@ -10,8 +10,8 @@
 -- 2pm must produce a new row, or coverage silently hides exactly that mail.
 --
 -- Two orthogonal write axes (see shared/mail.ts):
---   * verdict lattice  pending < skipped < filed  - writer vs writer
---   * user_locked flag                            - human vs writer (wins)
+--   * verdict lattice  pending < skipped < filed  (writer vs writer)
+--   * user_locked flag                            (human vs writer, wins)
 -- A human action (Dismiss / Accept / Create task) sets user_locked=1, freezing
 -- the row against all writers so a dismissed thread can never be re-filed by the
 -- next planner run (design finding A1).

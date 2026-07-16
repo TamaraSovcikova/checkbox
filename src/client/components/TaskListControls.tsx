@@ -205,7 +205,7 @@ export function useTaskSelection(
           if (cur) {
             api.completeTask(cur.id, true).then((r) => {
               invalidate();
-              if (r?.recurred && r.due_date) toast(`Recurring - next ${r.due_date}`);
+              if (r?.recurred && r.due_date) toast(`Recurring: next ${r.due_date}`);
               else
                 toast("Completed", () => {
                   api.completeTask(cur.id, false).then(invalidate);
@@ -251,7 +251,7 @@ export function useTaskSelection(
           toggle(task.id);
         } else if (selectedIds.size > 0) {
           // In selection mode a plain click extends the selection instead of
-          // opening - matches Gmail/Todoist multi-select ergonomics.
+          // opening. Matches Gmail/Todoist multi-select ergonomics.
           setCursor(index);
           e.preventDefault();
           lastClicked.current = index;

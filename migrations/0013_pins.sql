@@ -2,9 +2,9 @@
 -- inside it (so it can't pollute counts, Today, or planning).
 --
 -- Two kinds:
---   'list' - a living checklist you edit daily (shopping, conversation topics).
+--   'list': a living checklist you edit daily (shopping, conversation topics).
 --            Items are a JSON array [{id,text,done}] on the row.
---   'note' - a standing reminder you mostly just look at (a goal, a quote).
+--   'note': a standing reminder you mostly just look at (a goal, a quote).
 --            Free text in `body`.
 --
 -- Any pin can be `pinned_today`, which surfaces it in an always-visible strip at

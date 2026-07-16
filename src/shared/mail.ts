@@ -5,18 +5,18 @@
 // Two orthogonal axes decide what a WRITER (planner / gmail_sync / forward) may
 // change when its incoming row collides with a stored one on message_id:
 //
-//   Axis 0 - the lock (checked first). If the stored row is user_locked, a
+//   Axis 0: the lock (checked first). If the stored row is user_locked, a
 //     writer may refresh ONLY the freshness fields (snippet/received_at/
 //     permalink). A human has ruled; no writer overturns it. This is what makes
 //     Dismiss stick (finding A1).
 //
-//   Axis 1 - the verdict lattice (only when unlocked), pending < skipped < filed:
+//   Axis 1: the verdict lattice (only when unlocked), pending < skipped < filed:
 //     upgrade (Vin > Vcur)  -> take incoming verdict/reason/source, COALESCE task_id
 //     downgrade (Vin < Vcur)-> never; refresh freshness only
 //     tie (Vin == Vcur)     -> first filer wins; refresh freshness only
 //   task_id is never nulled by an upsert (COALESCE).
 //
-// Human actions (Dismiss / Accept / Create task) do NOT go through here - they
+// Human actions (Dismiss / Accept / Create task) do NOT go through here, they
 // write directly and set user_locked = 1.
 
 export type Verdict = "pending" | "skipped" | "filed";

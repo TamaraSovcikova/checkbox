@@ -11,7 +11,7 @@ import {
 } from "../lib/icons";
 
 // Attachments for a task: R2-backed file uploads plus plain link attachments.
-// File upload degrades gracefully - a 501 (no bucket bound) surfaces an inline
+// File upload degrades gracefully: a 501 (no bucket bound) surfaces an inline
 // note and the user can still attach links.
 export function AttachmentList({ taskId }: { taskId: string }) {
   const qc = useQueryClient();
@@ -37,9 +37,9 @@ export function AttachmentList({ taskId }: { taskId: string }) {
       const s = String(ex);
       setErr(
         s.includes("501")
-          ? "File storage isn't set up - attach a link instead."
+          ? "File storage isn't set up. Attach a link instead."
           : s.includes("507")
-          ? "Storage limit reached (free-tier guard) - delete some files or attach a link."
+          ? "Storage limit reached (free-tier guard). Delete some files or attach a link."
           : s.includes("413")
           ? "File too large (max 25 MB)."
           : "Upload failed."

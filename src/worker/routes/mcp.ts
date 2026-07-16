@@ -1,10 +1,10 @@
-// Checkbox MCP server - JSON-RPC 2.0 over HTTP (MCP streamable-HTTP transport).
+// Checkbox MCP server: JSON-RPC 2.0 over HTTP (MCP streamable-HTTP transport).
 // Mount at /mcp. Auth via Authorization: Bearer <token> (per-user or legacy).
 //
 // Two ways to authenticate, since different clients pass auth differently:
-//   • Header - Authorization: Bearer <token>. Used by the local mcp-remote bridge
+//   • Header: Authorization: Bearer <token>. Used by the local mcp-remote bridge
 //     (Claude Desktop / Claude Code claude_desktop_config.json).
-//   • Query  - ?token=<token>. Used by cloud-brokered connectors (Cowork /
+//   • Query:  ?token=<token>. Used by cloud-brokered connectors (Cowork /
 //     claude.ai "Add custom connector"), whose UI only takes a URL + OAuth and
 //     has no header field. The token rides in the registered URL instead.
 
@@ -430,7 +430,7 @@ const TOOLS = [
   {
     name: "add_mail_candidates",
     description:
-      "Gmail coverage: record a VERDICT for every email thread you reviewed, so the user can audit at a glance that nothing slipped. Call this once per planning run with one entry PER MESSAGE you looked at in the fetch window - including ones you deliberately skipped (pass verdict='skipped' with a one-line reason). This is what makes coverage provable: a thread with no row reads as 'never considered'. Set verdict='filed' and task_id when you created a task from it (also pass the same gmail_thread_id/message_id/permalink on create_task). Dedupe is on message_id and safe to re-run; a row a human has dismissed or filed is frozen and will not be overwritten.",
+      "Gmail coverage: record a VERDICT for every email thread you reviewed, so the user can audit at a glance that nothing slipped. Call this once per planning run with one entry PER MESSAGE you looked at in the fetch window, including ones you deliberately skipped (pass verdict='skipped' with a one-line reason). This is what makes coverage provable: a thread with no row reads as 'never considered'. Set verdict='filed' and task_id when you created a task from it (also pass the same gmail_thread_id/message_id/permalink on create_task). Dedupe is on message_id and safe to re-run; a row a human has dismissed or filed is frozen and will not be overwritten.",
     inputSchema: {
       type: "object",
       properties: {
@@ -465,7 +465,7 @@ const TOOLS = [
   {
     name: "scan_notes_for_tasks",
     description:
-      "Bridge Obsidian notes into Checkbox. Pass the raw text of one or more vault notes; the server extracts unchecked `- [ ]` checkboxes and TODO/FIXME markers (with source path + line) and files them as pending candidates the user accepts into Backlog. Also pass any looser commitments you spotted (e.g. 'I should email Sam') via `commitments`. Deduplicated - safe to re-run. Returns how many new candidates were added.",
+      "Bridge Obsidian notes into Checkbox. Pass the raw text of one or more vault notes; the server extracts unchecked `- [ ]` checkboxes and TODO/FIXME markers (with source path + line) and files them as pending candidates the user accepts into Backlog. Also pass any looser commitments you spotted (e.g. 'I should email Sam') via `commitments`. Deduplicated, safe to re-run. Returns how many new candidates were added.",
     inputSchema: {
       type: "object",
       properties: {

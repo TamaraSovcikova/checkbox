@@ -29,11 +29,11 @@ async function http<T>(url: string, init?: RequestInit): Promise<T> {
     credentials: "include",
     ...init,
   });
-  // Session expired or missing mid-use - bounce to Google login. The auth
+  // Session expired or missing mid-use: bounce to Google login. The auth
   // endpoints themselves are exempt so the AuthGate can probe /me quietly.
   if (res.status === 401 && !url.startsWith("/api/auth/")) {
     window.location.href = "/api/auth/google";
-    throw new Error("401 - redirecting to login");
+    throw new Error("401: redirecting to login");
   }
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.status === 204 ? (undefined as T) : res.json<T>();

@@ -113,7 +113,7 @@ views.get("/logbook", async (c) => {
 });
 
 // Completed today: done tasks whose completion date is today (in user tz). Powers
-// the "Completed" strip under Today - a same-day history you can un-check to
+// the "Completed" strip under Today: a same-day history you can un-check to
 // restore. Naturally empties at midnight since it keys off today's date.
 views.get("/completed-today", async (c) => {
   const userId = await getUserId(c);

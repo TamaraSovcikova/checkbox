@@ -62,7 +62,7 @@ export function TaskRow({
     dimDistantTasks && !done && !!task.due_date && task.due_date > monthAheadStr();
   const todayIsToday = todayStr();
   // "In Today" means the task surfaces in the Today view for ANY reason (planned,
-  // due today/overdue, or time-blocked today) - not just an explicit plan. So the
+  // due today/overdue, or time-blocked today), not just an explicit plan. So the
   // toggle's Remove branch can actually clear it out.
   const isInToday = inToday(task, todayIsToday);
   // Blocked = waiting on an open task OR a future blocked_until date. Shown as a
@@ -98,7 +98,7 @@ export function TaskRow({
     const res = await complete.mutateAsync({ id: task.id, done: !done });
     if (done) return; // was un-completing
     if (res?.recurred && res.due_date) {
-      toast(`Recurring - next on ${res.due_date}`);
+      toast(`Recurring: next on ${res.due_date}`);
     } else {
       toast("Completed", () => complete.mutate({ id: task.id, done: false }));
     }
@@ -159,7 +159,7 @@ export function TaskRow({
             : "hover:bg-surface-2/50"
         )}
       >
-        {/* Complete - leftmost and FIXED. It never shifts on hover, so ticking a
+        {/* Complete: leftmost and FIXED. It never shifts on hover, so ticking a
             task off is a single move to a stable target. */}
         <button
           aria-label="Complete"
@@ -176,7 +176,7 @@ export function TaskRow({
           {done && <CheckIcon className="h-2.5 w-2.5" />}
         </button>
 
-        {/* Multi-select - a square checkbox in a RESERVED slot just right of the
+        {/* Multi-select: a square checkbox in a RESERVED slot just right of the
             complete circle. It fades in on hover (or stays while a selection is
             active) using visibility, not display, so it never nudges the complete
             circle. Only rendered where selection is supported (list views). */}
