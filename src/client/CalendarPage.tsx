@@ -37,6 +37,7 @@ import {
   CalendarIcon,
   CloseIcon,
   AddIcon,
+  CheckIcon,
 } from "./lib/icons";
 
 // ── Grid constants ────────────────────────────────────────────────────────────
@@ -394,12 +395,13 @@ function ConnectCalendar() {
 
 // ── All-day event strip ───────────────────────────────────────────────────────
 
-// All-day entries from Google, with per-entry visibility: each chip has an x to
-// hide it, and hidden ones fold into a "N hidden" toggle you can restore from.
-// Hiding is keyed by TITLE (see UserPrefs.hiddenAllDayTitles), because these are
-// usually standing reminders that recur and every instance carries its own event
+// The all-day box above the grid: every all-day entry on the visible days, each
+// one a toggle. Click a chip to hide it, expand "N hidden" to click it back.
+//
+// Hiding is keyed by TITLE (see UserPrefs.hiddenAllDayTitles), not id: these are
+// usually standing reminders that recur, and every instance carries its own event
 // id, so hiding by id would only ever hide today's.
-function AllDayStrip({ events }: { events: CalendarEvent[] }) {
+function AllDayBox({ events }: { events: CalendarEvent[] }) {
   const { isAllDayHidden, toggleAllDayTitle } = useViewPrefs();
   const [showHidden, setShowHidden] = useState(false);
 
@@ -408,13 +410,22 @@ function AllDayStrip({ events }: { events: CalendarEvent[] }) {
   const visible = events.filter((e) => !isAllDayHidden(titleOf(e)));
   const hidden = events.filter((e) => isAllDayHidden(titleOf(e)));
 
+  // In week view the chips span seven days, so date them. In day view that would
+  // repeat the same date on every chip, so don't.
+  const days = new Set(events.map((e) => e.start.slice(0, 10)));
+  const dayOf = (e: CalendarEvent) =>
+    days.size > 1 ? format(parseISO(e.start.slice(0, 10)), "EEE d") : null;
+
   return (
-    <div className="mb-2 rounded-md border border-border bg-surface px-2 py-1.5">
+    <div className="mb-2 rounded-lg border border-border bg-surface px-2.5 py-2">
       <div className="flex items-center gap-2">
         <span className="text-xs font-medium text-foreground">All-day</span>
         <span className="rounded-full bg-surface-2 px-1.5 text-[11px] tabular-nums text-muted">
           {visible.length}
         </span>
+        {visible.length > 0 && (
+          <span className="text-[11px] text-subtle">click to hide</span>
+        )}
         {hidden.length > 0 && (
           <button
             type="button"
@@ -429,26 +440,30 @@ function AllDayStrip({ events }: { events: CalendarEvent[] }) {
       {visible.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {visible.map((e) => (
-            <span
+            <button
               key={e.id}
-              className="group inline-flex items-center gap-1 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-foreground"
+              type="button"
+              onClick={() => toggleAllDayTitle(titleOf(e))}
+              title={`Hide "${titleOf(e)}"`}
+              className="group inline-flex max-w-full items-center gap-1.5 rounded border border-border bg-surface-2 px-1.5 py-0.5 text-xs text-foreground transition-colors hover:border-danger/40"
             >
-              {titleOf(e)}
-              <button
-                type="button"
-                aria-label={`Hide "${titleOf(e)}"`}
-                title="Hide this entry (every day)"
-                onClick={() => toggleAllDayTitle(titleOf(e))}
-                className="text-subtle transition-colors hover:text-danger"
-              >
-                <CloseIcon className="h-3 w-3" />
-              </button>
-            </span>
+              {/* Ours vs the rest of your calendar: a tick means it is a Checkbox task. */}
+              {e.is_checkbox_owned && (
+                <CheckIcon className="h-3 w-3 shrink-0 text-primary" />
+              )}
+              {dayOf(e) && (
+                <span className="shrink-0 tabular-nums text-subtle">{dayOf(e)}</span>
+              )}
+              <span className="truncate">{titleOf(e)}</span>
+              <CloseIcon className="h-3 w-3 shrink-0 text-subtle transition-colors group-hover:text-danger" />
+            </button>
           ))}
         </div>
       )}
       {visible.length === 0 && (
-        <p className="mt-1.5 text-[11px] text-subtle">All entries hidden for this day.</p>
+        <p className="mt-1.5 text-[11px] text-subtle">
+          Every all-day entry is hidden. Use &ldquo;{hidden.length} hidden&rdquo; to bring one back.
+        </p>
       )}
 
       {/* Hidden entries, restorable. */}
@@ -460,10 +475,10 @@ function AllDayStrip({ events }: { events: CalendarEvent[] }) {
               type="button"
               onClick={() => toggleAllDayTitle(titleOf(e))}
               title="Show this entry again"
-              className="inline-flex items-center gap-1 rounded border border-dashed border-input px-1.5 py-0.5 text-xs text-subtle transition-colors hover:text-foreground"
+              className="inline-flex max-w-full items-center gap-1.5 rounded border border-dashed border-input px-1.5 py-0.5 text-xs text-subtle transition-colors hover:text-foreground"
             >
-              {titleOf(e)}
-              <AddIcon className="h-3 w-3" />
+              <span className="truncate">{titleOf(e)}</span>
+              <AddIcon className="h-3 w-3 shrink-0" />
             </button>
           ))}
         </div>
@@ -661,11 +676,12 @@ export default function CalendarPage() {
   const sync = useCalendarSync();
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
-  // Only genuine external all-day entries. Checkbox pushes every due-dated task
-  // to Google as an all-day event, so without this filter a task would show both
-  // as a task and again as an all-day chip. Mirrors the timed layer, which has
-  // always excluded our own events.
-  const allDayEvents = calEvents.filter((e) => e.all_day && !e.is_checkbox_owned);
+  // Every all-day entry on the visible days, ours included. An earlier version
+  // dropped is_checkbox_owned ones to stop tasks showing twice, but they are the
+  // overwhelming majority (25 of 28) so the box rendered empty. The duplication
+  // it was guarding against was really STALE events from done/deleted tasks, and
+  // reconcileTaskEvents fixes that at the source. Hide per entry instead.
+  const allDayEvents = calEvents.filter((e) => e.all_day);
 
   // "Plan my day" time-blocks TODAY's open tasks, so it always works off today
   // regardless of which day/week the grid is showing.
@@ -782,7 +798,7 @@ export default function CalendarPage() {
       <PlanMyDay tasks={planCandidates} />
 
       {/* All-day strip (across the visible range) */}
-      <AllDayStrip events={allDayEvents} />
+      <AllDayBox events={allDayEvents} />
 
       {/* Body: left planner pane + hour labels + one-or-seven day columns.
           pt-2 keeps the 06:00 label + first event off the clipped top edge. */}
