@@ -16,6 +16,7 @@ import { PRIORITY_VAR, areaColorVar, areaTintBg, shouldPill } from "../lib/color
 import { PriorityPill } from "./ui";
 import { cn, todayStr, monthAheadStr } from "@/lib/utils";
 import { inToday, leaveTodayBody, undoLeaveTodayBody } from "../lib/today";
+import { isBlocked, blockedLabel } from "../lib/blocked";
 import {
   CheckIcon,
   RepeatIcon,
@@ -61,13 +62,14 @@ export function TaskRow({
     dimDistantTasks && !done && !!task.due_date && task.due_date > monthAheadStr();
   const todayIsToday = todayStr();
   // "In Today" means the task surfaces in the Today view for ANY reason (planned,
-  // due today/overdue, or time-blocked today) — not just an explicit plan. So the
+  // due today/overdue, or time-blocked today) - not just an explicit plan. So the
   // toggle's Remove branch can actually clear it out.
   const isInToday = inToday(task, todayIsToday);
-  const openBlockers = (task.depends_on ?? []).filter(
-    (d) => d.status !== "done"
-  ).length;
-  const blocked = openBlockers > 0 && !done;
+  // Blocked = waiting on an open task OR a future blocked_until date. Shown as a
+  // distinct, quiet signal (muted title + a blocked chip), deliberately NOT the
+  // opacity fade used for distant tasks, so the two never read as the same thing.
+  const blocked = isBlocked(task, todayIsToday);
+  const blockedText = blockedLabel(task, todayIsToday);
   const running = !!task.timer_started_at;
   const subtasks = task.subtasks ?? [];
   const subDone = subtasks.filter((s) => s.done).length;
@@ -96,7 +98,7 @@ export function TaskRow({
     const res = await complete.mutateAsync({ id: task.id, done: !done });
     if (done) return; // was un-completing
     if (res?.recurred && res.due_date) {
-      toast(`Recurring — next on ${res.due_date}`);
+      toast(`Recurring - next on ${res.due_date}`);
     } else {
       toast("Completed", () => complete.mutate({ id: task.id, done: false }));
     }
@@ -118,11 +120,14 @@ export function TaskRow({
     await runComplete();
   }
 
-  // Area-coloured wash on the OUTER wrapper: the inner row's hover/selection
-  // backgrounds are semi-transparent, so they compose over this instead of hiding
-  // it. Thin rows need a touch more than cards to read, so tint a bit stronger.
-  // Tasks with no area stay untinted.
-  const tint = areaTintBg(area?.color, 16);
+  // Area signal on the OUTER wrapper: a coloured left bar (the clear "belongs to
+  // area X" cue) plus a gentle background wash. The bar is what carries the
+  // signal, so the wash stays subtle and a tinted row never reads as *selected*
+  // (selection/cursor are separate ring/bg layers on the inner row). The inner
+  // row's hover/selection backgrounds are semi-transparent, so they compose over
+  // this. Tasks with no area stay plain.
+  const tint = areaTintBg(area?.color, 12);
+  const accent = area ? areaColorVar(area.color) : undefined;
   return (
     <div
       className={cn(
@@ -131,7 +136,10 @@ export function TaskRow({
         // Dim the far future; hover restores full opacity so it never feels lost.
         distant && !isDragging && "opacity-45 transition-opacity hover:opacity-100"
       )}
-      style={tint ? { backgroundColor: tint } : undefined}
+      style={{
+        ...(tint ? { backgroundColor: tint } : {}),
+        ...(accent ? { boxShadow: `inset 3px 0 0 ${accent}` } : {}),
+      }}
     >
       {/* The whole row is the drag surface (grab anywhere, including on touch via
           press-and-hold). A plain click still opens the task, because the sensor
@@ -151,7 +159,7 @@ export function TaskRow({
             : "hover:bg-surface-2/50"
         )}
       >
-        {/* Complete — leftmost and FIXED. It never shifts on hover, so ticking a
+        {/* Complete - leftmost and FIXED. It never shifts on hover, so ticking a
             task off is a single move to a stable target. */}
         <button
           aria-label="Complete"
@@ -168,7 +176,7 @@ export function TaskRow({
           {done && <CheckIcon className="h-2.5 w-2.5" />}
         </button>
 
-        {/* Multi-select — a square checkbox in a RESERVED slot just right of the
+        {/* Multi-select - a square checkbox in a RESERVED slot just right of the
             complete circle. It fades in on hover (or stays while a selection is
             active) using visibility, not display, so it never nudges the complete
             circle. Only rendered where selection is supported (list views). */}
@@ -217,7 +225,16 @@ export function TaskRow({
           onClick={(e) => (selection ? selection.onRowClick(e) : onOpen(task))}
           className="flex-1 text-left"
         >
-          <div className={cn("text-sm text-foreground", done && "text-subtle line-through")}>
+          <div
+            className={cn(
+              "text-sm",
+              done
+                ? "text-subtle line-through"
+                : blocked
+                ? "text-muted" // quietened, but not opacity-faded like distant
+                : "text-foreground"
+            )}
+          >
             {task.title}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-subtle">
@@ -251,11 +268,11 @@ export function TaskRow({
             )}
             {blocked && (
               <span
-                className="inline-flex items-center gap-0.5 text-warning"
-                title={`Blocked by ${openBlockers} open task${openBlockers !== 1 ? "s" : ""}`}
+                className="inline-flex items-center gap-0.5 rounded bg-surface-2 px-1 py-0.5 text-subtle"
+                title={`Blocked ${blockedText ?? ""}`.trim()}
               >
                 <BlockedIcon className="h-3 w-3" />
-                Blocked
+                {blockedText ? `blocked ${blockedText}` : "blocked"}
               </span>
             )}
             {running && (
