@@ -56,6 +56,7 @@ export interface Task {
   time_spent_min: number; // accumulated actual minutes
   timer_started_at: string | null; // ISO instant a running timer began
   snoozed_until: string | null; // YYYY-MM-DD; hidden from views until this day
+  blocked_until: string | null; // YYYY-MM-DD; task is blocked until this date
   planned_date: string | null; // YYYY-MM-DD; "I intend to work on this today" (not a deadline)
   scheduled_start: string | null;
   scheduled_end: string | null;
@@ -334,7 +335,7 @@ export interface CaptureParse {
   // The raw text chrono matched for the date (e.g. "tomorrow 3pm"), so a capture
   // UI can offer to dismiss a wrong guess and put the words back in the title.
   dateText: string | null;
-  // The title with the date left in place — what to fall back to if the user
+  // The title with the date left in place - what to fall back to if the user
   // dismisses the detected date.
   titleWithDate: string;
   priority: Priority | null;

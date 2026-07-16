@@ -1,20 +1,29 @@
 import { useEffect, useState } from "react";
+import { format, addDays, nextSaturday } from "date-fns";
 import type { Task, TaskRef } from "../../shared/types";
 import { api } from "../lib/api";
 import { useTaskInvalidate } from "../lib/queries";
 import { BlockedIcon, AddIcon, CloseIcon, CheckIcon } from "../lib/icons";
 import { cn } from "@/lib/utils";
 
-// Edit a task's blockers ("blocked by"). Search the user's open tasks and pick
-// one to add; the badge on rows/views is derived from these blockers' status.
+// Edit a task's blockers. Two kinds: blocked BY another task (search + pick), and
+// blocked UNTIL a date (blocked_until). The row/view badge derives from both.
 export function DependencyEditor({ task }: { task: Task }) {
   const invalidate = useTaskInvalidate();
   const [deps, setDeps] = useState<TaskRef[]>(task.depends_on ?? []);
   const [adding, setAdding] = useState(false);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Task[]>([]);
+  const [blockedUntil, setBlockedUntil] = useState(task.blocked_until ?? "");
 
   useEffect(() => setDeps(task.depends_on ?? []), [task]);
+  useEffect(() => setBlockedUntil(task.blocked_until ?? ""), [task]);
+
+  async function setBlock(date: string | null) {
+    setBlockedUntil(date ?? "");
+    await api.updateTask(task.id, { blocked_until: date });
+    invalidate();
+  }
 
   useEffect(() => {
     if (!adding || q.trim().length < 2) {
@@ -130,6 +139,43 @@ export function DependencyEditor({ task }: { task: Task }) {
           <AddIcon className="h-3.5 w-3.5" /> Add blocker
         </button>
       )}
+
+      {/* Blocked until a DATE - e.g. "wait until next Saturday". Independent of
+          task blockers; either one keeps the task blocked. */}
+      <div className="mt-3">
+        <span className="flex items-center gap-1.5 text-xs text-muted">
+          <BlockedIcon className="h-3.5 w-3.5" /> Blocked until
+          {blockedUntil && <span className="text-warning">{blockedUntil}</span>}
+        </span>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <input
+            type="date"
+            value={blockedUntil}
+            onChange={(e) => setBlock(e.target.value || null)}
+            className="h-8 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
+          />
+          <button
+            onClick={() => setBlock(format(nextSaturday(new Date()), "yyyy-MM-dd"))}
+            className="rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+          >
+            Next Saturday
+          </button>
+          <button
+            onClick={() => setBlock(format(addDays(new Date(), 7), "yyyy-MM-dd"))}
+            className="rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+          >
+            In a week
+          </button>
+          {blockedUntil && (
+            <button
+              onClick={() => setBlock(null)}
+              className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
