@@ -531,8 +531,11 @@ export function useViewPrefs() {
         : [...hiddenAllDayTitles, title],
     });
 
-  // The read-only day timeline beside Today. Off by default.
-  const todayCalendar = prefs.todayCalendar === true;
+  // The read-only day timeline beside Today. On by default (undefined ⇒ true),
+  // so seeing how the day is scheduled is the default rather than a setting you
+  // have to discover; only an explicit false hides it. Matches the sense of
+  // dimDistantTasks / the gcal-sync prefs above.
+  const todayCalendar = prefs.todayCalendar !== false;
   const setTodayCalendar = (on: boolean) =>
     save.mutate({ ...prefs, todayCalendar: on });
 
