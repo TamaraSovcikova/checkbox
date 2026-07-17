@@ -760,25 +760,29 @@ export default function CalendarPage() {
 
   return (
     <div className="flex h-full flex-col gap-3 pt-4 md:pt-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => step(-1)}
-          className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-surface-2 hover:text-foreground"
-          aria-label={view === "week" ? "Previous week" : "Previous day"}
-        >
-          <ChevronLeftIcon className="h-4 w-4" />
-        </button>
-        <h1 className="min-w-0 truncate text-base font-semibold text-foreground">
-          {title}
-        </h1>
-        <button
-          onClick={() => step(1)}
-          className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-surface-2 hover:text-foreground"
-          aria-label={view === "week" ? "Next week" : "Next day"}
-        >
-          <ChevronRightIcon className="h-4 w-4" />
-        </button>
+      {/* Header. Wraps: the date + its arrows take their own line on a phone,
+          the controls follow underneath. Unwrapped, the title was the only
+          shrinkable thing in the row and collapsed to nothing. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex min-w-0 basis-full items-center gap-1 sm:basis-auto">
+          <button
+            onClick={() => step(-1)}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded text-muted hover:bg-surface-2 hover:text-foreground"
+            aria-label={view === "week" ? "Previous week" : "Previous day"}
+          >
+            <ChevronLeftIcon className="h-4 w-4" />
+          </button>
+          <h1 className="min-w-0 truncate text-base font-semibold text-foreground">
+            {title}
+          </h1>
+          <button
+            onClick={() => step(1)}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded text-muted hover:bg-surface-2 hover:text-foreground"
+            aria-label={view === "week" ? "Next week" : "Next day"}
+          >
+            <ChevronRightIcon className="h-4 w-4" />
+          </button>
+        </div>
         <Button variant="outline" size="sm" onClick={() => setDate(new Date())}>
           Today
         </Button>
@@ -838,9 +842,13 @@ export default function CalendarPage() {
       {/* Body: left planner pane + hour labels + one-or-seven day columns.
           pt-2 keeps the 06:00 label + first event off the clipped top edge. */}
       <div className="flex flex-1 gap-3 overflow-auto pt-2">
-        {/* Left planner pane: the tasks you drag onto the calendar. */}
+        {/* Left planner pane: the tasks you drag onto the calendar. Desktop only.
+            It is a fixed 208px that will not shrink, which on a 375px phone left
+            the grid itself about 100px wide; and its whole purpose is dragging
+            onto the timeline, which is not a gesture a phone affords anyway. The
+            grid gets the full width instead. */}
         <div
-          className="w-52 shrink-0 overflow-y-auto border-r border-border pr-3"
+          className="hidden w-52 shrink-0 overflow-y-auto border-r border-border pr-3 md:block"
           style={{ marginTop: view === "week" ? 24 : 0 }}
         >
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80">

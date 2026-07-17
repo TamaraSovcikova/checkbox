@@ -76,3 +76,78 @@ describe("calendar events range query", () => {
     expect(body.map((e) => e.title)).toEqual(["Wed all-day"]);
   });
 });
+
+// A task ticked off should leave the calendar. reconcileTaskEvents deletes the
+// Google event, but it runs on the sync tick and can fail, so the read filters
+// too - otherwise a done task keeps drawing an all-day chip. Prod had exactly
+// one of these ("Prepare for team lunch", done, all-day row still cached).
+describe("done tasks leave the calendar", () => {
+  // Link a cached checkbox-owned event to a task in the given status.
+  function ownedEvent(
+    id: string,
+    title: string,
+    status: "todo" | "done",
+    day = "2026-07-15",
+    allDay = true
+  ) {
+    const taskId = `task-${id}`;
+    raw
+      .prepare(
+        "INSERT INTO tasks (id, user_id, title, status, due_date) VALUES (?, ?, ?, ?, ?)"
+      )
+      .run(taskId, USER, title, status, day);
+    raw
+      .prepare(
+        `INSERT INTO calendar_events_cache
+           (id, user_id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id)
+         VALUES (?, ?, ?, 'primary', ?, ?, ?, ?, 1, ?)`
+      )
+      .run(
+        id,
+        USER,
+        `g-${id}`,
+        title,
+        allDay ? day : `${day}T08:00:00.000Z`,
+        allDay ? day : `${day}T09:00:00.000Z`,
+        allDay ? 1 : 0,
+        taskId
+      );
+    return taskId;
+  }
+
+  it("hides an all-day event whose task is done, and keeps an open one", async () => {
+    ownedEvent("e1", "Ticked off", "done");
+    ownedEvent("e2", "Still open", "todo");
+
+    const body = (await (await get("2026-07-15", "2026-07-16")).json()) as any[];
+    const titles = body.map((e) => e.title);
+    expect(titles).toContain("Still open");
+    expect(titles).not.toContain("Ticked off");
+  });
+
+  it("hides a TIMED event whose task is done too", async () => {
+    ownedEvent("e3", "Done time-block", "done", "2026-07-15", false);
+
+    const body = (await (await get("2026-07-15", "2026-07-16")).json()) as any[];
+    expect(body.map((e) => e.title)).not.toContain("Done time-block");
+  });
+
+  it("never hides a real Google event, even one linked to a done task", async () => {
+    // is_checkbox_owned = 0: not ours to hide, whatever the task says.
+    raw
+      .prepare(
+        "INSERT INTO tasks (id, user_id, title, status) VALUES ('t-ext', ?, 'Done', 'done')"
+      )
+      .run(USER);
+    raw
+      .prepare(
+        `INSERT INTO calendar_events_cache
+           (id, user_id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id)
+         VALUES ('x1', ?, 'gx1', 'primary', 'Real meeting', '2026-07-15', '2026-07-16', 1, 0, 't-ext')`
+      )
+      .run(USER);
+
+    const body = (await (await get("2026-07-15", "2026-07-16")).json()) as any[];
+    expect(body.map((e) => e.title)).toContain("Real meeting");
+  });
+});

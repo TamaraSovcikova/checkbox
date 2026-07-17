@@ -52,6 +52,7 @@ import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
 import { TodayBoard } from "./components/TodayBoard";
 import { TaskRow } from "./components/TaskRow";
+import { TaskMeta, TodayToggle, optionalCardBorder } from "./components/TaskMeta";
 import {
   useTaskSelection,
   BulkActionBar,
@@ -71,9 +72,9 @@ import {
   BackIcon,
   ICON_SIZE,
 } from "./lib/icons";
-import { areaTintBg, shouldPill } from "./lib/colors";
+import { areaTintBg } from "./lib/colors";
 import { useViewPrefs } from "./lib/queries";
-import { Button, cx, PriorityPill } from "./components/ui";
+import { Button, cx } from "./components/ui";
 import { todayStr } from "./lib/utils";
 import { api } from "./lib/api";
 import type { ComponentType, ReactNode } from "react";
@@ -350,37 +351,45 @@ function useTaskCollection(
   };
 }
 
+// Grid card. Shares TaskMeta/TodayToggle with the rows and the board, so
+// `optional` and the Today marker survive the trip to a grid view (they used to
+// vanish: this rendered its own chip subset). A div rather than a button because
+// the Today toggle is itself a button and buttons cannot nest.
 function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
   const { data: areas = [] } = useAreas();
   const area = areas.find((a) => a.id === task.area_id);
   const done = task.status === "done";
   const tint = areaTintBg(area?.color, 10);
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onOpen(task)}
-      className="flex flex-col rounded-lg border border-border bg-surface/60 p-3 text-left transition-colors hover:border-primary/40"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(task);
+        }
+      }}
+      className={cx(
+        "group flex cursor-pointer flex-col rounded-lg border border-border bg-surface/60 p-3 text-left transition-colors hover:border-primary/40",
+        optionalCardBorder(task)
+      )}
       style={tint ? { backgroundColor: tint } : undefined}
     >
-      <span className={cx("text-sm text-foreground", done && "text-subtle line-through")}>
-        {task.title}
-      </span>
-      <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-subtle">
-        {shouldPill(task.priority) && <PriorityPill priority={task.priority} />}
-        {area && (
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{ background: areaColorVar(area.color) }}
-            title={area.name}
-          />
-        )}
-        {task.due_date && <span className="text-primary">{task.due_date}</span>}
-        {(task.labels ?? []).map((l) => (
-          <span key={l.id} className="text-muted">
-            @{l.name}
-          </span>
-        ))}
-      </span>
-    </button>
+      <div className="flex items-start gap-1.5">
+        <span
+          className={cx(
+            "min-w-0 flex-1 text-sm",
+            done ? "text-subtle line-through" : "text-foreground"
+          )}
+        >
+          {task.title}
+        </span>
+        {!done && <TodayToggle task={task} alwaysVisible />}
+      </div>
+      <TaskMeta task={task} />
+    </div>
   );
 }
 

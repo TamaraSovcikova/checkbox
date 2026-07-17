@@ -577,7 +577,7 @@ export async function reconcileTaskEvents(
   if (!account) return 0;
   const fallbackCal = account.primary_calendar_id ?? "primary";
 
-  // Two passes, because neither source sees everything on its own.
+  // THREE passes, because no single source sees every stray on its own.
   //
   // (a) DONE tasks that still hold an event. The linkage on the task row is
   //     authoritative, so this catches them whether or not the event is cached.
@@ -585,6 +585,14 @@ export async function reconcileTaskEvents(
   //     this off the cache alone silently missed real strays.
   // (b) Cached checkbox-owned events whose task is GONE. A deleted task leaves no
   //     row to read (the FK nulls task_id), so the cache is the only trace here.
+  // (c) Cached checkbox-owned events whose task is DONE. The gap between the two
+  //     above, and a real one: the complete route NULLs the task's linkage BEFORE
+  //     firing the Google delete in the background, so if that delete does not
+  //     land, (a) can no longer see the event (linkage gone) and (b) will not
+  //     touch it (the task row still exists). The event then lived on Google and
+  //     in the cache forever, which is exactly how a done task kept showing a
+  //     chip in the all-day box. Found in prod, not theorised: "Prepare for team
+  //     lunch", completed 2026-07-16, still had its 2026-07-17 all-day row.
   const done = await env.DB.prepare(
     `SELECT id AS task_id, gcal_event_id, gcal_calendar_id AS calendar_id
        FROM tasks
@@ -603,6 +611,15 @@ export async function reconcileTaskEvents(
     .bind(userId)
     .all<{ gcal_event_id: string; calendar_id: string; task_id: string | null }>();
 
+  const cachedDone = await env.DB.prepare(
+    `SELECT c.gcal_event_id, c.calendar_id, c.task_id
+       FROM calendar_events_cache c
+       JOIN tasks t ON t.id = c.task_id
+      WHERE c.user_id = ? AND c.is_checkbox_owned = 1 AND t.status = 'done'`
+  )
+    .bind(userId)
+    .all<{ gcal_event_id: string; calendar_id: string; task_id: string | null }>();
+
   const targets = [
     ...(done.results ?? []).map((r) => ({
       taskId: r.task_id as string | null,
@@ -614,8 +631,13 @@ export async function reconcileTaskEvents(
       eventId: r.gcal_event_id,
       calId: r.calendar_id ?? fallbackCal,
     })),
+    ...(cachedDone.results ?? []).map((r) => ({
+      taskId: r.task_id,
+      eventId: r.gcal_event_id,
+      calId: r.calendar_id ?? fallbackCal,
+    })),
   ];
-  // The two passes can name the same event; only act on each once.
+  // The passes can name the same event; only act on each once.
   const seen = new Set<string>();
   const unique = targets.filter((t) => {
     const key = `${t.calId}:${t.eventId}`;

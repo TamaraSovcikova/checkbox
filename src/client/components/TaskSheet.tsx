@@ -8,6 +8,7 @@ import {
   useProjects,
   useDeleteTask,
   useTaskInvalidate,
+  useTasksByIds,
   useUpdateTask,
 } from "../lib/queries";
 import { RECURRENCE_PRESETS, recurrenceLabel } from "../../shared/recurrence";
@@ -169,12 +170,25 @@ function Section({
 // (title, notes, subtasks) is always open at the top; scheduling, tracking and
 // links fold into summarised sections below, because you set them once.
 export function TaskSheet({
-  task,
+  task: opened,
   onClose,
 }: {
   task: Task | null;
   onClose: () => void;
 }) {
+  // The caller hands us the task it had in hand when the sheet was opened: a
+  // SNAPSHOT, frozen at that moment. Re-resolve it from the cache so the sheet
+  // reflects its own writes. "Add to Today" wrote planned_date and invalidated
+  // every list, but this component kept reading the stale snapshot, so isInToday
+  // stayed false and the button never acknowledged the click. The same staleness
+  // sat under every summary in here.
+  //
+  // By id via the ids= endpoint, because that one answers for DONE tasks too:
+  // the plain list hides those, so completing a task from the sheet would
+  // otherwise make it look deleted. Falls back to the snapshot while in flight.
+  const live = useTasksByIds(opened ? [opened.id] : []);
+  const task = live.data?.[0] ?? opened;
+
   const update = useUpdateTask();
   const del = useDeleteTask();
   const snooze = useSnoozeTask();
@@ -212,7 +226,13 @@ export function TaskSheet({
     setSubtasks(task.subtasks ?? []);
     setNlpDate("");
     setOptional(!!task.optional);
-  }, [task]);
+    // Keyed on the task's ID, not the task object: `task` is now a live cache
+    // read, so it gets a new identity on every refetch, and depending on the
+    // object would reset these fields (blowing away half-typed text) each time
+    // any write invalidated the list. A different id is a genuinely different
+    // task and does want a reset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id]);
 
   // Inline NLP date: parse a phrase like "next tue 3pm" and set due date/time.
   function applyNlpDate() {

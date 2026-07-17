@@ -54,8 +54,13 @@ export function TopBar<T extends string>({
 }) {
   return (
     <header className="sticky top-0 z-20 -mx-4 mb-4 border-b border-border bg-background px-4 pt-4 pb-3 md:-mx-6 md:px-6 md:pt-6">
-      <div className="flex items-center gap-4">
-      <div className="flex min-w-0 items-center gap-2.5">
+      {/* Wraps rather than truncates. The title block carries min-w-0 so it can
+          shrink, but tabs + actions do not, so on a narrow screen the title was
+          squeezed to LITERALLY zero width and the page lost its heading. Below
+          `sm` it takes a line of its own (basis-full) and the controls wrap
+          underneath; from `sm` up it is the single row it always was. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="flex min-w-0 basis-full items-center gap-2.5 sm:basis-auto">
         {icon && <span className="shrink-0 text-primary">{icon}</span>}
         <h1 className="truncate text-xl font-bold tracking-tight text-foreground">
           {title}
@@ -146,10 +151,13 @@ function LabeledMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-foreground data-[state=open]:bg-surface-2 data-[state=open]:text-foreground"
+          aria-label={label}
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-foreground data-[state=open]:bg-surface-2 data-[state=open]:text-foreground sm:px-2.5"
         >
           <span>{icon}</span>
-          {label}
+          {/* Icon-only on a phone: three labelled menus plus tabs is more than a
+              375px bar can hold. aria-label keeps them named for screen readers. */}
+          <span className="hidden sm:inline">{label}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

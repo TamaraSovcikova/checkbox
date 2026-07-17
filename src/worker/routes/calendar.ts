@@ -139,21 +139,37 @@ calendar.get("/events", async (c) => {
   const hidden =
     "calendar_id NOT IN (SELECT calendar_id FROM calendar_feeds WHERE user_id = ? AND enabled = 0)";
 
+  // A finished task has no business on the calendar, so never serve an event we
+  // own whose task is done. reconcileTaskEvents deletes those from Google, but
+  // that runs on the 15-min sync tick and can fail; until it lands, the cache
+  // still holds the row and the all-day box still drew a chip for a task ticked
+  // off days ago. Decide it from `tasks`, the table that owns the fact, rather
+  // than from the cache, which is window-limited and rebuilt.
+  //
+  // Scoped to is_checkbox_owned: a real Google event that happens to be linked to
+  // a task is not ours to hide.
+  const notDone =
+    `NOT (is_checkbox_owned = 1 AND task_id IN
+       (SELECT id FROM tasks WHERE user_id = ? AND status = 'done'))`;
+
   const { results } = await c.env.DB.prepare(
     `SELECT id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id, color
      FROM calendar_events_cache
-     WHERE user_id = ? AND NOT all_day AND start >= ? AND start < ? AND ${hidden}
+     WHERE user_id = ? AND NOT all_day AND start >= ? AND start < ? AND ${hidden} AND ${notDone}
      UNION ALL
      SELECT id, gcal_event_id, calendar_id, title, start, end, all_day, is_checkbox_owned, task_id, color
      FROM calendar_events_cache
-     WHERE user_id = ? AND all_day AND start >= ? AND start < ? AND ${hidden}
+     WHERE user_id = ? AND all_day AND start >= ? AND start < ? AND ${hidden} AND ${notDone}
      ORDER BY start`
   )
     // All-day starts are bare YYYY-MM-DD strings, so match them against the bare
     // date range (not the ISO timestamps): in week view the range spans 7 days,
     // and `start = ?` only ever matched all-day events on the first day, dropping
     // every all-day event mid-week.
-    .bind(userId, startISO, endISO, userId, userId, start, end, userId)
+    .bind(
+      userId, startISO, endISO, userId, userId,
+      userId, start, end, userId, userId
+    )
     .all();
 
   return c.json(

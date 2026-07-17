@@ -2,16 +2,22 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Project, Task } from "../../shared/types";
 import { useTasks, useAreas } from "../lib/queries";
 import { TaskRow } from "./TaskRow";
-import { areaTintBg, areaColorVar, shouldPill } from "../lib/colors";
-import { PriorityPill } from "./ui";
+import { areaTintBg } from "../lib/colors";
+import { TaskMeta, TodayToggle, optionalCardBorder } from "./TaskMeta";
 import { cn } from "@/lib/utils";
 
 // Draggable board card. Drops resolve in the app-level DndContext (AppShell),
 // so a card can go to another column OR onto a sidebar area/project.
+//
+// Chips + the Today marker come from TaskMeta/TodayToggle, the same pieces the
+// list rows use, so a card in a project board carries the same signals as the
+// same task in a list. It used to render its own four-chip subset, which is why
+// `optional` and Today were invisible on any board.
 export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
   const { data: areas = [] } = useAreas();
   const area = areas.find((a) => a.id === task.area_id);
   const tint = areaTintBg(area?.color, 12);
+  const done = task.status === "done";
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: task.id, data: { type: "task", task } });
   return (
@@ -25,29 +31,21 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
       }}
       onClick={() => onOpen(task)}
       className={cn(
-        "touch-none rounded-md border border-border bg-surface p-2 transition-colors hover:border-primary/40",
-        isDragging ? "cursor-grabbing opacity-50" : "cursor-grab"
+        "group touch-none rounded-md border border-border bg-surface p-2 transition-colors hover:border-primary/40",
+        isDragging ? "cursor-grabbing opacity-50" : "cursor-grab",
+        optionalCardBorder(task)
       )}
       {...attributes}
       {...listeners}
     >
-      <div className="text-sm text-foreground">{task.title}</div>
-      <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-subtle">
-        {shouldPill(task.priority) && <PriorityPill priority={task.priority} />}
-        {area && (
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{ background: areaColorVar(area.color) }}
-            title={area.name}
-          />
-        )}
-        {task.due_date && <span className="text-primary">{task.due_date}</span>}
-        {(task.labels ?? []).map((l) => (
-          <span key={l.id} className="text-muted">
-            @{l.name}
-          </span>
-        ))}
+      <div className="flex items-start gap-1.5">
+        <div className={cn("min-w-0 flex-1 text-sm", done ? "text-subtle line-through" : "text-foreground")}>
+          {task.title}
+        </div>
+        {!done && <TodayToggle task={task} alwaysVisible />}
       </div>
+      {/* The column heading already says Doing, so the chip would only repeat it. */}
+      <TaskMeta task={task} hideDoing />
     </div>
   );
 }
