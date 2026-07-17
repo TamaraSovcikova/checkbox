@@ -4,7 +4,7 @@ import { recurrenceLabel } from "../../shared/recurrence";
 import { areaColorVar, shouldPill } from "../lib/colors";
 import { PriorityPill } from "./ui";
 import { cn, todayStr } from "@/lib/utils";
-import { inToday } from "../lib/today";
+import { inToday, subtasksDueBy } from "../lib/today";
 import { dueLabel, isOverdue } from "../lib/due";
 import { useToggleToday } from "../lib/use-toggle-today";
 import { isBlocked, blockedLabel } from "../lib/blocked";
@@ -14,6 +14,7 @@ import {
   TimerIcon,
   TodayIcon,
   DoingIcon,
+  SubtaskIcon,
 } from "../lib/icons";
 
 // ── The one description of what a task looks like ────────────────────────────
@@ -85,6 +86,21 @@ export function TaskMeta({
   const blockedText = blockedLabel(task, today);
   const running = !!task.timer_started_at;
 
+  // A task can be sitting in Today purely because one of its STEPS is due, while
+  // its own due date is weeks out. Say so on the row: an entry you cannot explain
+  // reads as a bug (the all-day box taught us that the expensive way). The count
+  // is of open subtasks due today or already late.
+  const dueSubs = done ? [] : subtasksDueBy(task, today);
+  const lateSubs = dueSubs.filter((s) => s.due_date! < today);
+  // Phrased so it is never a lie: all late reads "overdue", none late reads
+  // "today", and a mix reads plain "due" rather than claiming either.
+  const subLabel =
+    lateSubs.length === 0
+      ? `${dueSubs.length} subtask${dueSubs.length === 1 ? "" : "s"} today`
+      : lateSubs.length === dueSubs.length
+      ? `${dueSubs.length} subtask${dueSubs.length === 1 ? "" : "s"} overdue`
+      : `${dueSubs.length} subtasks due`;
+
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-subtle">
       {shouldPill(task.priority) && <PriorityPill priority={task.priority} />}
@@ -124,6 +140,19 @@ export function TaskMeta({
         >
           {dueLabel(task.due_date, today)}
           {task.due_time ? ` ${task.due_time}` : ""}
+        </span>
+      )}
+      {dueSubs.length > 0 && (
+        <span
+          className={cn(
+            "inline-flex items-center gap-0.5",
+            lateSubs.length > 0 ? "text-danger" : "text-primary"
+          )}
+          // Names them, so you know which step is owed without opening the task.
+          title={dueSubs.map((s) => `${s.title} (${s.due_date})`).join("\n")}
+        >
+          <SubtaskIcon className="h-3 w-3" />
+          {subLabel}
         </span>
       )}
       {blocked && (

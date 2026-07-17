@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { inToday, leaveTodayBody, undoLeaveTodayBody } from "../src/client/lib/today";
-import type { Task } from "../src/shared/types";
+import {
+  inToday,
+  inTodayView,
+  hasSubtaskDueToday,
+  subtasksDueBy,
+  leaveTodayBody,
+  undoLeaveTodayBody,
+} from "../src/client/lib/today";
+import type { Subtask, Task } from "../src/shared/types";
 
 const TODAY = "2026-07-15";
 
@@ -36,6 +43,74 @@ describe("inToday — every reason a task surfaces in Today", () => {
     expect(inToday(task({ due_date: "2026-07-20" }), TODAY)).toBe(false);
     expect(inToday(task({ planned_date: "2026-07-20" }), TODAY)).toBe(false);
     expect(inToday(task(), TODAY)).toBe(false);
+  });
+});
+
+// A task can owe work today through one of its STEPS while the task itself is not
+// due for weeks. The Today VIEW holds those; inToday deliberately does not.
+const sub = (over: Partial<Subtask> = {}): Subtask => ({
+  id: "s1",
+  task_id: "t1",
+  title: "S",
+  done: false,
+  position: 0,
+  due_date: null,
+  priority: null,
+  ...over,
+});
+
+describe("subtasks carry a task into Today", () => {
+  const farOff = { due_date: "2026-09-01" }; // the task itself is not due
+
+  it("an open subtask due today or overdue puts the task in the view", () => {
+    expect(
+      inTodayView(task({ ...farOff, subtasks: [sub({ due_date: TODAY })] }), TODAY)
+    ).toBe(true);
+    expect(
+      inTodayView(task({ ...farOff, subtasks: [sub({ due_date: "2026-07-01" })] }), TODAY)
+    ).toBe(true);
+  });
+
+  it("a DONE subtask does not, however overdue", () => {
+    expect(
+      hasSubtaskDueToday(
+        task({ ...farOff, subtasks: [sub({ due_date: "2026-07-01", done: true })] }),
+        TODAY
+      )
+    ).toBe(false);
+  });
+
+  it("a future or undated subtask does not", () => {
+    expect(
+      hasSubtaskDueToday(task({ ...farOff, subtasks: [sub({ due_date: "2026-07-20" })] }), TODAY)
+    ).toBe(false);
+    expect(hasSubtaskDueToday(task({ ...farOff, subtasks: [sub()] }), TODAY)).toBe(false);
+    expect(hasSubtaskDueToday(task(farOff), TODAY)).toBe(false);
+  });
+
+  // The whole reason the two rules are separate: the toggle is bound to inToday,
+  // and leaveTodayBody cannot clear a subtask's due date. If a subtask made
+  // inToday true, the row would offer a Remove that silently does nothing.
+  it("does NOT make the task inToday on its own account", () => {
+    const t = task({ ...farOff, subtasks: [sub({ due_date: TODAY })] });
+    expect(inToday(t, TODAY)).toBe(false);
+    expect(leaveTodayBody(t, TODAY)).toEqual({});
+  });
+
+  it("returns the due subtasks themselves, for the row to name them", () => {
+    const t = task({
+      ...farOff,
+      subtasks: [
+        sub({ id: "a", title: "post the form", due_date: TODAY }),
+        sub({ id: "b", title: "later", due_date: "2026-08-01" }),
+        sub({ id: "c", title: "done already", due_date: TODAY, done: true }),
+      ],
+    });
+    expect(subtasksDueBy(t, TODAY).map((s) => s.title)).toEqual(["post the form"]);
+  });
+
+  it("a task already in Today on its own account stays in, subtasks or not", () => {
+    expect(inTodayView(task({ due_date: TODAY }), TODAY)).toBe(true);
   });
 });
 

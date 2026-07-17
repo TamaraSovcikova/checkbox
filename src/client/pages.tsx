@@ -28,7 +28,7 @@ import { AreaDialog } from "./components/AreaDialog";
 import { ProjectDialog } from "./components/ProjectDialog";
 import { CalendarSyncBanner } from "./components/CalendarSyncBanner";
 import { SuggestToday } from "./components/SuggestToday";
-import { PinsStrip, PinsSide } from "./components/Pins";
+import { PinsStrip, PinsSide, useAddPin } from "./components/Pins";
 import { scopeForView, scopeForArea } from "./lib/pinScope";
 import { StatsWidget } from "./components/StatsWidget";
 import { CheatSheet } from "./components/CheatSheet";
@@ -837,6 +837,7 @@ export function AreaPage() {
   const [editArea, setEditArea] = useState(false);
   const [newProject, setNewProject] = useState(false);
   const AreaIcon = areaIcon(area?.icon);
+  const addPin = useAddPin(scopeForArea(id));
 
   // Routines that are not due yet come out of the list and live in the Recurring
   // tab instead. A recurring task that IS due stays put: at that point it is work
@@ -892,7 +893,13 @@ export function AreaPage() {
         sort={showRecurring ? undefined : sortMenu}
         group={showRecurring ? undefined : groupMenu}
         filter={showRecurring ? undefined : filterMenu}
-        menu={[{ label: "Edit area", onSelect: () => setEditArea(true) }]}
+        menu={[
+          { label: "Edit area", onSelect: () => setEditArea(true) },
+          // Scoped to this area already: making a pin here should not mean a trip
+          // to the Pins page to re-pick the area you are standing in.
+          { label: "New list pin", onSelect: addPin.addList },
+          { label: "New reminder pin", onSelect: addPin.addNote },
+        ]}
       />
       {area && (
         <AreaDialog open={editArea} onOpenChange={setEditArea} existing={area} />

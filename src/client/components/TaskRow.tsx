@@ -14,6 +14,7 @@ import { PriorityPill } from "./ui";
 import { cn, todayStr, monthAheadStr } from "@/lib/utils";
 import { isBlocked } from "../lib/blocked";
 import { dueLabel } from "../lib/due";
+import { hasSubtaskDueToday } from "../lib/today";
 import { TaskMeta, TodayToggle, optionalTitleTone } from "./TaskMeta";
 import {
   CheckIcon,
@@ -48,7 +49,12 @@ export function TaskRow({
   // row. (The chip strip resolves its own area/project label; this is only for
   // the wrapper's tint + accent bar.)
   const area = areas.find((a) => a.id === task.area_id);
-  const [expanded, setExpanded] = useState(false);
+  // Open the checklist on sight when a step is already due: the row is in Today
+  // BECAUSE of that subtask, so making you click to find out which one would be a
+  // poor joke. Initial state only, so collapsing it stays collapsed.
+  const [expanded, setExpanded] = useState(
+    () => task.status !== "done" && hasSubtaskDueToday(task, todayStr())
+  );
   const [confirming, setConfirming] = useState(false);
   const done = task.status === "done";
   // Dim (but keep interactive) tasks due more than a month out, so the far

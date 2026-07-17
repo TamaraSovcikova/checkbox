@@ -30,17 +30,36 @@ async function run(
 const NOT_SNOOZED = "AND (snoozed_until IS NULL OR snoozed_until <= ?)";
 
 // Today: due today OR overdue OR scheduled today OR explicitly planned for today
-// ("Add to Today"), not done, not snoozed.
+// ("Add to Today") OR carrying an open SUBTASK due today/overdue. Not done, not
+// snoozed.
+//
+// The subtask clause is here because the work you owe today is not always a whole
+// task: a project task due next month can have one step due today, and before this
+// that step was reachable only by opening the task. The PARENT is what surfaces,
+// never a bare subtask row: the parent carries the context ("Tax return" then "post
+// the form"), it is what the client can already render and tick inline, and Today
+// stays a list of tasks rather than two kinds of thing. The row says why it is
+// there (hasSubtaskDueToday on the client), because a task appearing in Today for
+// a reason you cannot see is precisely how a filter becomes a bug report.
+//
+// `<= ?` mirrors the parent rule, which treats overdue as today's problem.
+// Subtasks carry no user_id; the EXISTS is scoped through the outer task, which
+// does, so this can never reach another user's rows.
+//
+// Keep in sync with the client mirror in lib/today.ts.
 views.get("/today", async (c) => {
   const userId = await getUserId(c);
   const today = todayStr();
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
-       AND (due_date = ? OR due_date < ? OR substr(scheduled_start,1,10) = ? OR planned_date = ?)
+       AND (due_date = ? OR due_date < ? OR substr(scheduled_start,1,10) = ? OR planned_date = ?
+            OR EXISTS (SELECT 1 FROM subtasks s
+                        WHERE s.task_id = tasks.id AND s.done = 0
+                          AND s.due_date IS NOT NULL AND s.due_date <= ?))
        ${NOT_SNOOZED}
      ORDER BY due_time IS NULL, due_time, priority`,
-    [userId, today, today, today, today, today]
+    [userId, today, today, today, today, today, today]
   );
 });
 

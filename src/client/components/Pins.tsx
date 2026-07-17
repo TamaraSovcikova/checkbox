@@ -640,6 +640,24 @@ function PinCard({
   );
 }
 
+// Make a pin on the page you are standing on, already attached to it.
+//
+// The Pins page could always do this, but only by making a pin and then telling
+// it where to live in a "Show on" dropdown: you had to leave the area, create,
+// then re-select the area you had just come from. The scope is not a decision
+// when you are already on the page, so it should not be a question. The server
+// has always accepted a scope on create (routes/pins.ts); nothing was passing one.
+//
+// `placement: "top"` so the new pin lands in the strip at the top of the page and
+// you can see the thing you just made. Side placement is a move away on the card.
+export function useAddPin(scope: string) {
+  const create = useCreatePin();
+  return {
+    addList: () => create.mutate({ kind: "list", placement: "top", scope }),
+    addNote: () => create.mutate({ kind: "note", placement: "top", scope }),
+  };
+}
+
 // Full-width strip at the top of a page: that page's pins placed 'top'.
 // `scope` names the page (see lib/pinScope); defaults to Today.
 export function PinsStrip({ scope = "today" }: { scope?: string }) {

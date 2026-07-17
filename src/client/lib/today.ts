@@ -1,8 +1,13 @@
-import type { Task } from "../../shared/types";
+import type { Subtask, Task } from "../../shared/types";
 
-// A task shows in the Today view for any of these reasons (mirrors the server's
-// /views/today query): explicitly planned for today, due today or overdue, or
-// time-blocked today. Keep the two in sync.
+// A task is in Today ON ITS OWN ACCOUNT for any of these reasons: explicitly
+// planned for today, due today or overdue, or time-blocked today.
+//
+// This is the rule the Add/Remove Today toggle is bound to, and that is why it
+// deliberately does NOT include "has a subtask due today" (see below). Every
+// reason listed here is one leaveTodayBody can clear; a subtask's due date is
+// not. Folding it in would give a task a lit "Remove from Today" button that
+// silently could not remove it.
 export function inToday(task: Task, today: string): boolean {
   if (task.planned_date === today) return true;
   if (task.due_date != null && task.due_date <= today) return true;
@@ -10,6 +15,27 @@ export function inToday(task: Task, today: string): boolean {
     return true;
   return false;
 }
+
+// The open subtasks that are themselves due (today or overdue). The work you owe
+// today is not always a whole task: a task due next month can have one step due
+// now, and that step used to be invisible outside the task sheet.
+export function subtasksDueBy(task: Task, today: string): Subtask[] {
+  return (task.subtasks ?? []).filter(
+    (s) => !s.done && s.due_date != null && s.due_date <= today
+  );
+}
+
+export const hasSubtaskDueToday = (task: Task, today: string): boolean =>
+  subtasksDueBy(task, today).length > 0;
+
+// Everything the Today VIEW holds: the task's own reasons, plus a task carried in
+// by one of its subtasks. Mirrors the server's /views/today; keep the two in sync.
+//
+// Split from inToday on purpose, so a task pulled in by a subtask still reads as
+// "Add to Today" (it is not planned; adding it is a real, additive action) rather
+// than offering a Remove that cannot work.
+export const inTodayView = (task: Task, today: string): boolean =>
+  inToday(task, today) || hasSubtaskDueToday(task, today);
 
 // The update body that removes a task from Today for good: clear EVERY trigger
 // (the today plan, a today time-block, and a today/overdue deadline). Area and
