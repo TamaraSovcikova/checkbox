@@ -52,7 +52,12 @@ import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
 import { TodayBoard } from "./components/TodayBoard";
 import { TaskRow } from "./components/TaskRow";
-import { TaskMeta, TodayToggle, optionalCardBorder } from "./components/TaskMeta";
+import {
+  TaskMeta,
+  TodayToggle,
+  optionalCardBorder,
+  optionalTitleTone,
+} from "./components/TaskMeta";
 import {
   useTaskSelection,
   BulkActionBar,
@@ -76,6 +81,7 @@ import { areaTintBg } from "./lib/colors";
 import { useViewPrefs } from "./lib/queries";
 import { Button, cx } from "./components/ui";
 import { todayStr } from "./lib/utils";
+import { dueLabel } from "./lib/due";
 import { api } from "./lib/api";
 import type { ComponentType, ReactNode } from "react";
 
@@ -381,7 +387,8 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
         <span
           className={cx(
             "min-w-0 flex-1 text-sm",
-            done ? "text-subtle line-through" : "text-foreground"
+            done ? "text-subtle line-through" : "text-foreground",
+            optionalTitleTone(task)
           )}
         >
           {task.title}
@@ -1269,10 +1276,11 @@ function ReviewList({
               </span>
               {t.due_date && (
                 <span
-                  className="shrink-0 text-xs tabular-nums"
+                  className="shrink-0 text-xs"
                   style={{ color: tone === "danger" ? "var(--danger)" : "var(--subtle)" }}
+                  title={t.due_date}
                 >
-                  {t.due_date}
+                  {dueLabel(t.due_date, todayStr())}
                 </span>
               )}
             </li>

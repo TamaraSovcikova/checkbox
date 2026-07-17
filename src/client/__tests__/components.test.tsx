@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { TaskRow } from "../components/TaskRow";
 import { TopBar } from "../components/TopBar";
 import { ToastProvider } from "../lib/toast";
+import { todayStr } from "../lib/utils";
 import type { Task } from "../../shared/types";
 
 function providers(ui: ReactNode) {
@@ -60,10 +61,34 @@ const sample: Task = {
 
 describe("TaskRow", () => {
   it("renders the title, priority and due date without throwing", () => {
-    providers(<TaskRow task={sample} onOpen={() => {}} />);
+    // Dated relative to the real today on purpose. The row now humanises the due
+    // date, so a hard-coded "2026-07-05" would render differently depending on
+    // when the suite runs. Anchoring to today keeps the assertion stable AND
+    // pins the case that matters most: the commonest due date reads "Today".
+    providers(<TaskRow task={{ ...sample, due_date: todayStr() }} onOpen={() => {}} />);
     expect(screen.getByText("Buy milk")).toBeInTheDocument();
-    expect(screen.getByText("2026-07-05")).toBeInTheDocument();
+    expect(screen.getByText("Today")).toBeInTheDocument();
     // priority renders as the completion-circle border color, not text
+  });
+
+  it("keeps the exact date reachable on hover, not just the humanised label", () => {
+    providers(<TaskRow task={{ ...sample, due_date: todayStr() }} onOpen={() => {}} />);
+    expect(screen.getByText("Today")).toHaveAttribute("title", todayStr());
+  });
+
+  it("marks an optional task without hiding it", () => {
+    providers(
+      <TaskRow task={{ ...sample, optional: true }} onOpen={() => {}} />
+    );
+    // The chip says so in words, and the title sits a shade softer.
+    expect(screen.getByText("optional")).toBeInTheDocument();
+    expect(screen.getByText("Buy milk").className).toContain("text-foreground/70");
+  });
+
+  it("leaves a committed task's title at full strength", () => {
+    providers(<TaskRow task={sample} onOpen={() => {}} />);
+    expect(screen.getByText("Buy milk").className).not.toContain("text-foreground/70");
+    expect(screen.queryByText("optional")).not.toBeInTheDocument();
   });
 });
 

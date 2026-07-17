@@ -6,6 +6,7 @@ import {
   useUpdatePin,
   useDeletePin,
   useAreas,
+  useProjects,
   useTasks,
   useTasksByIds,
   useCompleteTask,
@@ -138,8 +139,14 @@ function PinMenu({
   );
 }
 
-// Pick an open task to put on a pin. Searches titles; the pin stores only the id,
-// so the task's own title stays the source of truth afterwards.
+// Pick an open task to put on a pin. The pin stores only the id, so the task's
+// own title stays the source of truth afterwards.
+//
+// Searches the task's AREA and PROJECT names as well as its title, because by the
+// time you are pinning something you usually know where it lives ("that thing in
+// Finance") sooner than you can recall how you worded it. Each hit shows where it
+// came from too: matching on a project you cannot see would be its own puzzle,
+// and titles alone are often ambiguous across areas.
 function TaskPicker({
   tasks,
   exclude,
@@ -151,10 +158,29 @@ function TaskPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const { data: areas = [] } = useAreas();
+  const { data: projects = [] } = useProjects();
 
+  const where = (t: Task) => {
+    const area = areas.find((a) => a.id === t.area_id);
+    const project = projects.find((p) => p.id === t.project_id);
+    return { area, project };
+  };
+
+  const needle = q.trim().toLowerCase();
   const matches = tasks
     .filter((t) => t.status !== "done" && !exclude.has(t.id))
-    .filter((t) => !q || t.title.toLowerCase().includes(q.toLowerCase()))
+    .filter((t) => {
+      if (!needle) return true;
+      const { area, project } = where(t);
+      // One haystack, so "finance bills" matches a task titled "bills" in the
+      // Finance area. Every term must appear somewhere, in any order.
+      const hay = [t.title, area?.name, project?.name]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return needle.split(/\s+/).every((term) => hay.includes(term));
+    })
     .slice(0, 8);
 
   return (
@@ -173,7 +199,7 @@ function TaskPicker({
           value={q}
           autoFocus
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search open tasks"
+          placeholder="Search tasks, areas, projects"
           className="mb-1 h-8 w-full rounded border border-input bg-surface px-2 text-xs text-foreground outline-none placeholder:text-subtle focus:border-primary"
         />
         <div className="max-h-56 overflow-y-auto">
@@ -182,19 +208,32 @@ function TaskPicker({
               {q ? "No open task matches." : "No open tasks to link."}
             </p>
           ) : (
-            matches.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => {
-                  onPick(t);
-                  setQ("");
-                  setOpen(false);
-                }}
-                className="block w-full truncate rounded px-1.5 py-1 text-left text-xs text-foreground hover:bg-surface-2"
-              >
-                {t.title}
-              </button>
-            ))
+            matches.map((t) => {
+              const { area, project } = where(t);
+              const place = [area?.name, project?.name].filter(Boolean).join(" › ");
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    onPick(t);
+                    setQ("");
+                    setOpen(false);
+                  }}
+                  className="block w-full rounded px-1.5 py-1 text-left hover:bg-surface-2"
+                >
+                  <span className="block truncate text-xs text-foreground">{t.title}</span>
+                  {place && (
+                    <span className="mt-0.5 flex items-center gap-1 text-[10px] text-subtle">
+                      <span
+                        className="h-1.5 w-1.5 shrink-0 rounded-full"
+                        style={{ background: areaColorVar(area?.color) }}
+                      />
+                      <span className="truncate">{place}</span>
+                    </span>
+                  )}
+                </button>
+              );
+            })
           )}
         </div>
       </PopoverContent>

@@ -3,7 +3,12 @@ import type { Project, Task } from "../../shared/types";
 import { useTasks, useAreas } from "../lib/queries";
 import { TaskRow } from "./TaskRow";
 import { areaTintBg } from "../lib/colors";
-import { TaskMeta, TodayToggle, optionalCardBorder } from "./TaskMeta";
+import {
+  TaskMeta,
+  TodayToggle,
+  optionalCardBorder,
+  optionalTitleTone,
+} from "./TaskMeta";
 import { cn } from "@/lib/utils";
 
 // Draggable board card. Drops resolve in the app-level DndContext (AppShell),
@@ -39,7 +44,13 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
       {...listeners}
     >
       <div className="flex items-start gap-1.5">
-        <div className={cn("min-w-0 flex-1 text-sm", done ? "text-subtle line-through" : "text-foreground")}>
+        <div
+          className={cn(
+            "min-w-0 flex-1 text-sm",
+            done ? "text-subtle line-through" : "text-foreground",
+            optionalTitleTone(task)
+          )}
+        >
           {task.title}
         </div>
         {!done && <TodayToggle task={task} alwaysVisible />}

@@ -5,6 +5,8 @@ import { parseCapture, previewChips } from "../lib/nlp";
 import { useCreateTask, useProjects, useAreas } from "../lib/queries";
 import { api } from "../lib/api";
 import { useTaskUI } from "../lib/ui-context";
+import { dueLabel } from "../lib/due";
+import { todayStr } from "@/lib/utils";
 import {
   CommandDialog,
   CommandInput,
@@ -172,7 +174,9 @@ export function CommandCapture() {
                 <SearchIcon className="h-4 w-4 text-muted" />
                 <span className="flex-1 truncate">{t.title}</span>
                 {t.due_date && (
-                  <span className="shrink-0 text-[11px] text-primary">{t.due_date}</span>
+                  <span className="shrink-0 text-[11px] text-primary" title={t.due_date}>
+                    {dueLabel(t.due_date, todayStr())}
+                  </span>
                 )}
               </CommandItem>
             ))}

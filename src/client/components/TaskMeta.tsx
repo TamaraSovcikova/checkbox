@@ -5,6 +5,7 @@ import { areaColorVar, shouldPill } from "../lib/colors";
 import { PriorityPill } from "./ui";
 import { cn, todayStr } from "@/lib/utils";
 import { inToday } from "../lib/today";
+import { dueLabel, isOverdue } from "../lib/due";
 import { useToggleToday } from "../lib/use-toggle-today";
 import { isBlocked, blockedLabel } from "../lib/blocked";
 import {
@@ -115,8 +116,13 @@ export function TaskMeta({
         </span>
       )}
       {task.due_date && (
-        <span className="text-primary">
-          {task.due_date}
+        <span
+          className={isOverdue(task.due_date, today) && !done ? "text-danger" : "text-primary"}
+          // The exact date stays one hover away: "Fri" is faster to scan, but
+          // when you do need the number you should not have to open the task.
+          title={task.due_date + (task.due_time ? ` ${task.due_time}` : "")}
+        >
+          {dueLabel(task.due_date, today)}
           {task.due_time ? ` ${task.due_time}` : ""}
         </span>
       )}
@@ -164,3 +170,11 @@ export function TaskMeta({
 // surface actually has.
 export const optionalCardBorder = (task: Task) =>
   !!task.optional && task.status !== "done" && "border-dashed";
+
+// ...and the title sits a shade softer than a committed one, so a list reads at a
+// glance without having to find the dashes. Deliberately its own step on the
+// scale: `distant` fades the whole row to opacity-45 and `blocked` drops the
+// title to text-muted, so optional lands between full strength and those two and
+// never reads as either. Dial the number, not the mechanism, if it wants more.
+export const optionalTitleTone = (task: Task) =>
+  !!task.optional && task.status !== "done" && "text-foreground/70";

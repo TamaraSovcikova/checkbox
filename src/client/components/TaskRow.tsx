@@ -13,7 +13,8 @@ import { PRIORITY_VAR, areaColorVar, areaTintBg, shouldPill } from "../lib/color
 import { PriorityPill } from "./ui";
 import { cn, todayStr, monthAheadStr } from "@/lib/utils";
 import { isBlocked } from "../lib/blocked";
-import { TaskMeta, TodayToggle } from "./TaskMeta";
+import { dueLabel } from "../lib/due";
+import { TaskMeta, TodayToggle, optionalTitleTone } from "./TaskMeta";
 import {
   CheckIcon,
   SubtaskIcon,
@@ -192,7 +193,10 @@ export function TaskRow({
                 ? "text-subtle line-through"
                 : blocked
                 ? "text-muted" // quietened, but not opacity-faded like distant
-                : "text-foreground"
+                : "text-foreground",
+              // A shade softer when optional. Loses to blocked/done above, which
+              // are stronger statements about the same title.
+              !blocked && optionalTitleTone(task)
             )}
           >
             {task.title}
@@ -258,7 +262,9 @@ export function TaskRow({
               </button>
               {shouldPill(s.priority) && <PriorityPill priority={s.priority} />}
               {s.due_date && (
-                <span className="shrink-0 text-[11px] text-primary">{s.due_date}</span>
+                <span className="shrink-0 text-[11px] text-primary" title={s.due_date}>
+                  {dueLabel(s.due_date, todayIsToday)}
+                </span>
               )}
             </li>
           ))}
