@@ -149,8 +149,15 @@ export const api = {
     httpMutate("POST", `/api/tasks/${id}/dependencies`, { depends_on_id }),
   removeDependency: (id: string, depId: string) =>
     httpMutate("DELETE", `/api/tasks/${id}/dependencies/${depId}`),
-  addSubtask: (taskId: string, title: string) =>
-    httpMutate<Subtask>("POST", `/api/tasks/${taskId}/subtasks`, { title }),
+  addSubtask: (
+    taskId: string,
+    title: string,
+    extra?: { due_date?: string | null; priority?: number | null }
+  ) =>
+    httpMutate<Subtask>("POST", `/api/tasks/${taskId}/subtasks`, {
+      title,
+      ...extra,
+    }),
   updateSubtask: (
     taskId: string,
     subId: string,

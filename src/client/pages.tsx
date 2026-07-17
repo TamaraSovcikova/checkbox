@@ -57,6 +57,8 @@ import {
   TodayToggle,
   optionalCardBorder,
   optionalTitleTone,
+  useTaskArea,
+  useDistantTone,
 } from "./components/TaskMeta";
 import {
   useTaskSelection,
@@ -362,10 +364,12 @@ function useTaskCollection(
 // vanish: this rendered its own chip subset). A div rather than a button because
 // the Today toggle is itself a button and buttons cannot nest.
 function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
-  const { data: areas = [] } = useAreas();
-  const area = areas.find((a) => a.id === task.area_id);
+  // Area through the project, distant dimming shared with the row: a grid card no
+  // longer sits untinted or at full strength beside an identical list row.
+  const { area } = useTaskArea(task);
   const done = task.status === "done";
   const tint = areaTintBg(area?.color, 10);
+  const distant = useDistantTone(task);
   return (
     <div
       role="button"
@@ -379,6 +383,7 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
       }}
       className={cx(
         "group flex cursor-pointer flex-col rounded-lg border border-border bg-surface/60 p-3 text-left transition-colors hover:border-primary/40",
+        distant,
         optionalCardBorder(task)
       )}
       style={tint ? { backgroundColor: tint } : undefined}

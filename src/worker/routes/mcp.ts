@@ -18,6 +18,7 @@ import { insertCandidates, type CandidateInput } from "./notes";
 import { upsertMailCandidate, type MailCandidateInput } from "./mail";
 import { nextDueDate } from "../../shared/recurrence";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
+import { enforceProjectArea } from "../lib/section";
 
 export const mcp = new Hono<{ Bindings: Bindings }>();
 
@@ -149,6 +150,11 @@ async function createOneTask(
   args: Record<string, unknown>
 ): Promise<string> {
   const id = uuid();
+  // This is where the drift came from: it inserts exactly the fields it is
+  // handed, and naming a project without an area is the natural thing to do over
+  // MCP ("put it in Brussels: Social & Network"). 53 tasks arrived that way and
+  // rendered untinted next to identical tinted ones. See lib/section.ts.
+  await enforceProjectArea(db, userId, args);
   const present = TASK_WRITABLE.filter((f) => f in args);
   const cols = ["id", "user_id", ...present];
   const vals = [id, userId, ...present.map((f) => args[f])];
@@ -843,6 +849,8 @@ async function handleTool(
     case "update_task": {
       const id = args.id as string;
       if (!(await ownsTask(db, userId, id))) return text(`Task ${id} not found.`);
+      // Moving a task into a project moves it into that project's area too.
+      await enforceProjectArea(db, userId, args);
       const fields = TASK_WRITABLE.filter((f) => f in args);
       if (fields.length) {
         const set = fields.map((f) => `${f} = ?`).join(", ");

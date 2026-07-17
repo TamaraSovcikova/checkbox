@@ -13,7 +13,7 @@ import {
 } from "../lib/queries";
 import { RECURRENCE_PRESETS, recurrenceLabel } from "../../shared/recurrence";
 import { Markdown } from "../lib/markdown";
-import { parseDatePhrase } from "../lib/nlp";
+import { parseDatePhrase, parseCapture } from "../lib/nlp";
 import { PRIORITY_VAR, shouldPill } from "../lib/colors";
 import { cn, todayStr } from "@/lib/utils";
 import { inToday, leaveTodayBody, undoLeaveTodayBody } from "../lib/today";
@@ -258,19 +258,30 @@ export function TaskSheet({
 
   async function addSub() {
     if (!task || !newSub.trim()) return;
+    // Same quick-capture parsing the main add-task bar uses, so a subtask can be
+    // dated in the flow of typing it: "post the form fri p1" files the date and
+    // priority and keeps just "post the form" as the title. This is the whole
+    // reason subtask due dates were near-unused: they were reachable only by
+    // adding a bare subtask and then editing it. `#category`/`@label` do not
+    // apply to a subtask, so knownCategories is empty and any name typed stays in
+    // the title. Falls back to the raw text when nothing is parsed out.
+    const p = parseCapture(newSub);
+    const title = p.title.trim() || newSub.trim();
+    const due_date = p.due_date;
+    const priority = p.priority;
     // Use the server-assigned id so a follow-up edit (due date / priority) on the
     // fresh subtask targets the real row instead of a throwaway local id.
-    const created = await api.addSubtask(task.id, newSub.trim());
+    const created = await api.addSubtask(task.id, title, { due_date, priority });
     setSubtasks((s) => [
       ...s,
       {
         id: created.id,
         task_id: task.id,
-        title: newSub.trim(),
+        title,
         done: false,
         position: s.length,
-        due_date: null,
-        priority: null,
+        due_date,
+        priority,
       },
     ]);
     setNewSub("");
@@ -612,7 +623,7 @@ export function TaskSheet({
                   value={newSub}
                   onChange={(e) => setNewSub(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addSub()}
-                  placeholder="Add subtask"
+                  placeholder="Add subtask — try 'post the form fri p1'"
                   className="h-9 flex-1 rounded-md border border-input bg-surface px-3 text-sm text-foreground outline-none focus:border-primary"
                 />
                 <Button variant="secondary" size="sm" onClick={addSub}>

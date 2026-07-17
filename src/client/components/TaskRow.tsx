@@ -2,20 +2,24 @@ import { useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { Task } from "../../shared/types";
 import {
-  useAreas,
   useCompleteAllSubtasks,
   useCompleteTask,
   useToggleSubtask,
-  useViewPrefs,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import { PRIORITY_VAR, areaColorVar, areaTintBg, shouldPill } from "../lib/colors";
 import { PriorityPill } from "./ui";
-import { cn, todayStr, monthAheadStr } from "@/lib/utils";
+import { cn, todayStr } from "@/lib/utils";
 import { isBlocked } from "../lib/blocked";
 import { dueLabel } from "../lib/due";
 import { hasSubtaskDueToday } from "../lib/today";
-import { TaskMeta, TodayToggle, optionalTitleTone } from "./TaskMeta";
+import {
+  TaskMeta,
+  TodayToggle,
+  optionalTitleTone,
+  useTaskArea,
+  useDistantTone,
+} from "./TaskMeta";
 import {
   CheckIcon,
   SubtaskIcon,
@@ -42,13 +46,11 @@ export function TaskRow({
   const complete = useCompleteTask();
   const toggleSub = useToggleSubtask();
   const completeAll = useCompleteAllSubtasks();
-  const { dimDistantTasks } = useViewPrefs();
-  const { data: areas = [] } = useAreas();
   const { toast } = useToast();
-  // Where the task lives, for an at-a-glance colour. Cached query, so cheap per
-  // row. (The chip strip resolves its own area/project label; this is only for
-  // the wrapper's tint + accent bar.)
-  const area = areas.find((a) => a.id === task.area_id);
+  // Where the task lives, for the wrapper's tint + accent bar. Resolved through
+  // the project when the task carries no area of its own, so a row can never
+  // render as area-less beside an identical tinted one.
+  const { area } = useTaskArea(task);
   // Open the checklist on sight when a step is already due: the row is in Today
   // BECAUSE of that subtask, so making you click to find out which one would be a
   // poor joke. Initial state only, so collapsing it stays collapsed.
@@ -57,10 +59,10 @@ export function TaskRow({
   );
   const [confirming, setConfirming] = useState(false);
   const done = task.status === "done";
-  // Dim (but keep interactive) tasks due more than a month out, so the far
-  // future recedes. Toggle in Settings › Appearance.
-  const distant =
-    dimDistantTasks && !done && !!task.due_date && task.due_date > monthAheadStr();
+  // Dim (but keep interactive) tasks due more than a month out, so the far future
+  // recedes. Toggle in Settings › Appearance. Shared, so a grid or board card
+  // fades in step with the row rather than staying at full strength.
+  const distant = useDistantTone(task);
   const todayIsToday = todayStr();
   // Blocked = waiting on an open task OR a future blocked_until date. Shown as a
   // distinct, quiet signal (muted title + a blocked chip), deliberately NOT the
@@ -116,7 +118,8 @@ export function TaskRow({
         "rounded-md border border-border",
         isDragging && "opacity-40",
         // Dim the far future; hover restores full opacity so it never feels lost.
-        distant && !isDragging && "opacity-45 transition-opacity hover:opacity-100"
+        // Suppressed mid-drag, where opacity-40 already applies.
+        !isDragging && distant
       )}
       style={{
         ...(tint ? { backgroundColor: tint } : {}),

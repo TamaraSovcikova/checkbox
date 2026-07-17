@@ -1,9 +1,9 @@
 import type { Task } from "../../shared/types";
-import { useAreas, useProjects } from "../lib/queries";
+import { useAreas, useProjects, useViewPrefs } from "../lib/queries";
 import { recurrenceLabel } from "../../shared/recurrence";
 import { areaColorVar, shouldPill } from "../lib/colors";
 import { PriorityPill } from "./ui";
-import { cn, todayStr } from "@/lib/utils";
+import { cn, todayStr, monthAheadStr } from "@/lib/utils";
 import { inToday, subtasksDueBy } from "../lib/today";
 import { dueLabel, isOverdue } from "../lib/due";
 import { useToggleToday } from "../lib/use-toggle-today";
@@ -26,6 +26,39 @@ import {
 // default to board/grid, the styling looked like it had "gone away". It had
 // never been there. Both card renderers now call this, so a new signal is added
 // once and shows up everywhere.
+
+// Where a task lives, resolved for DISPLAY. A task in a project takes that
+// project's area even if its own area_id is empty: the project is in exactly one
+// area, so the answer is never in doubt, and a row should not render as
+// area-less just because a writer forgot to say so.
+//
+// enforceProjectArea + migration 0025 make the stored data agree, so this is the
+// belt to that pair of braces: it keeps the UI honest for anything written by an
+// older client, replayed from the offline queue, or sitting in a stale cache.
+export function useTaskArea(task: Task) {
+  const { data: areas = [] } = useAreas();
+  const { data: projects = [] } = useProjects();
+  const project = projects.find((p) => p.id === task.project_id);
+  const areaId = task.area_id ?? project?.area_id ?? null;
+  return { area: areas.find((a) => a.id === areaId), project };
+}
+
+// Tasks due more than a month out recede, so the far future does not compete with
+// this week. Hover restores them, so nothing is ever lost behind it.
+//
+// Lived only in TaskRow, which is why a far-future task dimmed in a list and sat
+// at full strength in the grid or board right beside it: the same "some styled,
+// some not" drift that TaskMeta exists to end. Returns a class or false.
+export function useDistantTone(task: Task) {
+  const { dimDistantTasks } = useViewPrefs();
+  return (
+    dimDistantTasks &&
+    task.status !== "done" &&
+    !!task.due_date &&
+    task.due_date > monthAheadStr() &&
+    "opacity-45 transition-opacity hover:opacity-100"
+  );
+}
 
 // The clickable Today marker. Lit (solid, primary) when the task is in Today for
 // ANY reason - planned, due today/overdue, or time-blocked today - so it reads as
@@ -75,10 +108,7 @@ export function TaskMeta({
   task: Task;
   hideDoing?: boolean;
 }) {
-  const { data: areas = [] } = useAreas();
-  const { data: projects = [] } = useProjects();
-  const area = areas.find((a) => a.id === task.area_id);
-  const project = projects.find((p) => p.id === task.project_id);
+  const { area, project } = useTaskArea(task);
   const done = task.status === "done";
   const doing = task.status === "doing";
   const today = todayStr();

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { type Bindings, getUserId, now, uuid } from "../db";
 import { hydrateTasks } from "./_hydrate";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
+import { enforceProjectArea } from "../lib/section";
 import { nextDueDate } from "../../shared/recurrence";
 
 export const tasks = new Hono<{ Bindings: Bindings }>();
@@ -159,6 +160,8 @@ tasks.post("/", async (c) => {
     return c.json({ error: "title required" }, 400);
   const refErr = await badRefs(c.env.DB, userId, b);
   if (refErr) return c.json({ error: refErr }, 400);
+  // A task in a project belongs to that project's area, whatever the caller said.
+  await enforceProjectArea(c.env.DB, userId, b);
   const id = uuid();
   const cols = ["id", "user_id", ...WRITABLE.filter((f) => f in b)];
   const vals = [id, userId, ...WRITABLE.filter((f) => f in b).map((f) => b[f])];
@@ -194,6 +197,10 @@ tasks.patch("/:id", async (c) => {
   const b = await c.req.json<Record<string, unknown>>();
   const refErr = await badRefs(c.env.DB, userId, b);
   if (refErr) return c.json({ error: refErr }, 400);
+  // Moving a task into a project moves it into that project's area too. Only
+  // fires when the body actually names a project, so a title-only PATCH is
+  // untouched.
+  await enforceProjectArea(c.env.DB, userId, b);
   const fields = WRITABLE.filter((f) => f in b);
   if (fields.length) {
     const set = fields.map((f) => `${f} = ?`).join(", ");
@@ -587,15 +594,24 @@ tasks.post("/:id/subtasks", async (c) => {
   const taskId = c.req.param("id");
   if (!(await ownsTask(c.env.DB, userId, taskId)))
     return c.json({ error: "not found" }, 404);
-  const b = await c.req.json<{ title: string }>();
+  // due_date/priority are optional: quick-capture parses "post the form fri p1"
+  // client-side and sends the structured fields. Absent -> a plain subtask, as
+  // before.
+  const b = await c.req.json<{
+    title: string;
+    due_date?: string | null;
+    priority?: number | null;
+  }>();
   const id = uuid();
+  const due_date = b.due_date ?? null;
+  const priority = b.priority ?? null;
   await c.env.DB.prepare(
-    "INSERT INTO subtasks (id, task_id, title) VALUES (?, ?, ?)"
+    "INSERT INTO subtasks (id, task_id, title, due_date, priority) VALUES (?, ?, ?, ?, ?)"
   )
-    .bind(id, taskId, b.title)
+    .bind(id, taskId, b.title, due_date, priority)
     .run();
   return c.json(
-    { id, task_id: taskId, title: b.title, done: false, due_date: null, priority: null },
+    { id, task_id: taskId, title: b.title, done: false, due_date, priority },
     201
   );
 });

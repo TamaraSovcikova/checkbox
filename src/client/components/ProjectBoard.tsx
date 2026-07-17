@@ -1,6 +1,6 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Project, Task } from "../../shared/types";
-import { useTasks, useAreas } from "../lib/queries";
+import { useTasks } from "../lib/queries";
 import { TaskRow } from "./TaskRow";
 import { areaTintBg } from "../lib/colors";
 import {
@@ -8,6 +8,8 @@ import {
   TodayToggle,
   optionalCardBorder,
   optionalTitleTone,
+  useTaskArea,
+  useDistantTone,
 } from "./TaskMeta";
 import { cn } from "@/lib/utils";
 
@@ -19,9 +21,12 @@ import { cn } from "@/lib/utils";
 // same task in a list. It used to render its own four-chip subset, which is why
 // `optional` and Today were invisible on any board.
 export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
-  const { data: areas = [] } = useAreas();
-  const area = areas.find((a) => a.id === task.area_id);
+  // Area resolved through the project, so a card is tinted whenever the same task
+  // in a list would be. Far-future dimming shared with the row, so a board card
+  // and a list row of the same task recede together.
+  const { area } = useTaskArea(task);
   const tint = areaTintBg(area?.color, 12);
+  const distant = useDistantTone(task);
   const done = task.status === "done";
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: task.id, data: { type: "task", task } });
@@ -38,6 +43,7 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
       className={cn(
         "group touch-none rounded-md border border-border bg-surface p-2 transition-colors hover:border-primary/40",
         isDragging ? "cursor-grabbing opacity-50" : "cursor-grab",
+        !isDragging && distant,
         optionalCardBorder(task)
       )}
       {...attributes}
