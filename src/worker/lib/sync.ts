@@ -563,21 +563,24 @@ export async function pushTaskToGcal(
 
 // ── Delete a GCal event when a task is removed or unscheduled ─────────────────
 
-// Sweep away Google events Checkbox created that no longer deserve one: the task
-// was deleted, or it is done. SAFETY: it only ever considers rows with
-// is_checkbox_owned = 1, which is set solely from our own checkbox_task_id tag on
-// the event, so a user's own calendar entries can never be touched. Runs on every
-// sync, which also cleans up strays left behind by older builds that did not
-// remove the event on complete/delete.
-export async function reconcileTaskEvents(
-  env: Bindings,
-  userId: string
-): Promise<number> {
-  const account = await getCalendarAccount(env, userId);
-  if (!account) return 0;
-  const fallbackCal = account.primary_calendar_id ?? "primary";
+// One event Checkbox owns that should not exist any more.
+export type StrayTaskEvent = {
+  taskId: string | null;
+  eventId: string;
+  calId: string;
+  clearLink: boolean;
+};
 
-  // THREE passes, because no single source sees every stray on its own.
+// WHICH events deserve deleting. Split out from reconcileTaskEvents (which does
+// the Google calls) so the selection rules - the part that decides to delete
+// something off a real calendar - can be tested against a real database with no
+// Google account in sight.
+export async function findStrayTaskEvents(
+  db: D1Database,
+  userId: string,
+  fallbackCal: string
+): Promise<StrayTaskEvent[]> {
+  // FOUR passes, because no single source sees every stray on its own.
   //
   // (a) DONE tasks that still hold an event. The linkage on the task row is
   //     authoritative, so this catches them whether or not the event is cached.
@@ -593,7 +596,7 @@ export async function reconcileTaskEvents(
   //     in the cache forever, which is exactly how a done task kept showing a
   //     chip in the all-day box. Found in prod, not theorised: "Prepare for team
   //     lunch", completed 2026-07-16, still had its 2026-07-17 all-day row.
-  const done = await env.DB.prepare(
+  const done = await db.prepare(
     `SELECT id AS task_id, gcal_event_id, gcal_calendar_id AS calendar_id
        FROM tasks
       WHERE user_id = ? AND status = 'done' AND gcal_event_id IS NOT NULL`
@@ -601,7 +604,7 @@ export async function reconcileTaskEvents(
     .bind(userId)
     .all<{ task_id: string; gcal_event_id: string; calendar_id: string | null }>();
 
-  const orphaned = await env.DB.prepare(
+  const orphaned = await db.prepare(
     `SELECT c.gcal_event_id, c.calendar_id, c.task_id
        FROM calendar_events_cache c
        LEFT JOIN tasks t ON t.id = c.task_id
@@ -611,7 +614,7 @@ export async function reconcileTaskEvents(
     .bind(userId)
     .all<{ gcal_event_id: string; calendar_id: string; task_id: string | null }>();
 
-  const cachedDone = await env.DB.prepare(
+  const cachedDone = await db.prepare(
     `SELECT c.gcal_event_id, c.calendar_id, c.task_id
        FROM calendar_events_cache c
        JOIN tasks t ON t.id = c.task_id
@@ -620,31 +623,86 @@ export async function reconcileTaskEvents(
     .bind(userId)
     .all<{ gcal_event_id: string; calendar_id: string; task_id: string | null }>();
 
+  // (d) SUPERSEDED events: ours, task alive, but the task's linkage names a
+  //     DIFFERENT event. A task holds exactly one event (tasks.gcal_event_id is
+  //     singular, and pushTaskToGcal either PATCHes that one or creates one and
+  //     overwrites the link), so a second owned event for the same task is an
+  //     abandoned create that nothing was left pointing at - invisible to (a),
+  //     (b) and (c), because the task is neither done nor deleted. Prod had one:
+  //     task 7d04c5e5 ("Question: Did it start as the QA-agent thing...") owned
+  //     both ai3rclbj (linked) and hmrd4r60 (orphaned), so it drew TWO all-day
+  //     chips for one task.
+  //
+  //     Only fires when the task's own linkage is non-null and differs, so a task
+  //     mid-create (linkage still NULL) is never touched.
+  const superseded = await db.prepare(
+    `SELECT c.gcal_event_id, c.calendar_id, c.task_id
+       FROM calendar_events_cache c
+       JOIN tasks t ON t.id = c.task_id
+      WHERE c.user_id = ? AND c.is_checkbox_owned = 1
+        AND t.gcal_event_id IS NOT NULL
+        AND c.gcal_event_id <> t.gcal_event_id`
+  )
+    .bind(userId)
+    .all<{ gcal_event_id: string; calendar_id: string; task_id: string | null }>();
+
+  // `clearLink` says whether to NULL the task's gcal linkage after the delete.
+  // True when the task should hold no event at all (done, or gone). FALSE for a
+  // superseded stray: there the task's link names the event we are KEEPING, so
+  // clearing it would abandon the good event and leave the task pointing at
+  // nothing - turning a duplicate into a fresh orphan on the next push.
   const targets = [
     ...(done.results ?? []).map((r) => ({
       taskId: r.task_id as string | null,
       eventId: r.gcal_event_id,
       calId: r.calendar_id ?? fallbackCal,
+      clearLink: true,
     })),
     ...(orphaned.results ?? []).map((r) => ({
       taskId: r.task_id,
       eventId: r.gcal_event_id,
       calId: r.calendar_id ?? fallbackCal,
+      clearLink: true,
     })),
     ...(cachedDone.results ?? []).map((r) => ({
       taskId: r.task_id,
       eventId: r.gcal_event_id,
       calId: r.calendar_id ?? fallbackCal,
+      clearLink: true,
+    })),
+    ...(superseded.results ?? []).map((r) => ({
+      taskId: r.task_id,
+      eventId: r.gcal_event_id,
+      calId: r.calendar_id ?? fallbackCal,
+      clearLink: false,
     })),
   ];
-  // The passes can name the same event; only act on each once.
+  // The passes can name the same event; only act on each once. Order matters:
+  // the done/gone passes come first, so an event they claim keeps clearLink.
   const seen = new Set<string>();
-  const unique = targets.filter((t) => {
+  return targets.filter((t) => {
     const key = `${t.calId}:${t.eventId}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+// Sweep away Google events Checkbox created that no longer deserve one. SAFETY:
+// every pass is scoped to is_checkbox_owned = 1 / a task's own linkage, both of
+// which come solely from our checkbox_task_id tag on the event, so a user's own
+// calendar entries can never be touched. Runs on every sync, which also cleans up
+// strays left behind by older builds that did not remove the event on
+// complete/delete. See findStrayTaskEvents for which events qualify and why.
+export async function reconcileTaskEvents(
+  env: Bindings,
+  userId: string
+): Promise<number> {
+  const account = await getCalendarAccount(env, userId);
+  if (!account) return 0;
+  const fallbackCal = account.primary_calendar_id ?? "primary";
+
+  const unique = await findStrayTaskEvents(env.DB, userId, fallbackCal);
   if (!unique.length) return 0;
 
   const accessToken = await getValidAccessToken(env, account);
@@ -663,12 +721,15 @@ export async function reconcileTaskEvents(
     )
       .bind(t.eventId, t.calId)
       .run();
-    // Drop the stale linkage so re-opening the task pushes a fresh event.
-    if (t.taskId) {
+    // Drop the stale linkage so re-opening the task pushes a fresh event. Guarded
+    // by gcal_event_id = ? so it can only ever clear a link that still names the
+    // event we just deleted, never one repointed at a live event meanwhile.
+    if (t.taskId && t.clearLink) {
       await env.DB.prepare(
-        "UPDATE tasks SET gcal_event_id = NULL, gcal_calendar_id = NULL WHERE id = ? AND user_id = ?"
+        `UPDATE tasks SET gcal_event_id = NULL, gcal_calendar_id = NULL
+          WHERE id = ? AND user_id = ? AND gcal_event_id = ?`
       )
-        .bind(t.taskId, userId)
+        .bind(t.taskId, userId, t.eventId)
         .run();
     }
   }
