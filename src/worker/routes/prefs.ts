@@ -20,7 +20,6 @@ const cleanFallback = (v: unknown): string | null =>
 // Undefined means "not set yet" → default on; only an explicit false turns it off.
 const cleanDim = (v: unknown): boolean => (v === false ? false : true);
 const cleanOnByDefault = (v: unknown): boolean => (v === false ? false : true);
-const cleanOffByDefault = (v: unknown): boolean => v === true;
 
 // Prefs are whitelisted in BOTH directions, so any new field has to be added here
 // as well or it is silently dropped on save and on read.
@@ -40,7 +39,7 @@ function parsePrefs(raw: unknown): UserPrefs {
       gcalSyncTimeBlocks: cleanOnByDefault(p.gcalSyncTimeBlocks),
       gcalSyncDueDates: cleanOnByDefault(p.gcalSyncDueDates),
       hiddenAllDayTitles: cleanStrings(p.hiddenAllDayTitles),
-      todayCalendar: cleanOffByDefault(p.todayCalendar),
+      todayCalendar: cleanOnByDefault(p.todayCalendar),
     };
   } catch {
     return { ...EMPTY };
@@ -67,7 +66,7 @@ prefs.put("/", async (c) => {
     gcalSyncTimeBlocks: cleanOnByDefault(body.gcalSyncTimeBlocks),
     gcalSyncDueDates: cleanOnByDefault(body.gcalSyncDueDates),
     hiddenAllDayTitles: cleanStrings(body.hiddenAllDayTitles),
-    todayCalendar: cleanOffByDefault(body.todayCalendar),
+    todayCalendar: cleanOnByDefault(body.todayCalendar),
   };
   await c.env.DB.prepare("UPDATE users SET prefs = ? WHERE id = ?")
     .bind(JSON.stringify(clean), userId)
