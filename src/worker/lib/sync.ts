@@ -353,10 +353,17 @@ async function syncOneCalendar(
         timeMin,
         timeMax,
         pageToken,
+        // Only meaningful on the full path (a syncToken request always delivers
+        // cancellations). Without it a resync silently loses the ability to
+        // prune, and the cancelled branch below becomes unreachable for anything
+        // deleted while the token was invalid.
+        showDeleted: !token,
       });
     } catch (e) {
       if ((e as Error).message === "SYNC_TOKEN_INVALID") {
-        // The stored token expired: restart as a bounded full sync.
+        // The stored token expired: restart as a bounded full sync. This is the
+        // exact window in which deletions go unseen, so showDeleted matters most
+        // here: every event cancelled since the token died is only knowable now.
         token = undefined;
         timeMin = fullMin;
         timeMax = fullMax;
@@ -364,6 +371,7 @@ async function syncOneCalendar(
         result = await listEvents(accessToken, cal.id, {
           timeMin: fullMin,
           timeMax: fullMax,
+          showDeleted: true,
         });
       } else {
         throw e;

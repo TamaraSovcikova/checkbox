@@ -191,6 +191,15 @@ export async function listCalendars(
 
 // ── Event CRUD ────────────────────────────────────────────────────────────────
 
+// `showDeleted` matters far more than it looks. Google returns cancelled events
+// for a syncToken request whatever this says (that is how incremental sync
+// signals a deletion), but for a timeMin/timeMax request it defaults to FALSE and
+// simply omits them. A full resync therefore only ever UPSERTS, so an event
+// deleted while the stored sync token was invalid keeps its cache row forever:
+// the caller's `status === "cancelled"` branch never sees it and nothing else
+// prunes. That is what left two long-dead events drawing all-day chips (they were
+// cancelled on Google days earlier; only the cache still believed in them). Set
+// it on the full-sync path so a resync can prune, not just refresh.
 export async function listEvents(
   accessToken: string,
   calendarId: string,
@@ -199,6 +208,7 @@ export async function listEvents(
     timeMax?: string;
     syncToken?: string;
     pageToken?: string;
+    showDeleted?: boolean;
   }
 ): Promise<GCalEventList> {
   const params = new URLSearchParams({
@@ -210,6 +220,7 @@ export async function listEvents(
   if (opts.timeMax) params.set("timeMax", opts.timeMax);
   if (opts.syncToken) params.set("syncToken", opts.syncToken);
   if (opts.pageToken) params.set("pageToken", opts.pageToken);
+  if (opts.showDeleted) params.set("showDeleted", "true");
   const res = await fetch(
     `${GCAL_BASE}/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
