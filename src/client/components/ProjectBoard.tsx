@@ -104,12 +104,14 @@ function Column({
 
 export function ProjectBoard({
   project,
-  view = "grid",
+  view = "board",
   onOpen,
   transform,
 }: {
   project: Project;
-  view?: "grid" | "list";
+  // "board" was called "grid" until the card-grid mode was removed and the name
+  // was freed up to mean what this actually draws.
+  view?: "board" | "list";
   onOpen: (t: Task) => void;
   // Applied after fetch so the page's Filter/Sort menus affect both the board
   // columns and the list. The board still groups by column, so grouping is the

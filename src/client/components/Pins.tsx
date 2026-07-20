@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type { Pin, PinItem, Task } from "../../shared/types";
 import {
   usePins,
@@ -136,6 +142,50 @@ function PinMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// A pin's body text. ONE element, always a textarea, grown to fit its content.
+//
+// It used to swap between a full-height preview button and a `rows={2}`
+// textarea, so clicking a long reminder collapsed it into a two-line scroller
+// and you had to scroll to reach the sentence you had just clicked on. Keeping a
+// single element removes the whole class of problem: there is no height change,
+// no focus to hand over, and the caret lands exactly where you clicked, because
+// that is simply what clicking a textarea does.
+//
+// Growing (rather than scrolling) is safe because the caller already wraps this
+// in a `min-h-0 flex-1 overflow-y-auto` container, so a pin with a dragged
+// height scrolls at the card level instead.
+function PinBody({
+  value,
+  onChange,
+  onCommit,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onCommit: () => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  // Measured before paint, so the box is never briefly the wrong size.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onCommit}
+      placeholder="Your reminder, goal or quote…"
+      rows={1}
+      className="w-full resize-none overflow-hidden bg-transparent text-[13px] leading-snug text-foreground outline-none placeholder:text-subtle"
+    />
   );
 }
 
@@ -341,7 +391,6 @@ function PinCard({
   const [title, setTitle] = useState(pin.title ?? "");
   const [items, setItems] = useState<PinItem[]>(pin.items ?? []);
   const [body, setBody] = useState(pin.body ?? "");
-  const [editingBody, setEditingBody] = useState(false);
   const [newLine, setNewLine] = useState("");
 
   useEffect(() => {
@@ -553,34 +602,14 @@ function PinCard({
             />
           </div>
         </div>
-      ) : editingBody || !body.trim() ? (
-        <textarea
+      ) : (
+        <PinBody
           value={body}
-          autoFocus={editingBody}
-          onFocus={() => setEditingBody(true)}
-          // Mark editing in the SAME change as the keystroke: the first character
-          // makes body non-empty, which would otherwise flip this back to the
-          // preview and yank focus (the same trap the task notes had).
-          onChange={(e) => {
-            setBody(e.target.value);
-            setEditingBody(true);
-          }}
-          onBlur={() => {
-            setEditingBody(false);
+          onChange={setBody}
+          onCommit={() => {
             if (body !== (pin.body ?? "")) update.mutate({ id: pin.id, body: { body } });
           }}
-          placeholder="Your reminder, goal or quote…"
-          rows={compact ? 2 : 3}
-          className="w-full resize-none bg-transparent text-[13px] text-foreground outline-none placeholder:text-subtle"
         />
-      ) : (
-        <button
-          onClick={() => setEditingBody(true)}
-          className="w-full whitespace-pre-wrap text-left text-[13px] text-foreground"
-          title="Click to edit"
-        >
-          {body}
-        </button>
       )}
 
       {/* A reminder's linked tasks. A note has no lines of its own, so these sit

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type PointerEvent as ReactPointerEvent } from "react";
 import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useParams, useNavigate } from "react-router-dom";
@@ -53,21 +53,12 @@ import { ProjectBoard } from "./components/ProjectBoard";
 import { TodayBoard } from "./components/TodayBoard";
 import { TaskRow } from "./components/TaskRow";
 import {
-  TaskMeta,
-  TodayToggle,
-  optionalCardBorder,
-  optionalTitleTone,
-  useTaskArea,
-  useDistantTone,
-} from "./components/TaskMeta";
-import {
   useTaskSelection,
   BulkActionBar,
   type TaskControls,
 } from "./components/TaskListControls";
 import { TopBar, type Tab, type MenuChoice } from "./components/TopBar";
 import {
-  GridIcon,
   ListIcon,
   BoardIcon,
   TodayIcon,
@@ -79,7 +70,6 @@ import {
   BackIcon,
   ICON_SIZE,
 } from "./lib/icons";
-import { areaTintBg } from "./lib/colors";
 import { useViewPrefs } from "./lib/queries";
 import { Button, cx } from "./components/ui";
 import { todayStr } from "./lib/utils";
@@ -282,7 +272,11 @@ function useTaskCollection(
   const { open } = useTaskUI();
 
   const vd = viewDefault(prefsKey);
-  const view = (vd.mode ?? "list") as ViewMode;
+  // "grid" was a card-grid mode that has been removed. Stored prefs still carry
+  // it for anything last left in that mode, so it reads as list rather than
+  // rendering nothing. Mapped on READ, so no prefs migration is needed and the
+  // change stays reversible.
+  const view = (vd.mode === "grid" ? "list" : vd.mode ?? "list") as ViewMode;
   const sort = (vd.sort as SortKey) ?? "manual";
   const group = (vd.group as GroupKey) ?? "none";
   const filter = (vd.filter as FilterKey) ?? "all";
@@ -308,14 +302,12 @@ function useTaskCollection(
       onSelect: () => setViewDefault(prefsKey, { [key]: k }),
     }));
 
-  // Selection + keyboard nav run over the flattened, grouped order, only in list
-  // view (grid keeps plain click-to-open). The running offset keeps each group's
-  // rows in one continuous cursor sequence.
+  // Selection + keyboard nav run over the flattened, grouped order. The running
+  // offset keeps each group's rows in one continuous cursor sequence.
   const flat = groups.flatMap((g) => g.tasks);
   const controls = useTaskSelection(flat, open, view === "list");
 
   function renderBody(list: Task[], offset: number) {
-    if (view === "grid") return <TaskGrid tasks={list} empty={empty} />;
     return (
       <TaskList
         tasks={list}
@@ -359,82 +351,32 @@ function useTaskCollection(
   };
 }
 
-// Grid card. Shares TaskMeta/TodayToggle with the rows and the board, so
-// `optional` and the Today marker survive the trip to a grid view (they used to
-// vanish: this rendered its own chip subset). A div rather than a button because
-// the Today toggle is itself a button and buttons cannot nest.
-function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
-  // Area through the project, distant dimming shared with the row: a grid card no
-  // longer sits untinted or at full strength beside an identical list row.
-  const { area } = useTaskArea(task);
-  const done = task.status === "done";
-  const tint = areaTintBg(area?.color, 10);
-  const distant = useDistantTone(task);
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen(task)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen(task);
-        }
-      }}
-      className={cx(
-        "group flex cursor-pointer flex-col rounded-lg border border-border bg-surface/60 p-3 text-left transition-colors hover:border-primary/40",
-        distant,
-        optionalCardBorder(task)
-      )}
-      style={tint ? { backgroundColor: tint } : undefined}
-    >
-      <div className="flex items-start gap-1.5">
-        <span
-          className={cx(
-            "min-w-0 flex-1 text-sm",
-            done ? "text-subtle line-through" : "text-foreground",
-            optionalTitleTone(task)
-          )}
-        >
-          {task.title}
-        </span>
-        {!done && <TodayToggle task={task} alwaysVisible />}
-      </div>
-      <TaskMeta task={task} />
-    </div>
-  );
-}
+// The card grid is gone: it said less per row than the list, took more space,
+// and supported neither multi-select nor keyboard nav. Note that a PROJECT's old
+// "Grid" tab was never this component - it draws the kanban board, and is now
+// labelled as such.
+type ViewMode = "list" | "board" | "recurring";
 
-function TaskGrid({ tasks, empty }: { tasks: Task[]; empty: string }) {
-  const { open } = useTaskUI();
-  if (tasks.length === 0)
-    return <p className="px-2 text-sm text-subtle">{empty}</p>;
-  return (
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-      {tasks.map((t) => (
-        <TaskCard key={t.id} task={t} onOpen={open} />
-      ))}
-    </div>
-  );
-}
-
-type ViewMode = "grid" | "list" | "board" | "recurring";
-
-const LIST_GRID_TABS: Tab<ViewMode>[] = [
-  { id: "grid", label: "Grid", icon: <GridIcon className={ICON_SIZE} /> },
-  { id: "list", label: "List", icon: <ListIcon className={ICON_SIZE} /> },
-];
+const LIST_TAB: Tab<ViewMode> = {
+  id: "list",
+  label: "List",
+  icon: <ListIcon className={ICON_SIZE} />,
+};
+const BOARD_TAB: Tab<ViewMode> = {
+  id: "board",
+  label: "Board",
+  icon: <BoardIcon className={ICON_SIZE} />,
+};
 // Areas also offer a Recurring tab: the routines filed there, out of the way of
 // the list until one is actually due. See lib/recurring.
 const AREA_TABS: Tab<ViewMode>[] = [
-  ...LIST_GRID_TABS,
+  LIST_TAB,
   { id: "recurring", label: "Recurring", icon: <RepeatIcon className={ICON_SIZE} /> },
 ];
 // Today also offers a To do / Doing / Done board you can drag between.
-const TODAY_TABS: Tab<ViewMode>[] = [
-  ...LIST_GRID_TABS,
-  { id: "board", label: "Board", icon: <BoardIcon className={ICON_SIZE} /> },
-];
+const TODAY_TABS: Tab<ViewMode>[] = [LIST_TAB, BOARD_TAB];
+// A project's two real shapes. Board first: it is the one worth defaulting to.
+const PROJECT_TABS: Tab<ViewMode>[] = [BOARD_TAB, LIST_TAB];
 
 // The right rail: the day timeline and that view's pins, sharing ONE slot.
 //
@@ -449,6 +391,16 @@ const TODAY_TABS: Tab<ViewMode>[] = [
 //
 // The tab bar only appears when there are genuinely two panes; one pane draws
 // itself, unlabelled, exactly as before.
+//
+// The rail's WIDTH is draggable: grab the divider on its left edge and the space
+// moves between the board and the rail. Persisted per view, because how much room
+// the calendar deserves is not the same question on Today as on an area.
+
+const RAIL_DEFAULT = 288; // matches the old fixed w-72
+const RAIL_MIN = 220; // narrower than this and the timeline stops being readable
+const RAIL_MAX = 560;
+const clampRail = (n: number) => Math.max(RAIL_MIN, Math.min(RAIL_MAX, Math.round(n)));
+
 function SideRail({
   showCalendar,
   scope,
@@ -464,6 +416,34 @@ function SideRail({
   const sidePins = useSidePins(scope);
   const hasPins = sidePins.length > 0;
   const def = viewDefault(viewKey);
+  // Live width while dragging, so the pointer move does not write a pref per
+  // pixel; the committed value lands once on release.
+  const [dragW, setDragW] = useState<number | null>(null);
+  const width = dragW ?? clampRail(def.railWidth ?? RAIL_DEFAULT);
+
+  function onDividerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startW = width;
+    let next = startW;
+
+    const move = (ev: PointerEvent) => {
+      // Dragging LEFT grows the rail, which is the direction the divider moves.
+      next = clampRail(startW - (ev.clientX - startX));
+      setDragW(next);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setDragW(null);
+      if (next !== (def.railWidth ?? RAIL_DEFAULT)) {
+        setViewDefault(viewKey, { railWidth: next });
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
 
   if (!showCalendar && !hasPins) return null;
 
@@ -477,7 +457,32 @@ function SideRail({
   const bothAvailable = showCalendar && hasPins;
 
   return (
-    <aside className="mt-4 lg:mt-0 lg:w-72 lg:shrink-0 lg:self-start lg:sticky lg:top-0 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
+    <>
+      {/* The divider. Desktop only, since the rail stacks below on mobile and
+          there is no boundary to drag. Invisible until you approach it: a
+          permanent vertical rule between two panes is just a line to look at.
+          The hit area is deliberately wider than the visible bar so it is
+          grabbable without precision aiming. */}
+      <div
+        role="separator"
+        aria-label="Resize rail"
+        aria-orientation="vertical"
+        title="Drag to resize"
+        onPointerDown={onDividerDown}
+        onDoubleClick={() => setViewDefault(viewKey, { railWidth: RAIL_DEFAULT })}
+        className="group/div relative hidden w-2 shrink-0 cursor-col-resize lg:block"
+      >
+        <div
+          className={cn(
+            "absolute inset-y-0 left-1/2 w-px -translate-x-1/2 rounded transition-colors",
+            dragW != null ? "bg-primary" : "bg-transparent group-hover/div:bg-primary/40"
+          )}
+        />
+      </div>
+      <aside
+        style={{ ["--rail-w" as string]: `${width}px` }}
+        className="mt-4 lg:mt-0 lg:w-[var(--rail-w)] lg:shrink-0 lg:self-start lg:sticky lg:top-0 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto"
+      >
       {bothAvailable && (
         <div className="mb-2 flex overflow-hidden rounded-md border border-border">
           {(["calendar", "pins"] as const).map((t) => (
@@ -508,7 +513,8 @@ function SideRail({
       ) : (
         <PinsSide scope={scope} inline />
       )}
-    </aside>
+      </aside>
+    </>
   );
 }
 
@@ -530,7 +536,9 @@ export function ViewPage({ name }: { name: string }) {
       <Header
         title={meta.title}
         icon={<meta.icon className={ICON_SIZE} />}
-        tabs={isToday ? TODAY_TABS : LIST_GRID_TABS}
+        // Only Today has a second shape. Everywhere else a lone "List" tab is
+        // just a label pretending to be a control, so show no tab bar at all.
+        tabs={isToday ? TODAY_TABS : undefined}
         activeTab={view}
         onTab={setView}
         sort={sortMenu}
@@ -1051,7 +1059,9 @@ export function ProjectPage() {
   const { data: areas = [] } = useAreas();
   const { viewDefault, setViewDefault } = useViewPrefs();
   const vd = viewDefault(`project:${id}`);
-  const view = (vd.mode ?? "grid") as ViewMode;
+  // A project's old "grid" was always the kanban board, so stored prefs saying
+  // "grid" mean board. Mapped on read; no prefs migration needed.
+  const view = (vd.mode === "grid" || !vd.mode ? "board" : vd.mode) as ViewMode;
   const sort = (vd.sort as SortKey) ?? "manual";
   const filter = (vd.filter as FilterKey) ?? "all";
   const setView = (m: ViewMode) => setViewDefault(`project:${id}`, { mode: m });
@@ -1075,7 +1085,7 @@ export function ProjectPage() {
     <div>
       <Header
         title={project.name}
-        tabs={LIST_GRID_TABS}
+        tabs={PROJECT_TABS}
         activeTab={view}
         onTab={setView}
         sort={sortMenu}
@@ -1100,7 +1110,7 @@ export function ProjectPage() {
       <ProjectDialog open={edit} onOpenChange={setEdit} existing={project} />
       <ProjectBoard
         project={project}
-        view={view === "list" ? "list" : "grid"}
+        view={view === "list" ? "list" : "board"}
         onOpen={open}
         transform={(ts) => sortTasks(filterTasks(ts, filter), sort)}
       />

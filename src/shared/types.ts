@@ -215,6 +215,10 @@ export interface ViewDefault {
   // The day timeline drawn full height rather than the short window around now.
   // Compact is the default, so this only ever records an expansion.
   timelineFull?: boolean;
+  // Width of the right rail in px, set by dragging the divider. Absent means the
+  // default. Clamped on read as well as on write, so a silly stored value (an old
+  // build, a hand-edited pref) cannot leave the board with no room.
+  railWidth?: number;
 }
 
 // Per-user view preferences (stored as JSON on the users row).

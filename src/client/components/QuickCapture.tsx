@@ -3,6 +3,7 @@ import { parseCapture, previewChips, activeCaptureToken } from "../lib/nlp";
 import type { CaptureParse } from "../../shared/types";
 import { useCreateTask, useProjects, useAreas, useLabels } from "../lib/queries";
 import { Input } from "./ui";
+import { AddIcon } from "../lib/icons";
 
 const CHIP_STYLE: Record<string, string> = {
   date: "bg-surface-2 text-muted",
@@ -191,7 +192,16 @@ export function QuickCapture({
 
   return (
     <div className="space-y-1.5">
+      {/* Reads as an ACTION, not an empty field waiting to be noticed. It used to
+          be a bare outlined box carrying a sentence-long grey placeholder, which
+          made it look like a disabled search bar sitting in dead space. Now it
+          matches the sidebar's search control: leading icon, short label, and a
+          hint on the right. The syntax that used to live in the placeholder is
+          already spelled out by the cheat sheet below and echoed live as chips. */}
       <div className="relative">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-subtle">
+          <AddIcon className="h-4 w-4" />
+        </span>
         <Input
           ref={inputRef}
           value={text}
@@ -206,8 +216,17 @@ export function QuickCapture({
           onClick={(e) => syncCaret(e.currentTarget)}
           onKeyDown={onKeyDown}
           onBlur={() => setMenuDismissed(true)}
-          placeholder="Add a task... e.g. Call landlord tomorrow 3pm p2 @call #Belgium"
+          aria-label="Add a task"
+          placeholder="Add a task"
+          className="bg-surface-2/40 pl-9 pr-16 transition-colors hover:bg-surface-2/60 focus:bg-surface"
         />
+        {/* Only once there is something to submit: an empty box does not need to
+            advertise a key that would do nothing. */}
+        {text.trim() && (
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-border px-1.5 py-0.5 text-[10px] text-subtle">
+            ⏎ add
+          </span>
+        )}
         {menuOpen && (
           <ul
             role="listbox"
