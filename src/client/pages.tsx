@@ -111,7 +111,12 @@ function TaskList({
     return <p className="px-2 text-sm text-subtle">{empty}</p>;
   return (
     // space-y gives rows room to breathe; packed rows were hard to scan.
-    <div className="max-w-2xl space-y-1">
+    //
+    // No width cap: the rows fill their column, so dragging the rail divider
+    // actually moves space between the two. It used to stop at max-w-2xl (672px),
+    // which meant narrowing the rail freed room that nothing took, and the slider
+    // looked like it only resized the calendar.
+    <div className="space-y-1">
       {tasks.map((t, i) => (
         <TaskRow
           key={t.id}
@@ -557,7 +562,9 @@ export function ViewPage({ name }: { name: string }) {
         ]}
         below={
           name !== "logbook" ? (
-            <div className="max-w-2xl">
+            // Full width, matching the list below it: a capture bar that stopped
+            // short of the rows it feeds looked like a stray element.
+            <div>
               {/* Captured on Today -> planned for today, not dumped in Backlog. */}
               <QuickCapture
                 defaultPlannedDate={name === "today" ? todayStr() : undefined}
@@ -607,7 +614,7 @@ function CompletedToday() {
   const [expanded, setExpanded] = useState(true);
   if (done.length === 0) return null;
   return (
-    <div className="mt-8 max-w-2xl">
+    <div className="mt-8">
       <button
         onClick={() => setExpanded((e) => !e)}
         className="mb-1 flex w-full items-center gap-1.5 px-2 text-xs font-semibold uppercase tracking-wide text-subtle transition-colors hover:text-foreground"
@@ -1022,7 +1029,7 @@ export function AreaPage() {
             {showRecurring ? "Recurring" : "Loose tasks"}
           </div>
           {!showRecurring && (
-            <div className="mb-3 max-w-2xl">
+            <div className="mb-3">
               <QuickCapture defaultAreaId={id} />
             </div>
           )}
@@ -1093,7 +1100,7 @@ export function ProjectPage() {
         filter={filterMenu}
         menu={[{ label: "Edit project", onSelect: () => setEdit(true) }]}
         below={
-          <div className="max-w-2xl space-y-2">
+          <div className="space-y-2">
             {/* Projects are always reached through an area, so give the way back. */}
             {parentArea && (
               <a
