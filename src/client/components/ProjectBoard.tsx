@@ -88,7 +88,12 @@ function Column({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex w-72 shrink-0 flex-col gap-2 rounded-lg bg-surface/40 p-2",
+        // Same as TodayBoard: columns share the width instead of each claiming a
+        // fixed 288px, so the board reflows when the rail divider moves. A
+        // project can define many columns, in which case the min-w floor is hit
+        // and the row scrolls, which is correct: five unreadable slivers help
+        // nobody.
+        "flex min-w-[11rem] flex-1 flex-col gap-2 rounded-lg bg-surface/40 p-2",
         isOver && "ring-1 ring-primary"
       )}
     >

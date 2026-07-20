@@ -32,7 +32,13 @@ function StageColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex w-72 shrink-0 flex-col gap-2 rounded-lg bg-surface/40 p-2",
+        // Share the width rather than claiming a fixed 288px each. Fixed columns
+        // meant widening the rail pushed a whole column out of sight instead of
+        // making the remaining ones narrower, so the divider could silently cost
+        // you a third of the board. `min-w` is the floor at which a card stops
+        // being readable; past that the row scrolls, which is the honest
+        // fallback rather than squeezing to nothing.
+        "flex min-w-[11rem] flex-1 flex-col gap-2 rounded-lg bg-surface/40 p-2",
         isOver && "ring-1 ring-primary"
       )}
     >
