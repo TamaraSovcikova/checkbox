@@ -157,6 +157,22 @@ function CadenceRow({ tracker }: { tracker: Tracker }) {
             >
               Set cadence
             </DropdownMenuItem>
+            {/* Only offered where it can mean something: without a target
+                nothing is ever past due, so there is nothing to emit on. */}
+            {tracker.target_days != null && (
+              <DropdownMenuItem
+                onSelect={() =>
+                  update.mutate({
+                    id: tracker.id,
+                    body: { auto_task: !tracker.auto_task },
+                  })
+                }
+              >
+                {tracker.auto_task
+                  ? "Stop making a task when due"
+                  : "Make a task when due"}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={() => update.mutate({ id: tracker.id, body: { archived: true } })}>
               Archive
             </DropdownMenuItem>
@@ -184,6 +200,16 @@ function CadenceRow({ tracker }: { tracker: Tracker }) {
             ? `every ${tracker.target_days}d`
             : `${since}/${tracker.target_days}d`}
         </span>
+        {/* A tracker that quietly creates tasks should say so on its face, not
+            only inside a menu you have to open to find out. */}
+        {tracker.auto_task && (
+          <span
+            className="shrink-0 text-[11px] text-subtle"
+            title="Makes a task when it goes past its cadence"
+          >
+            → task
+          </span>
+        )}
       </div>
     </div>
   );

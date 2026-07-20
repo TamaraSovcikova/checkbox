@@ -12,6 +12,7 @@ type TrackerRow = {
   area_id: string | null;
   notes: string | null;
   archived: number;
+  auto_task: number;
   position: number;
   created_at: string;
   last_at: string | null;
@@ -21,6 +22,7 @@ type TrackerRow = {
 const shape = (r: TrackerRow) => ({
   ...r,
   archived: r.archived === 1,
+  auto_task: r.auto_task === 1,
   event_count: r.event_count ?? 0,
 });
 
@@ -95,7 +97,7 @@ trackers.post("/", async (c) => {
   return c.json(shape(row as TrackerRow), 201);
 });
 
-const WRITABLE = ["name", "kind", "target_days", "area_id", "notes", "archived", "position"];
+const WRITABLE = ["name", "kind", "target_days", "area_id", "notes", "archived", "auto_task", "position"];
 
 trackers.patch("/:id", async (c) => {
   const userId = await getUserId(c);
@@ -106,7 +108,7 @@ trackers.patch("/:id", async (c) => {
   for (const f of WRITABLE) {
     if (!(f in b)) continue;
     let v = b[f];
-    if (f === "archived") v = v ? 1 : 0;
+    if (f === "archived" || f === "auto_task") v = v ? 1 : 0;
     // Same rule as create: only a positive number is a target.
     if (f === "target_days") v = typeof v === "number" && v > 0 ? Math.round(v) : null;
     sets.push(`${f} = ?`);

@@ -767,6 +767,11 @@ const TOOLS = [
           type: "string",
           description: "ISO datetime of the last occurrence, if it already happened.",
         },
+        auto_task: {
+          type: "boolean",
+          description:
+            "Create a real task when it goes past target_days. Needs a target to mean anything.",
+        },
       },
       required: ["name"],
     },
@@ -1603,10 +1608,13 @@ async function handleTool(
           ? Math.round(args.target_days)
           : null;
       const id = uuid();
+      // auto_task without a target would never fire, so it is only honoured
+      // alongside one rather than being silently stored as a dead flag.
+      const autoTask = args.auto_task === true && target != null ? 1 : 0;
       await db
         .prepare(
-          `INSERT INTO trackers (id, user_id, name, kind, target_days, area_id, position, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM trackers WHERE user_id = ?), 0), ?)`
+          `INSERT INTO trackers (id, user_id, name, kind, target_days, area_id, auto_task, position, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM trackers WHERE user_id = ?), 0), ?)`
         )
         .bind(
           id,
@@ -1615,6 +1623,7 @@ async function handleTool(
           typeof args.kind === "string" && args.kind ? args.kind : "contact",
           target,
           (args.area_id as string) ?? null,
+          autoTask,
           userId,
           now()
         )
@@ -1628,7 +1637,9 @@ async function handleTool(
           .run();
       }
       return text(
-        `Tracking "${name}"${target ? ` every ${target} days` : " (no target)"} (id: ${id}).`
+        `Tracking "${name}"${target ? ` every ${target} days` : " (no target)"}${
+          autoTask ? ", making a task when it falls behind" : ""
+        } (id: ${id}).`
       );
     }
 

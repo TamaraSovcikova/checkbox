@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { type Bindings, getUserId, now, uuid } from "../db";
 import { hydrateTasks } from "./_hydrate";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
+import { logTrackerForTask, unlogTrackerForTask } from "../lib/trackers";
 import { enforceProjectArea } from "../lib/section";
 import { nextDueDate } from "../../shared/recurrence";
 
@@ -296,17 +297,37 @@ tasks.post("/:id/complete", async (c) => {
   // Grab the GCal linkage before the status flips: a completed task should not
   // keep occupying the calendar. Without this, every finished task left its event
   // behind forever, which is where the stale entries came from.
+  //
+  // `tracker_id` comes along for the ride: ticking off a task a cadence tracker
+  // emitted IS the occurrence, so the gauge must reset with it.
   const linked = await c.env.DB.prepare(
-    "SELECT gcal_event_id, gcal_calendar_id FROM tasks WHERE id = ? AND user_id = ?"
+    "SELECT gcal_event_id, gcal_calendar_id, tracker_id FROM tasks WHERE id = ? AND user_id = ?"
   )
     .bind(id, userId)
-    .first<{ gcal_event_id: string | null; gcal_calendar_id: string | null }>();
+    .first<{
+      gcal_event_id: string | null;
+      gcal_calendar_id: string | null;
+      tracker_id: string | null;
+    }>();
 
   await c.env.DB.prepare(
     `UPDATE tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ? AND user_id = ?`
   )
     .bind(done ? "done" : "todo", done ? now() : null, now(), id, userId)
     .run();
+
+  // Close the loop with the tracker, both ways. Without this you would tick the
+  // task and then have to press Log as well, while the gauge sat there insisting
+  // you had not called anyone.
+  if (linked?.tracker_id) {
+    if (done) {
+      await logTrackerForTask(c.env.DB, userId, id, linked.tracker_id);
+    } else {
+      // Re-opening removes exactly the event this task created, so a Log pressed
+      // by hand in between survives untouched.
+      await unlogTrackerForTask(c.env.DB, userId, id);
+    }
+  }
 
   if (done && linked?.gcal_event_id) {
     // Clear the linkage too, so un-completing pushes a fresh event rather than

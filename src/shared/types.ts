@@ -60,6 +60,11 @@ export interface Tracker {
   archived: boolean;
   position: number;
   created_at: string;
+  // Emit a real task when this goes past its target, so the nudge lands in the
+  // task list rather than only on the gauge. Off by default: some things are
+  // worth watching without generating work. Requires a target_days to mean
+  // anything, since without one nothing is ever "past" due.
+  auto_task: boolean;
   // Derived server-side from tracker_events, so the client never has to fetch
   // the whole log just to draw a row.
   last_at: string | null; // ISO of the most recent occurrence, null if never

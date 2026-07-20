@@ -25,6 +25,7 @@ import { mcp } from "./routes/mcp";
 import { syncCalendar, renewWatchChannel } from "./lib/sync";
 import { sendMorningBrief } from "./lib/brief";
 import { generateDayPlansForAll } from "./lib/planner";
+import { emitTrackerTasks } from "./lib/trackers";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -70,10 +71,24 @@ export default {
     const cron = event.cron; // "*/15 * * * *" or "0 6 * * *"
 
     if (cron === "0 6 * * *") {
-      // Ambient planner: draft each user's day plan (accept with one tap in the
-      // UI), then the morning brief push + email digest that announces it.
+      // Cadence trackers that have gone past their target become real tasks
+      // FIRST, so a cadence that came due overnight is in today's list before
+      // the plan is drafted and the brief announces it.
+      //
+      // Sequential rather than waitUntil'd in parallel with the planner: the
+      // planner reads the task list, and a task that appears halfway through
+      // would be a coin toss as to whether it was considered.
       ctx.waitUntil(
-        generateDayPlansForAll(env)
+        (async () => {
+          const { results } = await env.DB.prepare(
+            "SELECT id FROM users"
+          ).all<{ id: string }>();
+          for (const { id } of results ?? []) {
+            await emitTrackerTasks(env.DB, id).catch(console.error);
+          }
+        })()
+          .catch(console.error)
+          .then(() => generateDayPlansForAll(env))
           .then(() => sendMorningBrief(env))
           .catch(console.error)
       );
