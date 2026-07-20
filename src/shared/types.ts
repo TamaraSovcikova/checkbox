@@ -318,7 +318,11 @@ export interface PinItem {
 }
 export interface Pin {
   id: string;
-  kind: "note" | "list";
+  // "tracker" shows the cadence gauges that most need attention (see
+  // components/Cadences). It carries no content of its own: the trackers are
+  // read live and ordered by urgency, so the card never goes stale and there is
+  // nothing to keep in sync. An area-scoped tracker pin narrows to that area.
+  kind: "note" | "list" | "tracker";
   title: string | null;
   body: string | null; // note text
   items: PinItem[]; // list lines

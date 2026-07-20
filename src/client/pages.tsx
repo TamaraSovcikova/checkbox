@@ -983,6 +983,7 @@ export function AreaPage() {
           // to the Pins page to re-pick the area you are standing in.
           { label: "New list pin", onSelect: addPin.addList },
           { label: "New reminder pin", onSelect: addPin.addNote },
+          { label: "New cadence pin", onSelect: addPin.addTracker },
         ]}
       />
       {area && (

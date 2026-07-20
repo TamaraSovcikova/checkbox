@@ -709,9 +709,90 @@ const TOOLS = [
       required: ["task_id", "depends_on_id"],
     },
   },
+
+  // ── Cadence trackers ────────────────────────────────────────────────────────
+  // Things measured by "how long since", not "due when". Answering "when did I
+  // last call mum?" and logging it afterwards are the two things worth doing
+  // from a chat, which is why these three exist and nothing more.
+  {
+    name: "list_trackers",
+    description:
+      "List cadence trackers with how long it has been since each was last done. Use for questions like 'who have I not spoken to in a while' or 'when did I last call X'. `days_since` is null when it has never been logged; `target_days` is null when the tracker is only counting and has no cadence to be late against.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        area_id: { type: "string", description: "Only trackers filed under this area." },
+        due_only: {
+          type: "boolean",
+          description: "Only those at or past their target cadence, or never logged.",
+        },
+      },
+    },
+  },
+  {
+    name: "log_tracker",
+    description:
+      "Record that a tracker happened, which resets its counter. Use when told something like 'I just called Ivka'. Defaults to now; pass occurred_at to backdate.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Tracker id (from list_trackers)." },
+        occurred_at: {
+          type: "string",
+          description: "ISO datetime, or YYYY-MM-DD. Defaults to now.",
+        },
+        note: { type: "string" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "create_tracker",
+    description:
+      "Start tracking something by how long since it last happened (a person to keep in touch with, a plant, a backup). Omit target_days to count without a cadence.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        target_days: {
+          type: "number",
+          description: "Desired interval in days. Omit for no target.",
+        },
+        area_id: { type: "string" },
+        kind: {
+          type: "string",
+          description: "contact | habit | maintenance | health. Label only.",
+        },
+        last_at: {
+          type: "string",
+          description: "ISO datetime of the last occurrence, if it already happened.",
+        },
+      },
+      required: ["name"],
+    },
+  },
 ] as const;
 
 // ── Tool handlers ──────────────────────────────────────────────────────────────
+
+// Today in the user's zone. Same shape as the copies in views/filters/stats.
+function todayStr(tz = "Europe/Brussels") {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+// Whole calendar days between two YYYY-MM-DD days. UTC construction so a DST
+// boundary cannot make a day 23 or 25 hours long and round the wrong way.
+// Mirrors client/lib/cadence.ts daysBetween; keep the two in step.
+function daysBetweenDays(from: string, to: string): number {
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
+}
 
 // Fields whose change means the Google Calendar event must be reconciled.
 const GCAL_FIELDS = ["scheduled_start", "scheduled_end", "due_date", "due_time", "title"];
@@ -1439,6 +1520,116 @@ async function handleTool(
         "DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?"
       ).bind(taskId, args.depends_on_id).run();
       return text(`Removed dependency ${taskId} -> ${args.depends_on_id}.`);
+    }
+
+    // ── Cadence trackers ─────────────────────────────────────────────────────
+
+    case "list_trackers": {
+      const binds: unknown[] = [userId];
+      let sql = `
+        SELECT t.id, t.name, t.kind, t.target_days, t.area_id,
+               (SELECT MAX(e.occurred_at) FROM tracker_events e WHERE e.tracker_id = t.id) AS last_at
+          FROM trackers t
+         WHERE t.user_id = ? AND t.archived = 0`;
+      if (args.area_id) {
+        sql += " AND t.area_id = ?";
+        binds.push(args.area_id);
+      }
+      const { results } = await db.prepare(sql).bind(...binds).all<{
+        id: string;
+        name: string;
+        kind: string;
+        target_days: number | null;
+        area_id: string | null;
+        last_at: string | null;
+      }>();
+
+      // days_since is computed here rather than in SQL so it is CALENDAR days in
+      // the user's zone, matching what the app shows. julianday() on a UTC
+      // timestamp would disagree with the UI by a day around midnight.
+      const today = todayStr();
+      const rows = (results ?? []).map((r) => {
+        const days = r.last_at ? daysBetweenDays(r.last_at.slice(0, 10), today) : null;
+        return {
+          ...r,
+          days_since: days,
+          // "Due" means at or past the cadence. A tracker with no target is never
+          // due, however long it has been: that is what omitting a target means.
+          due: r.target_days == null ? false : days == null || days >= r.target_days,
+        };
+      });
+
+      const list = args.due_only ? rows.filter((r) => r.due) : rows;
+      // Most neglected first, so the answer to "who should I call" is the top row.
+      list.sort((a, b) => {
+        const ra = a.target_days ? (a.days_since ?? Infinity) / a.target_days : -1;
+        const rb = b.target_days ? (b.days_since ?? Infinity) / b.target_days : -1;
+        return rb - ra;
+      });
+      return json({ trackers: list });
+    }
+
+    case "log_tracker": {
+      const id = args.id as string;
+      const owns = await db
+        .prepare("SELECT name FROM trackers WHERE id = ? AND user_id = ?")
+        .bind(id, userId)
+        .first<{ name: string }>();
+      if (!owns) return text(`Tracker ${id} not found.`);
+
+      // A bare date is accepted for convenience ("I called her on the 14th") and
+      // widened to midday, so a timezone shift cannot slide it to the wrong day.
+      const raw = typeof args.occurred_at === "string" ? args.occurred_at : "";
+      const occurredAt = !raw
+        ? new Date().toISOString()
+        : /^\d{4}-\d{2}-\d{2}$/.test(raw)
+        ? `${raw}T12:00:00.000Z`
+        : raw;
+
+      await db
+        .prepare(
+          "INSERT INTO tracker_events (id, user_id, tracker_id, occurred_at, note) VALUES (?, ?, ?, ?, ?)"
+        )
+        .bind(uuid(), userId, id, occurredAt, (args.note as string) ?? null)
+        .run();
+      return text(`Logged "${owns.name}" at ${occurredAt.slice(0, 10)}.`);
+    }
+
+    case "create_tracker": {
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      if (!name) return text("A name is required.");
+      const target =
+        typeof args.target_days === "number" && args.target_days > 0
+          ? Math.round(args.target_days)
+          : null;
+      const id = uuid();
+      await db
+        .prepare(
+          `INSERT INTO trackers (id, user_id, name, kind, target_days, area_id, position, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM trackers WHERE user_id = ?), 0), ?)`
+        )
+        .bind(
+          id,
+          userId,
+          name,
+          typeof args.kind === "string" && args.kind ? args.kind : "contact",
+          target,
+          (args.area_id as string) ?? null,
+          userId,
+          now()
+        )
+        .run();
+      if (typeof args.last_at === "string" && args.last_at) {
+        await db
+          .prepare(
+            "INSERT INTO tracker_events (id, user_id, tracker_id, occurred_at) VALUES (?, ?, ?, ?)"
+          )
+          .bind(uuid(), userId, id, args.last_at)
+          .run();
+      }
+      return text(
+        `Tracking "${name}"${target ? ` every ${target} days` : " (no target)"} (id: ${id}).`
+      );
     }
 
     default:

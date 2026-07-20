@@ -46,7 +46,7 @@ pins.get("/", async (c) => {
 pins.post("/", async (c) => {
   const userId = await getUserId(c);
   const b = await c.req.json<{
-    kind?: "note" | "list";
+    kind?: "note" | "list" | "tracker";
     title?: string | null;
     body?: string | null;
     items?: unknown[];
@@ -71,7 +71,9 @@ pins.post("/", async (c) => {
     .bind(
       id,
       userId,
-      b.kind === "list" ? "list" : "note",
+      // Whitelisted, so an unknown kind can never reach the column. Any NEW kind
+      // has to be added here as well or it is silently stored as a note.
+      b.kind === "list" || b.kind === "tracker" ? b.kind : "note",
       b.title ?? null,
       b.body ?? null,
       b.items ? JSON.stringify(b.items) : null,

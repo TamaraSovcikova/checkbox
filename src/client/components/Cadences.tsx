@@ -58,27 +58,35 @@ function CadenceBar({ tracker, today }: { tracker: Tracker; today: string }) {
   );
 }
 
-function CadenceRow({ tracker }: { tracker: Tracker }) {
-  const today = todayStr();
+// Logging an occurrence, with the undo attached. Shared by the page's row and
+// the pin's strip so the two cannot drift into different behaviours: the pin is
+// a second place to press Log, not a second definition of what Log means.
+export function useLogWithUndo() {
   const log = useLogTracker();
   const unlog = useUnlogTracker();
-  const update = useUpdateTracker();
-  const del = useDeleteTracker();
   const { toast } = useToast();
-  const { data: areas = [] } = useAreas();
-  const area = areas.find((a) => a.id === tracker.area_id);
-
-  const status = cadenceStatus(tracker, today);
-  const since = daysSince(tracker, today);
-
-  async function onLog(occurredAt?: string) {
+  return async (tracker: Tracker, occurredAt?: string) => {
     const res = await log.mutateAsync({ id: tracker.id, occurred_at: occurredAt });
     // Undo removes the exact row just written, so a double log followed by an
     // undo cannot delete the wrong one.
     toast(`Logged ${tracker.name}`, () =>
       unlog.mutate({ id: tracker.id, eventId: res.event_id })
     );
-  }
+  };
+}
+
+function CadenceRow({ tracker }: { tracker: Tracker }) {
+  const today = todayStr();
+  const update = useUpdateTracker();
+  const del = useDeleteTracker();
+  const { data: areas = [] } = useAreas();
+  const area = areas.find((a) => a.id === tracker.area_id);
+  const logWithUndo = useLogWithUndo();
+
+  const status = cadenceStatus(tracker, today);
+  const since = daysSince(tracker, today);
+
+  const onLog = (occurredAt?: string) => logWithUndo(tracker, occurredAt);
 
   // Backdating: the common real case is "I actually did this a few days ago".
   function logDaysAgo(n: number) {
@@ -217,6 +225,80 @@ function AddCadence() {
       <Button variant="secondary" size="sm" onClick={submit}>
         <AddIcon className="h-4 w-4" /> Add
       </Button>
+    </div>
+  );
+}
+
+// The compact form, for a pin. Reads the trackers live and orders them by
+// urgency, so the card carries no state of its own and can never go stale: there
+// is nothing stored to keep in sync with the tracker list.
+//
+// `areaId` narrows it, which is what an area-scoped pin wants: a cadence card on
+// Relationships & Identity should show the people, not the boiler service.
+export function CadenceStrip({
+  areaId,
+  limit = 5,
+}: {
+  areaId?: string | null;
+  limit?: number;
+}) {
+  const { data: all = [], isLoading } = useTrackers();
+  const today = todayStr();
+  const logWithUndo = useLogWithUndo();
+
+  const scoped = areaId ? all.filter((t) => t.area_id === areaId) : all;
+  const ordered = sortByUrgency(scoped, today).slice(0, limit);
+  const hidden = scoped.length - ordered.length;
+
+  if (isLoading) return <p className="text-[11px] text-subtle">Loading...</p>;
+  if (scoped.length === 0) {
+    return (
+      <p className="text-[11px] text-subtle">
+        Nothing tracked here yet. Add one on the Cadences page.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {ordered.map((t) => {
+        const status = cadenceStatus(t, today);
+        return (
+          <div key={t.id} className="flex items-center gap-1.5">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-1.5">
+                <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">
+                  {t.name}
+                </span>
+                <span
+                  className="shrink-0 text-[11px] tabular-nums"
+                  style={{ color: STATUS_COLOR[status] }}
+                >
+                  {sinceLabel(t, today)}
+                </span>
+              </div>
+              <div className="mt-1">
+                <CadenceBar tracker={t} today={today} />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => logWithUndo(t)}
+              title={`Log ${t.name} now`}
+              className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+            >
+              Log
+            </button>
+          </div>
+        );
+      })}
+      {/* Say what is being held back rather than silently truncating: a card that
+          quietly hides half your trackers is how a filter becomes a bug report. */}
+      {hidden > 0 && (
+        <p className="pt-0.5 text-[11px] text-subtle">
+          +{hidden} more on the Cadences page
+        </p>
+      )}
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
 import { useTaskUI } from "../lib/ui-context";
 import { AREA_COLORS, areaColorVar } from "../lib/colors";
 import { pinsForScope, scopeLabel, scopeOptions } from "../lib/pinScope";
+import { CadenceStrip } from "./Cadences";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import {
@@ -35,6 +36,7 @@ import {
   AddIcon,
   NotesIcon,
   SubtaskIcon,
+  CadenceIcon,
   MoreIcon,
   SearchIcon,
   ChevronDownIcon,
@@ -504,7 +506,9 @@ function PinCard({
     >
       <div className="mb-1.5 flex shrink-0 items-center gap-2">
         <span className="shrink-0 text-subtle">
-          {pin.kind === "list" ? (
+          {pin.kind === "tracker" ? (
+            <CadenceIcon className="h-3.5 w-3.5" />
+          ) : pin.kind === "list" ? (
             <SubtaskIcon className="h-3.5 w-3.5" />
           ) : (
             <NotesIcon className="h-3.5 w-3.5" />
@@ -552,7 +556,14 @@ function PinCard({
       {/* min-h-0 so this can actually shrink inside the flex column: without it
           a fixed-height pin would be pushed taller by its own content. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-      {pin.kind === "list" ? (
+      {pin.kind === "tracker" ? (
+        // Scoped to the area it is pinned to, when it is pinned to one, so an
+        // area's cadence card shows that area's gauges rather than all of them.
+        <CadenceStrip
+          areaId={pin.scope?.startsWith("area:") ? pin.scope.slice(5) : null}
+          limit={compact ? 4 : 6}
+        />
+      ) : pin.kind === "list" ? (
         <div className="space-y-0.5">
           {items.map((it) =>
             it.task_id ? (
@@ -684,6 +695,9 @@ export function useAddPin(scope: string) {
   return {
     addList: () => create.mutate({ kind: "list", placement: "top", scope }),
     addNote: () => create.mutate({ kind: "note", placement: "top", scope }),
+    // A cadence card. Placed on the side, where a gauge you glance at belongs,
+    // rather than in the top strip competing with the work itself.
+    addTracker: () => create.mutate({ kind: "tracker", placement: "side", scope }),
   };
 }
 
@@ -812,6 +826,13 @@ export function PinsPage() {
           onClick={() => create.mutate({ kind: "note", placement: "top" })}
         >
           <AddIcon className="h-4 w-4" /> New reminder
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => create.mutate({ kind: "tracker", placement: "side" })}
+        >
+          <AddIcon className="h-4 w-4" /> New cadence card
         </Button>
 
         {pins.length > 0 && (
