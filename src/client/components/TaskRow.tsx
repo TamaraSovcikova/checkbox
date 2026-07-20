@@ -152,6 +152,12 @@ export function TaskRow({
           onClick={onComplete}
           className={cn(
             "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border transition-colors",
+            // The circle stays 16px, but the TAPPABLE area extends 6px past it in
+            // every direction (a transparent ::before), giving ~28px to aim at.
+            // This is the most-used control in the app and 16px is a poor target
+            // for a thumb. Purely a hit area: nothing moves, and the 8px gap to
+            // the next control means it cannot swallow a neighbouring tap.
+            "relative z-10 before:absolute before:-inset-1.5 before:content-['']",
             done
               ? "border-primary bg-primary text-primary-foreground"
               : "hover:border-primary",

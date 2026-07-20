@@ -15,6 +15,11 @@ const ROWS: { syntax: string; means: string }[] = [
 // Dismissible cheat-sheet for the capture syntax. Shown until the user closes it
 // (persisted in localStorage). The capture placeholder still teaches inline; this
 // is the first-run legend (#20).
+//
+// DESKTOP ONLY. It stacks to one column on a phone and cost 223px of an 812px
+// screen, pushing the first task 542px down: two thirds of the view spent
+// teaching keyboard syntax you are unlikely to type with your thumbs. The chips
+// that appear as you type still explain it live on every device.
 export function CheatSheet() {
   const [dismissed, setDismissed] = useState(
     () => localStorage.getItem(KEY) === "1"
@@ -27,7 +32,7 @@ export function CheatSheet() {
   }
 
   return (
-    <div className="relative mb-5 max-w-2xl rounded-xl border border-border bg-surface/40 p-4">
+    <div className="relative mb-5 hidden max-w-2xl rounded-xl border border-border bg-surface/40 p-4 sm:block">
       <button
         onClick={close}
         aria-label="Dismiss"

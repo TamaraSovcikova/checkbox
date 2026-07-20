@@ -86,6 +86,10 @@ export function TodayToggle({
       }}
       className={cn(
         "h-5 w-5 shrink-0 place-items-center rounded transition-colors",
+        // Same trick as the complete circle: 20px icon, ~32px of tappable area
+        // via a transparent ::before, so a thumb can hit it without the button
+        // growing and reflowing the row.
+        "relative z-10 before:absolute before:-inset-1.5 before:content-['']",
         on
           ? "grid text-primary hover:text-primary/80"
           : alwaysVisible

@@ -1003,27 +1003,33 @@ export function AreaPage() {
         <div className="min-w-0 lg:flex-1">
           <PinsStrip scope={scopeForArea(id)} />
 
-          <div className="mb-5">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs uppercase tracking-wide text-subtle">
-                Projects
-              </span>
-              <button
-                onClick={() => setNewProject(true)}
-                className="text-sm text-primary"
-              >
-                + New project
-              </button>
+          {/* Projects belong to the area's WORK, not to its routines. The
+              Recurring tab is a list of things that come round on a schedule, so
+              a strip of project cards above it is page chrome that has followed
+              you somewhere it means nothing. */}
+          {!showRecurring && (
+            <div className="mb-5">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs uppercase tracking-wide text-subtle">
+                  Projects
+                </span>
+                <button
+                  onClick={() => setNewProject(true)}
+                  className="text-sm text-primary"
+                >
+                  + New project
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                {projects.map((p) => (
+                  <ProjectCard key={p.id} project={p} />
+                ))}
+                {projects.length === 0 && (
+                  <p className="text-sm text-subtle">No projects yet.</p>
+                )}
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-              {projects.map((p) => (
-                <ProjectCard key={p.id} project={p} />
-              ))}
-              {projects.length === 0 && (
-                <p className="text-sm text-subtle">No projects yet.</p>
-              )}
-            </div>
-          </div>
+          )}
 
           <div className="mb-2 text-xs uppercase tracking-wide text-subtle">
             {showRecurring ? "Recurring" : "Loose tasks"}
