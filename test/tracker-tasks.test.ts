@@ -13,6 +13,7 @@ import {
   shouldEmitTask,
   daysBetweenDays,
 } from "../src/worker/lib/trackers";
+import { emittedTaskTitle } from "../src/shared/tracker";
 import { tasks as tasksRoute } from "../src/worker/routes/tasks";
 
 const MIGRATIONS = join(__dirname, "..", "migrations");
@@ -54,6 +55,7 @@ function tracker(
     user?: string;
     areaId?: string | null;
     archived?: boolean;
+    taskTitle?: string | null;
   } = {}
 ) {
   const {
@@ -63,13 +65,14 @@ function tracker(
     user = USER,
     areaId = null,
     archived = false,
+    taskTitle = null,
   } = opts;
   raw
     .prepare(
-      `INSERT INTO trackers (id, user_id, name, kind, target_days, area_id, auto_task, archived, created_at)
-       VALUES (?, ?, ?, 'contact', ?, ?, ?, ?, '2026-01-01')`
+      `INSERT INTO trackers (id, user_id, name, kind, target_days, area_id, auto_task, archived, task_title, created_at)
+       VALUES (?, ?, ?, 'contact', ?, ?, ?, ?, ?, '2026-01-01')`
     )
-    .run(id, user, name, target, areaId, auto ? 1 : 0, archived ? 1 : 0);
+    .run(id, user, name, target, areaId, auto ? 1 : 0, archived ? 1 : 0, taskTitle);
   if (lastDaysAgo != null) {
     raw
       .prepare(
@@ -135,6 +138,23 @@ describe("emitTrackerTasks", () => {
     // Filed where the tracker is, so it lands in the right area's list.
     const row = raw.prepare("SELECT area_id FROM tasks WHERE id = ?").get(t.id) as any;
     expect(row.area_id).toBe("ar1");
+  });
+
+  it("names the task from the template, so the gauge can stay a noun", async () => {
+    tracker("t1", "Ivka", { target: 7, lastDaysAgo: 21, taskTitle: "Call {name}" });
+    await emitTrackerTasks(d1 as any, USER);
+    expect(openTasks()[0].title).toBe("Call Ivka");
+  });
+
+  it("renaming the tracker changes what the NEXT task is called", async () => {
+    tracker("t1", "Ivka", { target: 7, lastDaysAgo: 21, taskTitle: "Call {name}" });
+    await emitTrackerTasks(d1 as any, USER);
+    // Deal with the first one, rename, and let it fall behind again.
+    raw.prepare("UPDATE tasks SET status = 'done' WHERE tracker_id = 't1'").run();
+    raw.prepare("UPDATE trackers SET name = 'Ivka Novak' WHERE id = 't1'").run();
+    await emitTrackerTasks(d1 as any, USER);
+    const open = openTasks().filter((t) => t.status !== "done");
+    expect(open[0].title).toBe("Call Ivka Novak");
   });
 
   // The one that would otherwise pile up a task a day forever.
@@ -249,6 +269,43 @@ describe("completing an emitted task logs the tracker", () => {
     const res = await complete("plain");
     expect(res.status).toBe(200);
     expect(events().length).toBe(0);
+  });
+});
+
+describe("emittedTaskTitle", () => {
+  it("falls back to the bare name when no template is set", () => {
+    expect(emittedTaskTitle({ name: "Ivka", task_title: null })).toBe("Ivka");
+    expect(emittedTaskTitle({ name: "Ivka", task_title: "   " })).toBe("Ivka");
+  });
+
+  it("interpolates {name}", () => {
+    expect(emittedTaskTitle({ name: "Ivka", task_title: "Call {name}" })).toBe("Call Ivka");
+    expect(
+      emittedTaskTitle({ name: "the boiler", task_title: "Service {name} and log it" })
+    ).toBe("Service the boiler and log it");
+  });
+
+  // The reason it is a template and not a stored literal.
+  it("follows a rename", () => {
+    const tpl = "Call {name}";
+    expect(emittedTaskTitle({ name: "Ivka", task_title: tpl })).toBe("Call Ivka");
+    expect(emittedTaskTitle({ name: "Ivka Novak", task_title: tpl })).toBe("Call Ivka Novak");
+  });
+
+  it("accepts a template with no placeholder at all", () => {
+    expect(emittedTaskTitle({ name: "Ivka", task_title: "Ring home" })).toBe("Ring home");
+  });
+
+  it("replaces every occurrence, case-insensitively", () => {
+    expect(emittedTaskTitle({ name: "Ivka", task_title: "{name}: message {NAME}" })).toBe(
+      "Ivka: message Ivka"
+    );
+  });
+
+  // Must never produce a nameless task.
+  it("falls back rather than emitting an empty title", () => {
+    expect(emittedTaskTitle({ name: "Ivka", task_title: "{name}" })).toBe("Ivka");
+    expect(emittedTaskTitle({ name: "", task_title: "{name}" })).toBe("");
   });
 });
 

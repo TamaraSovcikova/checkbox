@@ -13,6 +13,7 @@ type TrackerRow = {
   notes: string | null;
   archived: number;
   auto_task: number;
+  task_title: string | null;
   position: number;
   created_at: string;
   last_at: string | null;
@@ -97,7 +98,17 @@ trackers.post("/", async (c) => {
   return c.json(shape(row as TrackerRow), 201);
 });
 
-const WRITABLE = ["name", "kind", "target_days", "area_id", "notes", "archived", "auto_task", "position"];
+const WRITABLE = [
+  "name",
+  "kind",
+  "target_days",
+  "area_id",
+  "notes",
+  "archived",
+  "auto_task",
+  "task_title",
+  "position",
+];
 
 trackers.patch("/:id", async (c) => {
   const userId = await getUserId(c);

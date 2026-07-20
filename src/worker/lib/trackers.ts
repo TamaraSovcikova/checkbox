@@ -1,4 +1,7 @@
 import { uuid, now } from "../db";
+import { emittedTaskTitle } from "../../shared/tracker";
+
+export { emittedTaskTitle };
 
 // Turning an overdue cadence tracker into a real task.
 //
@@ -23,6 +26,7 @@ export type EmitCandidate = {
   target_days: number | null;
   last_at: string | null;
   open_tasks: number;
+  task_title: string | null;
 };
 
 // Should this tracker emit a task right now?
@@ -67,7 +71,7 @@ export async function emitTrackerTasks(
 
   const { results } = await db
     .prepare(
-      `SELECT t.id, t.name, t.area_id, t.target_days,
+      `SELECT t.id, t.name, t.area_id, t.target_days, t.task_title,
               (SELECT MAX(e.occurred_at) FROM tracker_events e WHERE e.tracker_id = t.id) AS last_at,
               (SELECT COUNT(*) FROM tasks k
                 WHERE k.tracker_id = t.id AND k.status != 'done') AS open_tasks
@@ -82,8 +86,6 @@ export async function emitTrackerTasks(
 
   for (const t of due) {
     const id = uuid();
-    // The tracker's own name is the task title, deliberately: no template, no
-    // guessing at a verb. Name a tracker "Call Ivka" and both read correctly.
     // Due today rather than merely planned, because it genuinely is: it has
     // already passed the interval the user asked for.
     await db
@@ -91,7 +93,7 @@ export async function emitTrackerTasks(
         `INSERT INTO tasks (id, user_id, title, area_id, due_date, priority, status, tracker_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 3, 'todo', ?, ?, ?)`
       )
-      .bind(id, userId, t.name, t.area_id, today, t.id, now(), now())
+      .bind(id, userId, emittedTaskTitle(t), t.area_id, today, t.id, now(), now())
       .run();
     created.push(id);
   }

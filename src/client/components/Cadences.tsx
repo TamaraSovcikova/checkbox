@@ -18,6 +18,7 @@ import {
   sortByUrgency,
   type CadenceStatus,
 } from "../lib/cadence";
+import { emittedTaskTitle } from "../../shared/tracker";
 import { areaColorVar } from "../lib/colors";
 import { todayStr } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -173,6 +174,25 @@ function CadenceRow({ tracker }: { tracker: Tracker }) {
                   : "Make a task when due"}
               </DropdownMenuItem>
             )}
+            {/* Only once it is actually emitting: a task title on a tracker that
+                makes no tasks is a setting with nothing to act on. */}
+            {tracker.auto_task && (
+              <DropdownMenuItem
+                onSelect={() => {
+                  const raw = window.prompt(
+                    `What should the task be called?\n\n{name} becomes "${tracker.name}", so it keeps up if you rename the tracker.\nBlank uses the name on its own.`,
+                    tracker.task_title ?? "Call {name}"
+                  );
+                  if (raw === null) return;
+                  update.mutate({
+                    id: tracker.id,
+                    body: { task_title: raw.trim() || null },
+                  });
+                }}
+              >
+                Task title...
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={() => update.mutate({ id: tracker.id, body: { archived: true } })}>
               Archive
             </DropdownMenuItem>
@@ -201,13 +221,15 @@ function CadenceRow({ tracker }: { tracker: Tracker }) {
             : `${since}/${tracker.target_days}d`}
         </span>
         {/* A tracker that quietly creates tasks should say so on its face, not
-            only inside a menu you have to open to find out. */}
+            only inside a menu you have to open to find out. The tooltip shows the
+            RESOLVED title, so you can see what it will actually create rather
+            than having to picture the template expanding. */}
         {tracker.auto_task && (
           <span
             className="shrink-0 text-[11px] text-subtle"
-            title="Makes a task when it goes past its cadence"
+            title={`Makes a task called "${emittedTaskTitle(tracker)}" when it goes past its cadence`}
           >
-            → task
+            → {emittedTaskTitle(tracker)}
           </span>
         )}
       </div>

@@ -65,6 +65,9 @@ export interface Tracker {
   // worth watching without generating work. Requires a target_days to mean
   // anything, since without one nothing is ever "past" due.
   auto_task: boolean;
+  // Template for the task auto_task emits. `{name}` interpolates the tracker's
+  // name, so a rename carries through. Null means the bare name.
+  task_title: string | null;
   // Derived server-side from tracker_events, so the client never has to fetch
   // the whole log just to draw a row.
   last_at: string | null; // ISO of the most recent occurrence, null if never

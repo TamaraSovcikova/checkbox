@@ -1,0 +1,12 @@
+-- What the task a tracker emits should be called.
+--
+-- Until now the task took the tracker's name verbatim, so a tracker called
+-- "Ivka" produced a task called "Ivka", which is a noun where a to-do wants a
+-- verb. You could work around it by naming the tracker "Call Ivka", but then the
+-- gauge reads oddly too ("Call Ivka: 21 days ago").
+--
+-- A TEMPLATE rather than a literal title, so `{name}` stays in step with the
+-- tracker. Rename "Ivka" to "Ivka Novak" and "Call {name}" follows; a literal
+-- "Call Ivka" would silently go stale. NULL keeps the old behaviour (the name on
+-- its own), so nothing existing changes.
+ALTER TABLE trackers ADD COLUMN task_title TEXT;

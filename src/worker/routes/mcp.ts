@@ -772,6 +772,11 @@ const TOOLS = [
           description:
             "Create a real task when it goes past target_days. Needs a target to mean anything.",
         },
+        task_title: {
+          type: "string",
+          description:
+            "What that task is called. `{name}` becomes the tracker's name, e.g. 'Call {name}', and keeps up if the tracker is renamed. Omit to use the name alone.",
+        },
       },
       required: ["name"],
     },
@@ -1613,8 +1618,8 @@ async function handleTool(
       const autoTask = args.auto_task === true && target != null ? 1 : 0;
       await db
         .prepare(
-          `INSERT INTO trackers (id, user_id, name, kind, target_days, area_id, auto_task, position, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM trackers WHERE user_id = ?), 0), ?)`
+          `INSERT INTO trackers (id, user_id, name, kind, target_days, area_id, auto_task, task_title, position, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM trackers WHERE user_id = ?), 0), ?)`
         )
         .bind(
           id,
@@ -1624,6 +1629,9 @@ async function handleTool(
           target,
           (args.area_id as string) ?? null,
           autoTask,
+          typeof args.task_title === "string" && args.task_title.trim()
+            ? args.task_title.trim()
+            : null,
           userId,
           now()
         )
