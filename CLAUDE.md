@@ -24,7 +24,7 @@ Personal task manager. This is the operational file that lives with the code. Na
   fallback. Checkbox-owned events tagged via `extendedProperties.private.checkbox_task_id`.
 - Push: VAPID (RFC 8292) data-less push. Service worker wakes, fetches `/api/push/brief-data`.
   Morning brief cron at 06:00 Brussels (0 6 * * *). Resend email digest gated on RESEND_API_KEY.
-- MCP: JSON-RPC 2.0 over HTTP at `/mcp`. Bearer token auth. 31 tools (read + full
+- MCP: JSON-RPC 2.0 over HTTP at `/mcp`. Bearer token auth. 35 tools (read + full
   write: task/area/project/subtask CRUD, dependencies, recurrence, batch create).
 
 ## Current state (2026-07-08)
@@ -35,7 +35,7 @@ installable/auto-updating PWA. Deployed at https://checkbox.tamara-sovcik.worker
 
 ```
 Health: GET /api/health → { ok: true, phase: 8 }
-MCP:    /mcp → 31 tools, bearer auth (per-user tokens in mcp_tokens)
+MCP:    /mcp → 35 tools, bearer auth (per-user tokens in mcp_tokens)
 D1:     all migrations 0001-0009 applied local + remote
 ```
 
