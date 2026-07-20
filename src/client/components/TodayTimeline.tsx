@@ -118,6 +118,24 @@ export function TodayTimeline({
   );
   const { data: events = [] } = useCalendarRange(todayStr, tomorrowStr);
 
+  // Park the view on NOW rather than at 06:00. The grid always starts at 06:00,
+  // so by the afternoon the visible window showed a morning that had already
+  // happened and you had to scroll to find yourself. An hour of lead-in keeps the
+  // thing you just finished in sight.
+  //
+  // MUST stay above the early return below: hooks run unconditionally or React
+  // counts a different number between renders. `status` is undefined on the first
+  // pass (the query is still loading) and connected on the next, so putting this
+  // after the return made the hook count change and blew up the whole app with
+  // error #310. Guarding on the ref is enough, since the scroll container only
+  // exists on the render that draws the grid.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const target = timeToPx(new Date().toISOString()) - PX_PER_HOUR;
+    el.scrollTop = Math.max(0, Math.min(target, el.scrollHeight - el.clientHeight));
+  }, [full, events.length, tasks.length]);
+
   if (!status?.connected) {
     return (
       <div className="rounded-xl border border-border bg-surface/40 p-4 text-center">
@@ -151,19 +169,6 @@ export function TodayTimeline({
   ]);
 
   const nothing = external.length + scheduled.length === 0;
-
-  // Park the view on NOW rather than at 06:00. The grid always starts at 06:00,
-  // so by the afternoon the visible window showed a morning that had already
-  // happened and you had to scroll to find yourself. An hour of lead-in keeps the
-  // thing you just finished in sight. Re-runs when the height changes, since the
-  // offset that centres now differs between compact and full.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || nothing) return;
-    const now = new Date();
-    const target = timeToPx(now.toISOString()) - PX_PER_HOUR;
-    el.scrollTop = Math.max(0, Math.min(target, el.scrollHeight - el.clientHeight));
-  }, [nothing, full]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface/40">
