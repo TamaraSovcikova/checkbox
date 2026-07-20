@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { format } from "date-fns";
 import type { CalendarEvent, Task } from "../../shared/types";
 import { useCalendarStatus, useCalendarRange } from "../lib/queries";
@@ -96,9 +97,20 @@ function NowLine() {
   );
 }
 
-export function TodayTimeline({ tasks }: { tasks: Task[] }) {
+export function TodayTimeline({
+  tasks,
+  full = false,
+  onToggleFull,
+}: {
+  tasks: Task[];
+  // Compact draws a window (~5h) instead of the whole 06:00-22:00 grid, so the
+  // rail does not spend 1000px on hours you are not in.
+  full?: boolean;
+  onToggleFull?: () => void;
+}) {
   const { data: status } = useCalendarStatus();
   const { open } = useTaskUI();
+  const scrollRef = useRef<HTMLDivElement>(null);
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const tomorrowStr = format(
     new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -140,6 +152,19 @@ export function TodayTimeline({ tasks }: { tasks: Task[] }) {
 
   const nothing = external.length + scheduled.length === 0;
 
+  // Park the view on NOW rather than at 06:00. The grid always starts at 06:00,
+  // so by the afternoon the visible window showed a morning that had already
+  // happened and you had to scroll to find yourself. An hour of lead-in keeps the
+  // thing you just finished in sight. Re-runs when the height changes, since the
+  // offset that centres now differs between compact and full.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || nothing) return;
+    const now = new Date();
+    const target = timeToPx(now.toISOString()) - PX_PER_HOUR;
+    el.scrollTop = Math.max(0, Math.min(target, el.scrollHeight - el.clientHeight));
+  }, [nothing, full]);
+
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface/40">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
@@ -150,6 +175,16 @@ export function TodayTimeline({ tasks }: { tasks: Task[] }) {
           {scheduled.length} block{scheduled.length === 1 ? "" : "s"}
         </span>
         <span className="ml-auto text-[11px] text-subtle">view only</span>
+        {onToggleFull && !nothing && (
+          <button
+            type="button"
+            onClick={onToggleFull}
+            title={full ? "Show a window around now" : "Show the whole day"}
+            className="rounded px-1 text-[11px] text-subtle transition-colors hover:bg-surface-2 hover:text-foreground"
+          >
+            {full ? "Compact" : "Full day"}
+          </button>
+        )}
       </div>
 
       {nothing ? (
@@ -157,7 +192,10 @@ export function TodayTimeline({ tasks }: { tasks: Task[] }) {
           Nothing booked today. Schedule tasks on the Calendar page.
         </p>
       ) : (
-        <div className="max-h-[26rem] overflow-y-auto">
+        <div
+          ref={scrollRef}
+          className={cn("overflow-y-auto", full ? "max-h-[26rem]" : "max-h-[19rem]")}
+        >
           <div className="flex gap-2 px-2 py-2">
             {/* Hour labels */}
             <div className="relative w-7 shrink-0" style={{ height: GRID_HEIGHT }}>

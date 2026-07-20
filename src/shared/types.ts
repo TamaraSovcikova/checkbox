@@ -48,6 +48,31 @@ export interface Label {
   color: string | null;
 }
 
+// A cadence tracker: something where the question is "how long since?" rather
+// than "when is it due?". See migration 0026 for why these are not tasks.
+export interface Tracker {
+  id: string;
+  name: string;
+  kind: string; // contact | habit | maintenance | health (label only)
+  target_days: number | null; // null = count it, but do not judge it
+  area_id: string | null;
+  notes: string | null;
+  archived: boolean;
+  position: number;
+  created_at: string;
+  // Derived server-side from tracker_events, so the client never has to fetch
+  // the whole log just to draw a row.
+  last_at: string | null; // ISO of the most recent occurrence, null if never
+  event_count: number;
+}
+
+export interface TrackerEvent {
+  id: string;
+  tracker_id: string;
+  occurred_at: string;
+  note: string | null;
+}
+
 export interface Task {
   id: string;
   area_id: string | null;
@@ -183,6 +208,13 @@ export interface ViewDefault {
   sort?: string;
   group?: string;
   filter?: string; // "all" | "p1".."p4" | "overdue" | "planned"
+  // Which pane the right rail shows. The calendar and the pins used to STACK, so
+  // turning the calendar on pushed every pin ~1200px below the fold; they now
+  // share one slot. Only meaningful where both can appear (Today).
+  railTab?: "calendar" | "pins";
+  // The day timeline drawn full height rather than the short window around now.
+  // Compact is the default, so this only ever records an expansion.
+  timelineFull?: boolean;
 }
 
 // Per-user view preferences (stored as JSON on the users row).

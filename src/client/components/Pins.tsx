@@ -677,6 +677,14 @@ export function PinsStrip({ scope = "today" }: { scope?: string }) {
 //
 // `inline` means the caller already owns the rail (Today does, when it is also
 // showing the day timeline): render just the cards, no second column of our own.
+// The side-placed pins for a scope. Exported so a caller can tell whether the
+// rail has anything to show BEFORE deciding to draw tabs for it: one pane needs
+// no tab bar.
+export function useSidePins(scope: string) {
+  const { data: pins = [] } = usePins();
+  return pinsForScope(pins, scope).filter((p) => p.placement === "side");
+}
+
 export function PinsSide({
   scope = "today",
   inline,
@@ -684,8 +692,7 @@ export function PinsSide({
   scope?: string;
   inline?: boolean;
 }) {
-  const { data: pins = [] } = usePins();
-  const side = pinsForScope(pins, scope).filter((p) => p.placement === "side");
+  const side = useSidePins(scope);
   if (side.length === 0) return null;
   const cards = side.map((p) => (
     <PinCard key={p.id} pin={p} compact resize="height" />

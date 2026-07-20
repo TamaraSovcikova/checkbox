@@ -20,6 +20,7 @@ import { notes } from "./routes/notes";
 import { mail } from "./routes/mail";
 import { gmail } from "./routes/gmail";
 import { pins } from "./routes/pins";
+import { trackers } from "./routes/trackers";
 import { mcp } from "./routes/mcp";
 import { syncCalendar, renewWatchChannel } from "./lib/sync";
 import { sendMorningBrief } from "./lib/brief";
@@ -52,6 +53,7 @@ app.route("/api/notes", notes);
 app.route("/api/mail", mail);
 app.route("/api/gmail", gmail);
 app.route("/api/pins", pins);
+app.route("/api/trackers", trackers);
 app.route("/mcp", mcp);
 
 // --- Static SPA fallback --------------------------------------------------

@@ -222,6 +222,59 @@ export function useGmailRefresh() {
   });
 }
 
+// ── Cadence trackers ─────────────────────────────────────────────────────────
+
+export const useTrackers = () =>
+  useQuery({ queryKey: ["trackers"], queryFn: api.trackers, staleTime: 30_000 });
+
+const invalidateTrackers = (qc: ReturnType<typeof useQueryClient>) => () =>
+  qc.invalidateQueries({ queryKey: ["trackers"] });
+
+export function useCreateTracker() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: Parameters<typeof api.createTracker>[0]) => api.createTracker(b),
+    onSuccess: invalidateTrackers(qc),
+  });
+}
+
+export function useUpdateTracker() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<import("../../shared/types").Tracker> }) =>
+      api.updateTracker(id, body),
+    onSuccess: invalidateTrackers(qc),
+  });
+}
+
+export function useDeleteTracker() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteTracker(id),
+    onSuccess: invalidateTrackers(qc),
+  });
+}
+
+// The button that resets the counter. Returns the event id so the caller can
+// offer a precise undo.
+export function useLogTracker() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, occurred_at }: { id: string; occurred_at?: string }) =>
+      api.logTracker(id, occurred_at ? { occurred_at } : undefined),
+    onSuccess: invalidateTrackers(qc),
+  });
+}
+
+export function useUnlogTracker() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, eventId }: { id: string; eventId: string }) =>
+      api.unlogTracker(id, eventId),
+    onSuccess: invalidateTrackers(qc),
+  });
+}
+
 // ── Pins ─────────────────────────────────────────────────────────────────────
 
 export const usePins = () =>

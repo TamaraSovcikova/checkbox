@@ -61,6 +61,9 @@ export {
   AlertCircle as AttentionIcon,
   Pin as PinIcon,
   StickyNote as PinsIcon,
+  // Cadence trackers read as a gauge ("how far through the interval am I"),
+  // which is exactly what the page draws.
+  Gauge as CadenceIcon,
 } from "lucide-react";
 
 // Curated icon set an area can be tagged with (the picker offers these by name;

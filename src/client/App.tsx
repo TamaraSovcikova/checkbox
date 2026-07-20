@@ -17,6 +17,7 @@ import {
 } from "./pages";
 import { MailInboxPage } from "./components/MailInbox";
 import { PinsPage } from "./components/Pins";
+import { CadencesPage } from "./components/Cadences";
 
 // Lazy: the calendar pulls in its own timeline code; keep it out of the
 // initial bundle (capture-first PWA).
@@ -93,6 +94,7 @@ export default function App() {
               <Route path="review" element={<ReviewPage />} />
               <Route path="mail" element={<MailInboxPage />} />
               <Route path="pins" element={<PinsPage />} />
+              <Route path="cadences" element={<CadencesPage />} />
               <Route path="area/:id" element={<AreaPage />} />
               <Route path="project/:id" element={<ProjectPage />} />
               <Route path="label/:name" element={<LabelPage />} />

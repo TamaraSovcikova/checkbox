@@ -16,6 +16,8 @@ import type {
   Subtask,
   Task,
   Template,
+  Tracker,
+  TrackerEvent,
   TriageSuggestion,
   UserPrefs,
   WeeklyReview,
@@ -279,6 +281,26 @@ export const api = {
       "/api/gmail/refresh"
     ),
   gmailDisconnect: () => httpMutate("DELETE", "/api/gmail/disconnect"),
+
+  // Cadence trackers ("how long since?"), and their append-only event log.
+  trackers: () => http<Tracker[]>("/api/trackers"),
+  createTracker: (b: Partial<Tracker> & { last_at?: string }) =>
+    httpMutate<Tracker>("POST", "/api/trackers", b),
+  updateTracker: (id: string, b: Partial<Tracker>) =>
+    httpMutate<Tracker>("PATCH", `/api/trackers/${id}`, b),
+  deleteTracker: (id: string) => httpMutate("DELETE", `/api/trackers/${id}`),
+  // Returns the event id so an undo can delete exactly this entry rather than
+  // "the latest", which would race a second log.
+  logTracker: (id: string, b?: { occurred_at?: string; note?: string }) =>
+    httpMutate<{ tracker: Tracker; event_id: string }>(
+      "POST",
+      `/api/trackers/${id}/log`,
+      b ?? {}
+    ),
+  unlogTracker: (id: string, eventId: string) =>
+    httpMutate<Tracker>("DELETE", `/api/trackers/${id}/log/${eventId}`),
+  trackerEvents: (id: string) =>
+    http<TrackerEvent[]>(`/api/trackers/${id}/events`),
 
   // Pins (non-task lists + reminders)
   pins: () => http<Pin[]>("/api/pins"),

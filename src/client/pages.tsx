@@ -28,7 +28,7 @@ import { AreaDialog } from "./components/AreaDialog";
 import { ProjectDialog } from "./components/ProjectDialog";
 import { CalendarSyncBanner } from "./components/CalendarSyncBanner";
 import { SuggestToday } from "./components/SuggestToday";
-import { PinsStrip, PinsSide, useAddPin } from "./components/Pins";
+import { PinsStrip, PinsSide, useAddPin, useSidePins } from "./components/Pins";
 import { scopeForView, scopeForArea } from "./lib/pinScope";
 import { StatsWidget } from "./components/StatsWidget";
 import { CheatSheet } from "./components/CheatSheet";
@@ -436,6 +436,82 @@ const TODAY_TABS: Tab<ViewMode>[] = [
   { id: "board", label: "Board", icon: <BoardIcon className={ICON_SIZE} /> },
 ];
 
+// The right rail: the day timeline and that view's pins, sharing ONE slot.
+//
+// They used to stack, and that was the whole problem: switching the calendar on
+// pushed the pins ~1200px below the fold and took the page to nearly three
+// screens (measured: 1867px of content in a 682px viewport). Tabs mean turning
+// the calendar on costs you nothing you had before.
+//
+// Sticky and height-bounded, so whatever is inside scrolls WITHIN the rail
+// instead of extending the page. A tall stack of pins can no longer decide how
+// long the document is.
+//
+// The tab bar only appears when there are genuinely two panes; one pane draws
+// itself, unlabelled, exactly as before.
+function SideRail({
+  showCalendar,
+  scope,
+  tasks,
+  viewKey,
+}: {
+  showCalendar: boolean;
+  scope: string;
+  tasks: Task[];
+  viewKey: string;
+}) {
+  const { viewDefault, setViewDefault } = useViewPrefs();
+  const sidePins = useSidePins(scope);
+  const hasPins = sidePins.length > 0;
+  const def = viewDefault(viewKey);
+
+  if (!showCalendar && !hasPins) return null;
+
+  // Both panes present: honour the remembered choice, defaulting to the calendar
+  // (the reason the rail is on at all today). Only one: show it, no tabs.
+  const tab: "calendar" | "pins" = !showCalendar
+    ? "pins"
+    : !hasPins
+    ? "calendar"
+    : def.railTab ?? "calendar";
+  const bothAvailable = showCalendar && hasPins;
+
+  return (
+    <aside className="mt-4 lg:mt-0 lg:w-72 lg:shrink-0 lg:self-start lg:sticky lg:top-0 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
+      {bothAvailable && (
+        <div className="mb-2 flex overflow-hidden rounded-md border border-border">
+          {(["calendar", "pins"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setViewDefault(viewKey, { railTab: t })}
+              className={cn(
+                "flex-1 px-2 py-1 text-xs font-medium capitalize transition-colors",
+                tab === t
+                  ? "bg-surface-2 text-foreground"
+                  : "text-muted hover:bg-surface-2/60 hover:text-foreground"
+              )}
+            >
+              {t === "pins" ? `Pins ${sidePins.length}` : "Calendar"}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab === "calendar" ? (
+        <TodayTimeline
+          tasks={tasks}
+          full={def.timelineFull === true}
+          onToggleFull={() =>
+            setViewDefault(viewKey, { timelineFull: !(def.timelineFull === true) })
+          }
+        />
+      ) : (
+        <PinsSide scope={scope} inline />
+      )}
+    </aside>
+  );
+}
+
 export function ViewPage({ name }: { name: string }) {
   const { data: tasks = [] } = useView(name);
   // Today's board keeps a Done column, which the Today view (open tasks only)
@@ -502,17 +578,12 @@ export function ViewPage({ name }: { name: string }) {
             </>
           )}
         </div>
-        {/* Right rail: the day, then that view's pins. Today only, and only when
-            asked for: it is a glance at the schedule, not a second place to
-            schedule from. */}
-        {isToday && todayCalendar ? (
-          <aside className="mt-4 lg:mt-0 lg:w-72 lg:shrink-0">
-            <TodayTimeline tasks={tasks} />
-            <PinsSide scope={pinScope} inline />
-          </aside>
-        ) : (
-          <PinsSide scope={pinScope} />
-        )}
+        <SideRail
+          showCalendar={isToday && todayCalendar}
+          scope={pinScope}
+          tasks={tasks}
+          viewKey={`/${name}`}
+        />
       </div>
     </div>
   );
