@@ -592,6 +592,11 @@ export function useViewPrefs() {
   const setTodayCalendar = (on: boolean) =>
     save.mutate({ ...prefs, todayCalendar: on });
 
+  // Compact cadence strip under the Today timeline. Off by default.
+  const todayCadences = prefs.todayCadences === true;
+  const setTodayCadences = (on: boolean) =>
+    save.mutate({ ...prefs, todayCadences: on });
+
   return {
     prefs,
     hide,
@@ -610,6 +615,8 @@ export function useViewPrefs() {
     toggleAllDayTitle,
     todayCalendar,
     setTodayCalendar,
+    todayCadences,
+    setTodayCadences,
   };
 }
 

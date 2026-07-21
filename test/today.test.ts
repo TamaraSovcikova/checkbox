@@ -32,6 +32,12 @@ describe("inToday — every reason a task surfaces in Today", () => {
   it("planned for today", () => {
     expect(inToday(task({ planned_date: TODAY }), TODAY)).toBe(true);
   });
+  // The carry-forward: a plan from an earlier day, still open, stays in Today
+  // rather than vanishing at midnight.
+  it("planned for an EARLIER day and not done", () => {
+    expect(inToday(task({ planned_date: "2026-07-14" }), TODAY)).toBe(true);
+    expect(inToday(task({ planned_date: "2026-07-01" }), TODAY)).toBe(true);
+  });
   it("due today or overdue", () => {
     expect(inToday(task({ due_date: TODAY }), TODAY)).toBe(true);
     expect(inToday(task({ due_date: "2026-07-10" }), TODAY)).toBe(true);
@@ -43,6 +49,14 @@ describe("inToday — every reason a task surfaces in Today", () => {
     expect(inToday(task({ due_date: "2026-07-20" }), TODAY)).toBe(false);
     expect(inToday(task({ planned_date: "2026-07-20" }), TODAY)).toBe(false);
     expect(inToday(task(), TODAY)).toBe(false);
+  });
+});
+
+describe("leaveTodayBody clears a carried-over plan", () => {
+  it("clears a plan from an earlier day, not just today's", () => {
+    expect(leaveTodayBody(task({ planned_date: "2026-07-10" }), TODAY)).toEqual({
+      planned_date: null,
+    });
   });
 });
 

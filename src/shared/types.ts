@@ -252,6 +252,9 @@ export interface UserPrefs {
   // Show the read-only day timeline beside Today. Off by default: Today is a
   // list first, and the Calendar page is still where you schedule.
   todayCalendar?: boolean;
+  // Show a compact cadence strip under that timeline. Off by default; the
+  // Cadences page is the full board. Only rendered inside the calendar pane.
+  todayCadences?: boolean;
 }
 
 // ── Attachments ────────────────────────────────────────────────────────────

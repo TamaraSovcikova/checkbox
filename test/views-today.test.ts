@@ -149,3 +149,41 @@ describe("/views/today with subtasks", () => {
     return expect(today()).resolves.toEqual([]);
   });
 });
+
+// A task you planned for today and did not finish must stay in Today when the
+// day rolls over, rather than vanishing at midnight.
+describe("/views/today carries an unfinished plan forward", () => {
+  const planned = (id: string, day: string, status = "todo") =>
+    raw
+      .prepare(
+        "INSERT INTO tasks (id, user_id, title, status, planned_date) VALUES (?, ?, ?, ?, ?)"
+      )
+      .run(id, USER, id, status, day);
+
+  it("keeps a task planned for today", () => {
+    planned("t", TODAY);
+    return expect(today()).resolves.toEqual(["t"]);
+  });
+
+  it("keeps a task planned for an EARLIER day and still open", () => {
+    planned("y", brussels(-1));
+    planned("w", brussels(-7));
+    return expect(today()).resolves.toEqual(["w", "y"]);
+  });
+
+  it("does NOT show a plan for a FUTURE day", () => {
+    planned("tmrw", TOMORROW);
+    return expect(today()).resolves.toEqual([]);
+  });
+
+  it("drops a carried-over plan once it is done", () => {
+    planned("done", brussels(-2), "done");
+    return expect(today()).resolves.toEqual([]);
+  });
+
+  it("still respects snooze on a carried-over plan", () => {
+    planned("z", brussels(-3));
+    raw.prepare("UPDATE tasks SET snoozed_until = ? WHERE id = 'z'").run(brussels(2));
+    return expect(today()).resolves.toEqual([]);
+  });
+});

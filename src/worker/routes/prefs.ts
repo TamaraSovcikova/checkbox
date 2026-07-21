@@ -40,6 +40,7 @@ function parsePrefs(raw: unknown): UserPrefs {
       gcalSyncDueDates: cleanOnByDefault(p.gcalSyncDueDates),
       hiddenAllDayTitles: cleanStrings(p.hiddenAllDayTitles),
       todayCalendar: cleanOnByDefault(p.todayCalendar),
+      todayCadences: p.todayCadences === true,
     };
   } catch {
     return { ...EMPTY };
@@ -67,6 +68,7 @@ prefs.put("/", async (c) => {
     gcalSyncDueDates: cleanOnByDefault(body.gcalSyncDueDates),
     hiddenAllDayTitles: cleanStrings(body.hiddenAllDayTitles),
     todayCalendar: cleanOnByDefault(body.todayCalendar),
+    todayCadences: body.todayCadences === true,
   };
   await c.env.DB.prepare("UPDATE users SET prefs = ? WHERE id = ?")
     .bind(JSON.stringify(clean), userId)

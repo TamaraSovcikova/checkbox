@@ -1,7 +1,7 @@
 import { useState, type PointerEvent as ReactPointerEvent } from "react";
 import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Project, Task, TriageSuggestion } from "../shared/types";
 import {
@@ -51,6 +51,7 @@ import {
 import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
 import { TodayBoard } from "./components/TodayBoard";
+import { CadenceStrip } from "./components/Cadences";
 import { TaskRow } from "./components/TaskRow";
 import {
   useTaskSelection,
@@ -68,6 +69,7 @@ import {
   LogbookIcon,
   ChevronRightIcon,
   BackIcon,
+  CadenceIcon,
   ICON_SIZE,
 } from "./lib/icons";
 import { useViewPrefs } from "./lib/queries";
@@ -408,11 +410,13 @@ const clampRail = (n: number) => Math.max(RAIL_MIN, Math.min(RAIL_MAX, Math.roun
 
 function SideRail({
   showCalendar,
+  showCadences,
   scope,
   tasks,
   viewKey,
 }: {
   showCalendar: boolean;
+  showCadences: boolean;
   scope: string;
   tasks: Task[];
   viewKey: string;
@@ -450,16 +454,21 @@ function SideRail({
     window.addEventListener("pointerup", up);
   }
 
-  if (!showCalendar && !hasPins) return null;
+  // The "day" pane holds the timeline and/or the cadence strip: cadences live
+  // under the calendar, but turning cadences on with the calendar off should
+  // still show them rather than silently do nothing.
+  const hasDayPane = showCalendar || showCadences;
 
-  // Both panes present: honour the remembered choice, defaulting to the calendar
+  if (!hasDayPane && !hasPins) return null;
+
+  // Both panes present: honour the remembered choice, defaulting to the day pane
   // (the reason the rail is on at all today). Only one: show it, no tabs.
-  const tab: "calendar" | "pins" = !showCalendar
+  const tab: "calendar" | "pins" = !hasDayPane
     ? "pins"
     : !hasPins
     ? "calendar"
     : def.railTab ?? "calendar";
-  const bothAvailable = showCalendar && hasPins;
+  const bothAvailable = hasDayPane && hasPins;
 
   return (
     <>
@@ -502,19 +511,51 @@ function SideRail({
                   : "text-muted hover:bg-surface-2/60 hover:text-foreground"
               )}
             >
-              {t === "pins" ? `Pins ${sidePins.length}` : "Calendar"}
+              {t === "pins"
+                ? `Pins ${sidePins.length}`
+                : showCalendar
+                ? "Calendar"
+                : "Cadences"}
             </button>
           ))}
         </div>
       )}
       {tab === "calendar" ? (
-        <TodayTimeline
-          tasks={tasks}
-          full={def.timelineFull === true}
-          onToggleFull={() =>
-            setViewDefault(viewKey, { timelineFull: !(def.timelineFull === true) })
-          }
-        />
+        <>
+          {showCalendar && (
+            <TodayTimeline
+              tasks={tasks}
+              full={def.timelineFull === true}
+              onToggleFull={() =>
+                setViewDefault(viewKey, { timelineFull: !(def.timelineFull === true) })
+              }
+            />
+          )}
+          {/* Cadences under the day, when asked for: a glance at who/what is
+              falling behind, next to the schedule. Compact (top few by urgency);
+              the full board is one click away on the Cadences page. Toggled from
+              the view's ... menu. */}
+          {showCadences && (
+            <div
+              className={cn(
+                "rounded-xl border border-border bg-surface/40 p-3",
+                showCalendar && "mt-3"
+              )}
+            >
+              <div className="mb-2 flex items-center gap-1.5">
+                <CadenceIcon className="h-3.5 w-3.5 text-subtle" />
+                <span className="text-xs font-medium text-foreground">Cadences</span>
+                <Link
+                  to="/cadences"
+                  className="ml-auto text-[11px] text-subtle transition-colors hover:text-foreground"
+                >
+                  All
+                </Link>
+              </div>
+              <CadenceStrip limit={5} />
+            </div>
+          )}
+        </>
       ) : (
         <PinsSide scope={scope} inline />
       )}
@@ -529,7 +570,8 @@ export function ViewPage({ name }: { name: string }) {
   // can't fill, so pull today's completed tasks alongside. Cheap + cached.
   const { data: completedToday = [] } = useView("completed-today");
   const meta = VIEW_META[name];
-  const { hide, todayCalendar, setTodayCalendar } = useViewPrefs();
+  const { hide, todayCalendar, setTodayCalendar, todayCadences, setTodayCadences } =
+    useViewPrefs();
   const { view, setView, controls, body, sortMenu, groupMenu, filterMenu } =
     useTaskCollection(`/${name}`, tasks, meta.empty);
   const isToday = name === "today";
@@ -555,6 +597,10 @@ export function ViewPage({ name }: { name: string }) {
                 {
                   label: todayCalendar ? "Hide calendar" : "Show calendar",
                   onSelect: () => setTodayCalendar(!todayCalendar),
+                },
+                {
+                  label: todayCadences ? "Hide cadences" : "Show cadences",
+                  onSelect: () => setTodayCadences(!todayCadences),
                 },
               ]
             : []),
@@ -595,6 +641,7 @@ export function ViewPage({ name }: { name: string }) {
         </div>
         <SideRail
           showCalendar={isToday && todayCalendar}
+          showCadences={isToday && todayCadences}
           scope={pinScope}
           tasks={tasks}
           viewKey={`/${name}`}

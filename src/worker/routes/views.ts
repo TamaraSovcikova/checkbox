@@ -29,9 +29,15 @@ async function run(
 // until its day arrives. Appended to each active view's WHERE clause.
 const NOT_SNOOZED = "AND (snoozed_until IS NULL OR snoozed_until <= ?)";
 
-// Today: due today OR overdue OR scheduled today OR explicitly planned for today
-// ("Add to Today") OR carrying an open SUBTASK due today/overdue. Not done, not
-// snoozed.
+// Today: due today OR overdue OR scheduled today OR planned for today OR ANY
+// EARLIER day still not done ("Add to Today" that you did not finish) OR carrying
+// an open SUBTASK due today/overdue. Not done, not snoozed.
+//
+// `planned_date <= today`, not `= today`, so a task you planned and did not
+// finish stays put when the day rolls over instead of silently vanishing at
+// midnight. It mirrors the overdue rule for due dates (`due_date < today`): you
+// said you would do this, you have not, so it is still on your plate. It leaves
+// only when completed or explicitly removed (leaveTodayBody clears planned_date).
 //
 // The subtask clause is here because the work you owe today is not always a whole
 // task: a project task due next month can have one step due today, and before this
@@ -53,7 +59,7 @@ views.get("/today", async (c) => {
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
-       AND (due_date = ? OR due_date < ? OR substr(scheduled_start,1,10) = ? OR planned_date = ?
+       AND (due_date = ? OR due_date < ? OR substr(scheduled_start,1,10) = ? OR planned_date <= ?
             OR EXISTS (SELECT 1 FROM subtasks s
                         WHERE s.task_id = tasks.id AND s.done = 0
                           AND s.due_date IS NOT NULL AND s.due_date <= ?))
