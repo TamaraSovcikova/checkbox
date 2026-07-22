@@ -4,7 +4,7 @@ import { recurrenceLabel } from "../../shared/recurrence";
 import { areaColorVar, shouldPill } from "../lib/colors";
 import { PriorityPill } from "./ui";
 import { cn, todayStr, monthAheadStr } from "@/lib/utils";
-import { inToday, subtasksDueBy } from "../lib/today";
+import { inToday, subtasksDueBy, hasCheckpointDue } from "../lib/today";
 import { dueLabel, isOverdue } from "../lib/due";
 import { useToggleToday } from "../lib/use-toggle-today";
 import { isBlocked, blockedLabel } from "../lib/blocked";
@@ -15,6 +15,7 @@ import {
   TodayIcon,
   DoingIcon,
   SubtaskIcon,
+  CheckpointIcon,
 } from "../lib/icons";
 
 // ── The one description of what a task looks like ────────────────────────────
@@ -187,6 +188,17 @@ export function TaskMeta({
         >
           <SubtaskIcon className="h-3 w-3" />
           {subLabel}
+        </span>
+      )}
+      {/* A checkpoint pulse is why this long-horizon task is in Today. Says so,
+          like the subtask-due chip, so its presence is never a mystery. */}
+      {!done && hasCheckpointDue(task, today) && (
+        <span
+          className="inline-flex items-center gap-0.5 text-primary"
+          title={`Checkpoint due${task.due_date ? ` · task due ${task.due_date}` : ""}`}
+        >
+          <CheckpointIcon className="h-3 w-3" />
+          check-in
         </span>
       )}
       {blocked && (

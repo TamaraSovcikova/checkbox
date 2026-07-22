@@ -30,8 +30,13 @@ async function run(
 const NOT_SNOOZED = "AND (snoozed_until IS NULL OR snoozed_until <= ?)";
 
 // Today: due today OR overdue OR scheduled today OR planned for today OR ANY
-// EARLIER day still not done ("Add to Today" that you did not finish) OR carrying
-// an open SUBTASK due today/overdue. Not done, not snoozed.
+// EARLIER day still not done ("Add to Today" that you did not finish) OR a
+// CHECKPOINT is due (checkpoint_next <= today) OR carrying an open SUBTASK due
+// today/overdue. Not done, not snoozed.
+//
+// The checkpoint clause is the pulse: a long-horizon task surfaces here on its
+// checkpoint date to be marked on track, then rolls to the next (see
+// shared/checkpoint). It leaves once acknowledged past the due date.
 //
 // `planned_date <= today`, not `= today`, so a task you planned and did not
 // finish stays put when the day rolls over instead of silently vanishing at
@@ -60,12 +65,13 @@ views.get("/today", async (c) => {
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
        AND (due_date = ? OR due_date < ? OR substr(scheduled_start,1,10) = ? OR planned_date <= ?
+            OR (checkpoint_next IS NOT NULL AND checkpoint_next <= ?)
             OR EXISTS (SELECT 1 FROM subtasks s
                         WHERE s.task_id = tasks.id AND s.done = 0
                           AND s.due_date IS NOT NULL AND s.due_date <= ?))
        ${NOT_SNOOZED}
      ORDER BY due_time IS NULL, due_time, priority`,
-    [userId, today, today, today, today, today, today]
+    [userId, today, today, today, today, today, today, today]
   );
 });
 

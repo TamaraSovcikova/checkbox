@@ -5,6 +5,7 @@ import {
   useCompleteAllSubtasks,
   useCompleteTask,
   useToggleSubtask,
+  useUpdateTask,
 } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import { PRIORITY_VAR, areaColorVar, areaTintBg, shouldPill } from "../lib/colors";
@@ -12,7 +13,8 @@ import { PriorityPill } from "./ui";
 import { cn, todayStr } from "@/lib/utils";
 import { isBlocked } from "../lib/blocked";
 import { dueLabel } from "../lib/due";
-import { hasSubtaskDueToday } from "../lib/today";
+import { hasSubtaskDueToday, hasCheckpointDue } from "../lib/today";
+import { advanceCheckpointBody } from "../../shared/checkpoint";
 import {
   TaskMeta,
   TodayToggle,
@@ -23,6 +25,7 @@ import {
 import {
   CheckIcon,
   SubtaskIcon,
+  CheckpointIcon,
   ChevronRightIcon,
   ChevronDownIcon,
 } from "../lib/icons";
@@ -46,6 +49,7 @@ export function TaskRow({
   const complete = useCompleteTask();
   const toggleSub = useToggleSubtask();
   const completeAll = useCompleteAllSubtasks();
+  const update = useUpdateTask();
   const { toast } = useToast();
   // Where the task lives, for the wrapper's tint + accent bar. Resolved through
   // the project when the task carries no area of its own, so a row can never
@@ -68,6 +72,7 @@ export function TaskRow({
   // distinct, quiet signal (muted title + a blocked chip), deliberately NOT the
   // opacity fade used for distant tasks, so the two never read as the same thing.
   const blocked = isBlocked(task, todayIsToday);
+  const checkpointDue = !done && hasCheckpointDue(task, todayIsToday);
   const subtasks = task.subtasks ?? [];
   const subDone = subtasks.filter((s) => s.done).length;
   const subOpen = subtasks.length - subDone;
@@ -75,6 +80,23 @@ export function TaskRow({
     id: task.id,
     data: { type: "task", task },
   });
+
+  // Mark on track: advance the checkpoint to its next pulse, so the task drops
+  // out of Today until then. Undoable to the exact prior pulse date.
+  function onCheckpointOnTrack() {
+    const body = advanceCheckpointBody(
+      todayIsToday,
+      task.checkpoint_days,
+      task.checkpoint_next,
+      task.due_date
+    );
+    const prev = task.checkpoint_next;
+    update.mutate({ id: task.id, body });
+    toast(
+      body.checkpoint_next ? `On track · next ${body.checkpoint_next}` : "On track",
+      () => update.mutate({ id: task.id, body: { checkpoint_next: prev } })
+    );
+  }
 
   async function runComplete() {
     const res = await complete.mutateAsync({ id: task.id, done: !done });
@@ -192,6 +214,27 @@ export function TaskRow({
             )}
           >
             {selection.selected && <CheckIcon className="h-2.5 w-2.5" />}
+          </button>
+        )}
+
+        {/* One-tap "on track" when a checkpoint pulse is due: advances to the
+            next pulse and drops the task out of Today until then. The whole point
+            of a checkpoint is the quick glance-and-confirm, so it lives on the
+            row, not only in the sheet. */}
+        {!done && checkpointDue && (
+          <button
+            type="button"
+            aria-label="Mark on track"
+            title="On track — next check-in later"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCheckpointOnTrack();
+            }}
+            className="order-last mt-0.5 inline-flex shrink-0 items-center gap-0.5 rounded border border-primary/40 px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
+          >
+            <CheckpointIcon className="h-3 w-3" />
+            On track
           </button>
         )}
 

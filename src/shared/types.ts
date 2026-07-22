@@ -108,6 +108,11 @@ export interface Task {
   recurring_rule_id: string | null;
   recurrence: string | null; // compact spec, see shared/recurrence.ts
   recurrence_mode: "fixed" | "after_completion";
+  // Checkpoints: surface this task in Today every `checkpoint_days` to check it
+  // is on track, without touching its due date. `checkpoint_next` is the next
+  // pulse date (YYYY-MM-DD) or null. See shared/checkpoint.ts.
+  checkpoint_days: number | null;
+  checkpoint_next: string | null;
   position: number;
   status: TaskStatus;
   completed_at: string | null;

@@ -47,6 +47,8 @@ const sample: Task = {
   recurring_rule_id: null,
   recurrence: null,
   recurrence_mode: "fixed",
+  checkpoint_days: null,
+  checkpoint_next: null,
   position: 0,
   status: "todo",
   completed_at: null,

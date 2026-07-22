@@ -7,6 +7,7 @@ import {
   leaveTodayBody,
   undoLeaveTodayBody,
   stalePlannedTasks,
+  hasCheckpointDue,
 } from "../src/client/lib/today";
 import type { Subtask, Task } from "../src/shared/types";
 
@@ -50,6 +51,27 @@ describe("inToday — every reason a task surfaces in Today", () => {
     expect(inToday(task({ due_date: "2026-07-20" }), TODAY)).toBe(false);
     expect(inToday(task({ planned_date: "2026-07-20" }), TODAY)).toBe(false);
     expect(inToday(task(), TODAY)).toBe(false);
+  });
+});
+
+describe("checkpoints carry a task into Today", () => {
+  it("a due checkpoint puts the task in the view but NOT inToday's own reasons", () => {
+    const t = task({ due_date: "2026-09-01", checkpoint_next: TODAY });
+    expect(inTodayView(t, TODAY)).toBe(true);
+    // Not a toggle reason (leaveTodayBody cannot clear a checkpoint).
+    expect(inToday(t, TODAY)).toBe(false);
+  });
+
+  it("an overdue checkpoint counts", () => {
+    expect(hasCheckpointDue(task({ checkpoint_next: "2026-07-01" }), TODAY)).toBe(true);
+  });
+
+  it("a future checkpoint does not", () => {
+    expect(hasCheckpointDue(task({ checkpoint_next: "2026-08-01" }), TODAY)).toBe(false);
+  });
+
+  it("no checkpoint does not", () => {
+    expect(hasCheckpointDue(task(), TODAY)).toBe(false);
   });
 });
 

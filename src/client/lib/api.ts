@@ -133,6 +133,8 @@ export const api = {
   ) => httpMutate("POST", "/api/tasks/reorder", items),
   reorderProjects: (items: { id: string; position: number }[]) =>
     httpMutate("POST", "/api/projects/reorder", items),
+  // Checkpoints ride updateTask (checkpoint_days / checkpoint_next are writable),
+  // so no dedicated endpoint: the client computes the dates via shared/checkpoint.
   deleteTask: (id: string) =>
     httpMutate("DELETE", `/api/tasks/${id}`),
   restoreTask: (snapshot: Task) =>

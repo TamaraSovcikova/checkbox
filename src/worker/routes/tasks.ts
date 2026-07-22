@@ -40,6 +40,8 @@ const WRITABLE = [
   "blocked_until",
   "optional",
   "gcal_hidden",
+  "checkpoint_days",
+  "checkpoint_next",
 ];
 
 // Does this task belong to this user? Used to gate subtask + label mutations.

@@ -33,6 +33,12 @@ export function subtasksDueBy(task: Task, today: string): Subtask[] {
 export const hasSubtaskDueToday = (task: Task, today: string): boolean =>
   subtasksDueBy(task, today).length > 0;
 
+// A checkpoint pulse is due: the task is in Today to be marked on track. Like a
+// subtask due, this is NOT one of inToday's toggle reasons (leaveTodayBody could
+// not clear it), so it lives in inTodayView only.
+export const hasCheckpointDue = (task: Task, today: string): boolean =>
+  task.checkpoint_next != null && task.checkpoint_next <= today;
+
 // Whole days between two YYYY-MM-DD days. UTC so a DST boundary cannot make a day
 // 23 or 25 hours long and round the wrong way (see lib/cadence, lib/due).
 function daysAgo(day: string, today: string): number {
@@ -73,7 +79,9 @@ export function stalePlannedTasks(
 // "Add to Today" (it is not planned; adding it is a real, additive action) rather
 // than offering a Remove that cannot work.
 export const inTodayView = (task: Task, today: string): boolean =>
-  inToday(task, today) || hasSubtaskDueToday(task, today);
+  inToday(task, today) ||
+  hasSubtaskDueToday(task, today) ||
+  hasCheckpointDue(task, today);
 
 // The update body that removes a task from Today for good: clear EVERY trigger
 // (the today plan, a today time-block, and a today/overdue deadline). Area and

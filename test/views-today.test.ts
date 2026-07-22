@@ -187,3 +187,45 @@ describe("/views/today carries an unfinished plan forward", () => {
     return expect(today()).resolves.toEqual([]);
   });
 });
+
+// A long-horizon task surfaces in Today on its checkpoint date, without being due.
+describe("/views/today with checkpoints", () => {
+  const withCheckpoint = (id: string, next: string | null, due = NEXT_MONTH) =>
+    raw
+      .prepare(
+        "INSERT INTO tasks (id, user_id, title, status, due_date, checkpoint_days, checkpoint_next) VALUES (?, ?, ?, 'todo', ?, 14, ?)"
+      )
+      .run(id, USER, id, due, next);
+
+  it("surfaces a task whose checkpoint is due today", () => {
+    withCheckpoint("cp", TODAY);
+    return expect(today()).resolves.toEqual(["cp"]);
+  });
+
+  it("surfaces one whose checkpoint is overdue", () => {
+    withCheckpoint("cp", LAST_WEEK);
+    return expect(today()).resolves.toEqual(["cp"]);
+  });
+
+  it("does NOT surface one whose checkpoint is still in the future", () => {
+    withCheckpoint("cp", TOMORROW);
+    return expect(today()).resolves.toEqual([]);
+  });
+
+  it("does NOT surface one with no pending checkpoint", () => {
+    withCheckpoint("cp", null);
+    return expect(today()).resolves.toEqual([]);
+  });
+
+  it("respects snooze on a due checkpoint", () => {
+    withCheckpoint("cp", TODAY);
+    raw.prepare("UPDATE tasks SET snoozed_until = ? WHERE id = 'cp'").run(brussels(3));
+    return expect(today()).resolves.toEqual([]);
+  });
+
+  it("does not surface a done task even with a due checkpoint", () => {
+    withCheckpoint("cp", TODAY);
+    raw.prepare("UPDATE tasks SET status = 'done' WHERE id = 'cp'").run();
+    return expect(today()).resolves.toEqual([]);
+  });
+});

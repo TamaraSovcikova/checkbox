@@ -64,6 +64,8 @@ export {
   // Cadence trackers read as a gauge ("how far through the interval am I"),
   // which is exactly what the page draws.
   Gauge as CadenceIcon,
+  // A checkpoint is a pulse along the way to the due date: a flag on the route.
+  Flag as CheckpointIcon,
 } from "lucide-react";
 
 // Curated icon set an area can be tagged with (the picker offers these by name;

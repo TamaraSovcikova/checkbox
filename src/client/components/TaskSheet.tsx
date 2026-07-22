@@ -11,12 +11,21 @@ import {
   useTasksByIds,
   useUpdateTask,
 } from "../lib/queries";
-import { RECURRENCE_PRESETS, recurrenceLabel } from "../../shared/recurrence";
+import { RECURRENCE_PRESETS } from "../../shared/recurrence";
 import { Markdown } from "../lib/markdown";
 import { parseDatePhrase, parseCapture } from "../lib/nlp";
 import { PRIORITY_VAR, shouldPill } from "../lib/colors";
 import { cn, todayStr } from "@/lib/utils";
-import { inToday, leaveTodayBody, undoLeaveTodayBody } from "../lib/today";
+import {
+  inToday,
+  leaveTodayBody,
+  undoLeaveTodayBody,
+  hasCheckpointDue,
+} from "../lib/today";
+import {
+  startCheckpointBody,
+  advanceCheckpointBody,
+} from "../../shared/checkpoint";
 import { useToast } from "../lib/toast";
 import { Button } from "./ui/button";
 import { PriorityPill } from "./ui";
@@ -24,12 +33,13 @@ import { Sheet, SheetContent } from "./ui/sheet";
 import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
 import {
   CalendarIcon,
+  ClockIcon,
   AddIcon,
   RepeatIcon,
   TrashIcon,
   SnoozeIcon,
   TodayIcon,
-  ChevronRightIcon,
+  CheckpointIcon,
   MailIcon,
   ExternalLinkIcon,
   PlanIcon,
@@ -53,12 +63,30 @@ const Calendar = lazy(() =>
 function DueDatePicker({
   value,
   onChange,
+  onDateTime,
 }: {
   value: string;
   onChange: (v: string) => void;
+  // When given, a free-text "type a date" box inside the popover parses a phrase
+  // like "next tue 3pm" and reports BOTH the date and any time. This is the
+  // natural-language date entry for a task, kept here rather than as a separate
+  // field so the picker is one place: presets, calendar, or type it.
+  onDateTime?: (date: string, time: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [phrase, setPhrase] = useState("");
   const selected = value ? parseISO(value) : undefined;
+
+  function applyPhrase() {
+    const p = phrase.trim();
+    if (!p) return;
+    const parsed = parseDatePhrase(p);
+    if (parsed.due_date) {
+      (onDateTime ?? ((d) => onChange(d)))(parsed.due_date, parsed.due_time);
+      setPhrase("");
+      setOpen(false);
+    }
+  }
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -75,6 +103,18 @@ function DueDatePicker({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
+        {/* Type a date in words: "next tue 3pm", "in 2 weeks". Only when the
+            caller wired onDateTime (the task sheet does). */}
+        {onDateTime && (
+          <input
+            value={phrase}
+            onChange={(e) => setPhrase(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && applyPhrase()}
+            onBlur={applyPhrase}
+            placeholder="Type a date… e.g. next tue 3pm"
+            className="mb-2 h-8 w-full rounded-md border border-dashed border-input bg-transparent px-2 text-sm text-foreground outline-none placeholder:text-subtle focus:border-primary"
+          />
+        )}
         {/* Quick presets: the common reschedules without opening the grid. */}
         <div className="mb-2 flex flex-wrap gap-1">
           {[
@@ -124,44 +164,180 @@ function DueDatePicker({
   );
 }
 
+// The due TIME, as a small popover that only exists once there is a due date.
+// Time is the rarer half of a deadline, so it should not sit as a permanent
+// empty field: a compact "＋ time" chip that becomes "HH:MM" when set, opening a
+// native time input on click. Clearable from inside.
+function DueTimePopover({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title={value ? "Due time" : "Add a due time"}
+          className={cn(
+            "inline-flex h-9 shrink-0 items-center gap-1 rounded-md border px-2 text-sm transition-colors",
+            value
+              ? "border-input text-foreground hover:border-primary/60"
+              : "border-dashed border-input text-subtle hover:border-primary/60 hover:text-foreground"
+          )}
+        >
+          <ClockIcon className="h-3.5 w-3.5" />
+          {value || "time"}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-2">
+        <input
+          type="time"
+          value={value}
+          autoFocus
+          onChange={(e) => onChange(e.target.value)}
+          className="h-9 rounded-md border border-input bg-surface px-3 text-sm text-foreground outline-none focus:border-primary"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+            }}
+            className="mt-1 w-full rounded px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+          >
+            Clear time
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// Checkpoints: pulse a long-horizon task into Today every N days to check it is
+// on track, without touching its due date. An interval picker (presets + custom)
+// and, when a pulse is pending, its next date + a "mark on track" that advances.
+const CHECKPOINT_PRESETS: { label: string; days: number }[] = [
+  { label: "Weekly", days: 7 },
+  { label: "2 weeks", days: 14 },
+  { label: "Monthly", days: 30 },
+];
+
+function CheckpointControl({
+  task,
+  save,
+  today,
+}: {
+  task: Task;
+  save: (body: Record<string, unknown>) => void;
+  today: string;
+}) {
+  const days = task.checkpoint_days ?? null;
+  const next = task.checkpoint_next ?? null;
+  const dueDue = hasCheckpointDue(task, today);
+  // Checkpoints only run BEFORE the due date, so a task already due (or overdue)
+  // has no room for them: it is surfacing in Today every day anyway. Disable the
+  // controls and say why, rather than accepting a click that silently clears.
+  const noHeadroom = task.due_date != null && task.due_date <= today;
+
+  const set = (n: number) =>
+    save(startCheckpointBody(today, n, task.due_date));
+  const clear = () =>
+    save({ checkpoint_days: null, checkpoint_next: null });
+  const onTrack = () =>
+    save(advanceCheckpointBody(today, days, next, task.due_date));
+
+  return (
+    <div>
+      <span className="flex items-center gap-1.5 text-xs text-muted">
+        <CheckpointIcon className="h-3.5 w-3.5" /> Checkpoints
+        {days && (
+          <span className="text-subtle">
+            every {days}d
+            {next ? ` · next ${next}` : " · done"}
+          </span>
+        )}
+      </span>
+      {noHeadroom && !days ? (
+        <p className="mt-1 text-[11px] text-subtle">
+          Checkpoints run before the due date. This task is already due, so
+          there is nothing to pace.
+        </p>
+      ) : (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+          {CHECKPOINT_PRESETS.map((p) => (
+            <button
+              key={p.days}
+              type="button"
+              onClick={() => set(p.days)}
+              className={cn(
+                "rounded-md px-2 py-1 text-xs transition-colors",
+                days === p.days
+                  ? "bg-primary/15 text-primary"
+                  : "bg-surface-2 text-foreground hover:bg-surface-2/70"
+              )}
+            >
+              {p.label}
+            </button>
+          ))}
+          <input
+            type="number"
+            min={1}
+            placeholder="N days"
+            // Uncontrolled: committing on Enter/blur avoids fighting the live
+            // task read while you type a number.
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              const n = Number((e.target as HTMLInputElement).value);
+              if (n > 0) set(n);
+            }}
+            onBlur={(e) => {
+              const n = Number(e.target.value);
+              if (n > 0 && n !== days) set(n);
+            }}
+            className="h-7 w-16 rounded-md border border-input bg-surface px-2 text-xs text-foreground outline-none focus:border-primary"
+          />
+          {days && (
+            <button
+              type="button"
+              onClick={clear}
+              className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+            >
+              Off
+            </button>
+          )}
+        </div>
+      )}
+      {/* When a pulse is due, the on-track action is right here too (it is also
+          on the row in Today). */}
+      {dueDue && (
+        <button
+          type="button"
+          onClick={onTrack}
+          className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-primary/40 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+        >
+          <CheckpointIcon className="h-3.5 w-3.5" /> On track
+        </button>
+      )}
+      {days && task.due_date == null && (
+        <p className="mt-1 text-[11px] text-subtle">
+          Runs indefinitely with no due date. Add one to have checkpoints stop
+          when it arrives.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // A collapsible detail section. Collapsed by default, and its header shows a
 // one-line summary of what is inside, so a due date or a blocker count stays
 // visible even when the section is shut. This is what keeps the sheet from being
 // eleven equal-weight blocks: the work (notes, subtasks) stays open, everything
 // set-once folds away but still reports itself.
-function Section({
-  title,
-  summary,
-  children,
-}: {
-  title: string;
-  summary?: string;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border-t border-border pt-3">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 text-left"
-      >
-        <ChevronRightIcon
-          className={cn(
-            "h-4 w-4 shrink-0 text-muted transition-transform",
-            open && "rotate-90"
-          )}
-        />
-        <span className="text-sm font-medium text-foreground">{title}</span>
-        {!open && summary && (
-          <span className="ml-auto truncate pl-2 text-xs text-subtle">{summary}</span>
-        )}
-      </button>
-      {open && <div className="mt-3 space-y-3 pl-6">{children}</div>}
-    </div>
-  );
-}
-
 // Task detail editor. Was the hand-rolled TaskDrawer overlay; now a shadcn Sheet
 // with a real date picker. Kept always mounted so open/close animates; content
 // renders only when a task is selected.
@@ -209,7 +385,6 @@ export function TaskSheet({
     useState<Task["recurrence_mode"]>("fixed");
   const [newSub, setNewSub] = useState("");
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
-  const [nlpDate, setNlpDate] = useState("");
   const [optional, setOptional] = useState(false);
 
   useEffect(() => {
@@ -224,7 +399,6 @@ export function TaskSheet({
     setRecurrence(task.recurrence ?? "");
     setRecurrenceMode(task.recurrence_mode ?? "fixed");
     setSubtasks(task.subtasks ?? []);
-    setNlpDate("");
     setOptional(!!task.optional);
     // Keyed on the task's ID, not the task object: `task` is now a live cache
     // read, so it gets a new identity on every refetch, and depending on the
@@ -233,23 +407,6 @@ export function TaskSheet({
     // task and does want a reset.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task?.id]);
-
-  // Inline NLP date: parse a phrase like "next tue 3pm" and set due date/time.
-  function applyNlpDate() {
-    const phrase = nlpDate.trim();
-    if (!phrase) return;
-    const parsed = parseDatePhrase(phrase);
-    if (parsed.due_date) {
-      setDueDate(parsed.due_date);
-      const body: Record<string, unknown> = { due_date: parsed.due_date };
-      if (parsed.due_time) {
-        setDueTime(parsed.due_time);
-        body.due_time = parsed.due_time;
-      }
-      save(body);
-      setNlpDate("");
-    }
-  }
 
   function save(body: Record<string, unknown>) {
     if (!task) return;
@@ -315,7 +472,6 @@ export function TaskSheet({
   }
 
   const subDone = subtasks.filter((s) => s.done).length;
-  const plannedToday = task?.planned_date === todayStr();
   // "In Today" for any reason (planned, due today/overdue, blocked today), so the
   // toggle can actually remove it. Add sets a plan; Remove clears every trigger.
   const isInToday = task ? inToday(task, todayStr()) : false;
@@ -352,18 +508,6 @@ export function TaskSheet({
       toast("Added to Today");
     }
   }
-
-  // Section summaries: what each collapsed section reports about itself.
-  const scheduleSummary =
-    [
-      dueDate ? format(parseISO(dueDate), "d MMM") + (dueTime ? ` ${dueTime}` : "") : null,
-      plannedToday ? "today" : null,
-      recurrence ? recurrenceLabel(recurrence) : null,
-      task?.scheduled_start ? "time-blocked" : null,
-      task?.snoozed_until ? "snoozed" : null,
-    ]
-      .filter(Boolean)
-      .join(" · ") || "Not scheduled";
 
   // Gmail thread handles (present only for email-derived tasks).
   const gmailThread = task?.gmail_thread_id ?? null;
@@ -433,6 +577,48 @@ export function TaskSheet({
               <span className="ml-1 text-[11px] text-subtle">
                 {PRIORITY_LABEL[priority]}
               </span>
+            </div>
+
+            {/* Due date: at the TOP now, not folded inside a Schedule section.
+                A deadline is a headline fact about a task, so it sits with the
+                priority. The time is a small popover that only appears once a
+                date is set, so an empty time field never takes up space. */}
+            <div className="flex items-center gap-2">
+              <div className="min-w-0 max-w-[12rem] flex-1">
+                <DueDatePicker
+                  value={dueDate}
+                  onChange={(v) => {
+                    setDueDate(v);
+                    // Clearing the date clears any time with it: a bare time is
+                    // meaningless, and would keep the popover showing "14:00"
+                    // against no day.
+                    if (!v && dueTime) {
+                      setDueTime("");
+                      save({ due_date: null, due_time: null });
+                    } else {
+                      save({ due_date: v || null });
+                    }
+                  }}
+                  onDateTime={(date, time) => {
+                    setDueDate(date);
+                    const body: Record<string, unknown> = { due_date: date };
+                    if (time) {
+                      setDueTime(time);
+                      body.due_time = time;
+                    }
+                    save(body);
+                  }}
+                />
+              </div>
+              {dueDate && (
+                <DueTimePopover
+                  value={dueTime}
+                  onChange={(v) => {
+                    setDueTime(v);
+                    save({ due_time: v || null });
+                  }}
+                />
+              )}
             </div>
 
             {/* Add to Today: one of the most-used actions, so it lives up top,
@@ -688,43 +874,12 @@ export function TaskSheet({
               </div>
             )}
 
-            {/* ── Set-once, folded away but self-reporting ──────────────── */}
-            <Section title="Schedule" summary={scheduleSummary}>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="text-xs text-muted">
-                  Due date
-                  <div className="mt-1">
-                    <DueDatePicker
-                      value={dueDate}
-                      onChange={(v) => {
-                        setDueDate(v);
-                        save({ due_date: v || null });
-                      }}
-                    />
-                  </div>
-                </label>
-                <label className="text-xs text-muted">
-                  Due time
-                  <input
-                    type="time"
-                    value={dueTime}
-                    onChange={(e) => setDueTime(e.target.value)}
-                    onBlur={() => save({ due_time: dueTime || null })}
-                    className="mt-1 h-9 w-full rounded-md border border-input bg-surface px-3 text-sm text-foreground outline-none focus:border-primary"
-                  />
-                </label>
-              </div>
-
-              {/* Inline NLP date: type a phrase, Enter (or ↵ button) to set. */}
-              <input
-                value={nlpDate}
-                onChange={(e) => setNlpDate(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && applyNlpDate()}
-                onBlur={applyNlpDate}
-                placeholder="Type a date… e.g. next tue 3pm, in 2 weeks"
-                className="h-8 w-full rounded-md border border-dashed border-input bg-transparent px-3 text-sm text-foreground outline-none placeholder:text-subtle focus:border-primary"
-              />
-
+            {/* ── Scheduling: no longer folded away. Snooze and Repeat used to
+                live inside a collapsed "Schedule" section; they are set often
+                enough that hiding them behind a disclosure cost a click every
+                time. Due date moved to the top. What remains is a light,
+                always-visible group. ────────────────────────────────────── */}
+            <div className="space-y-3 border-t border-border pt-3">
               {/* Time block: set by dragging on the calendar; shown here so it is
                   visible and clearable from the task too. */}
               {task.scheduled_start && (
@@ -829,7 +984,11 @@ export function TaskSheet({
                   </p>
                 )}
               </div>
-            </Section>
+
+              {/* Checkpoints: surface a long-horizon task in Today every N days
+                  to check it is on track, without moving its due date. */}
+              <CheckpointControl task={task} save={save} today={todayStr()} />
+            </div>
 
             {/* Tracking - a discreet inline strip, not a whole section: the
                 start/stop timer with a small estimate field beside it. */}
