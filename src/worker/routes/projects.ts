@@ -62,6 +62,22 @@ projects.post("/", async (c) => {
   return c.json(rowToProject(row as Record<string, unknown>), 201);
 });
 
+// Persist a new project ORDER within an area (drag-to-reorder on the area page).
+// Batched like /tasks/reorder: one round trip for the whole list. Every row is
+// scoped to the user, so a foreign id in the payload updates nothing. Registered
+// before /:id so "reorder" is not read as a project id.
+projects.post("/reorder", async (c) => {
+  const userId = await getUserId(c);
+  const items = await c.req.json<{ id: string; position: number }[]>();
+  const stmts = (Array.isArray(items) ? items : []).map((it) =>
+    c.env.DB.prepare(
+      "UPDATE projects SET position = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+    ).bind(it.position, now(), it.id, userId)
+  );
+  if (stmts.length) await c.env.DB.batch(stmts);
+  return c.json({ ok: true });
+});
+
 projects.patch("/:id", async (c) => {
   const userId = await getUserId(c);
   const id = c.req.param("id");

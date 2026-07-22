@@ -131,6 +131,8 @@ export const api = {
   reorderTasks: (
     items: { id: string; position: number; board_column?: string; status?: string }[]
   ) => httpMutate("POST", "/api/tasks/reorder", items),
+  reorderProjects: (items: { id: string; position: number }[]) =>
+    httpMutate("POST", "/api/projects/reorder", items),
   deleteTask: (id: string) =>
     httpMutate("DELETE", `/api/tasks/${id}`),
   restoreTask: (snapshot: Task) =>

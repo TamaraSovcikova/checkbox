@@ -33,6 +33,39 @@ export function subtasksDueBy(task: Task, today: string): Subtask[] {
 export const hasSubtaskDueToday = (task: Task, today: string): boolean =>
   subtasksDueBy(task, today).length > 0;
 
+// Whole days between two YYYY-MM-DD days. UTC so a DST boundary cannot make a day
+// 23 or 25 hours long and round the wrong way (see lib/cadence, lib/due).
+function daysAgo(day: string, today: string): number {
+  const [dy, dm, dd] = day.split("-").map(Number);
+  const [ty, tm, td] = today.split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(dy, dm - 1, dd)) / 86_400_000);
+}
+
+// Tasks that are in Today ONLY because of an old plan, and by now a STALE one.
+//
+// Carry-forward (planned_date <= today) keeps an unfinished plan in Today
+// indefinitely, which is right up to a point; past `days` it is worth asking
+// whether it still belongs there. This is deliberately narrow: a task that is
+// also due/overdue or time-blocked today belongs in Today for a reason clearing
+// the plan would not remove, so it is excluded. What remains is exactly the set
+// where "clear the plan" actually drops it out.
+export const STALE_PLAN_DAYS = 14;
+
+export function stalePlannedTasks(
+  tasks: Task[],
+  today: string,
+  days = STALE_PLAN_DAYS
+): Task[] {
+  return tasks.filter(
+    (t) =>
+      t.status !== "done" &&
+      t.planned_date != null &&
+      daysAgo(t.planned_date, today) >= days &&
+      t.due_date == null &&
+      t.scheduled_start == null
+  );
+}
+
 // Everything the Today VIEW holds: the task's own reasons, plus a task carried in
 // by one of its subtasks. Mirrors the server's /views/today; keep the two in sync.
 //

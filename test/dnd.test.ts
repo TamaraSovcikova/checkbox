@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveDrop } from "../src/client/lib/dnd";
+import { resolveDrop, computeProjectReorder } from "../src/client/lib/dnd";
 import type { Project, Task } from "../src/shared/types";
 
 const task = (over: Partial<Task> = {}): Task =>
@@ -213,10 +213,79 @@ describe("resolveDrop — dragging a project", () => {
     expect(resolveDrop(dragProject, { type: "area", areaId: "a1" }, TODAY)).toBeNull();
   });
 
-  it("a project only drops on areas, never on views/projects/slots", () => {
-    expect(resolveDrop(dragProject, { type: "view", view: "today" }, TODAY)).toBeNull();
+  it("dropping a project on another project in the SAME area reorders", () => {
+    expect(
+      resolveDrop(dragProject, { type: "project", projectId: "p2", areaId: "a1" }, TODAY)
+    ).toEqual({ kind: "reorder-project", id: "p1", overId: "p2" });
+  });
+
+  it("dropping a project on a project in a DIFFERENT area does nothing", () => {
+    // Re-homing is the area-drop's job; grazing another area's card must not
+    // silently move the project.
     expect(
       resolveDrop(dragProject, { type: "project", projectId: "p2", areaId: "a2" }, TODAY)
     ).toBeNull();
+  });
+
+  it("dropping a project on itself is a no-op", () => {
+    expect(
+      resolveDrop(dragProject, { type: "project", projectId: "p1", areaId: "a1" }, TODAY)
+    ).toBeNull();
+  });
+
+  it("a project never drops on views or slots", () => {
+    expect(resolveDrop(dragProject, { type: "view", view: "today" }, TODAY)).toBeNull();
+    expect(
+      resolveDrop(dragProject, { type: "slot", date: "2026-07-20", time: "09:00" }, TODAY)
+    ).toBeNull();
+  });
+});
+
+describe("computeProjectReorder", () => {
+  const p = (id: string, area: string, pos: number): Project =>
+    ({
+      id,
+      area_id: area,
+      name: id,
+      description: null,
+      goal: null,
+      status: "active",
+      start_date: null,
+      due_date: null,
+      board_columns: [],
+      position: pos,
+      completed_at: null,
+    }) as Project;
+
+  // a1: [A, B, C]; a2: [X] (must never be touched by an a1 reorder).
+  const all = [p("A", "a1", 0), p("B", "a1", 1), p("C", "a1", 2), p("X", "a2", 0)];
+
+  it("moves a project down and renumbers the area densely", () => {
+    // A dropped onto C -> [B, C, A]
+    expect(computeProjectReorder(all, "A", "C")).toEqual([
+      { id: "B", position: 0 },
+      { id: "C", position: 1 },
+      { id: "A", position: 2 },
+    ]);
+  });
+
+  it("moves a project up", () => {
+    // C dropped onto A -> [C, A, B]
+    expect(computeProjectReorder(all, "C", "A")).toEqual([
+      { id: "C", position: 0 },
+      { id: "A", position: 1 },
+      { id: "B", position: 2 },
+    ]);
+  });
+
+  it("only ever renumbers the dragged project's own area", () => {
+    const out = computeProjectReorder(all, "A", "C");
+    expect(out.some((r) => r.id === "X")).toBe(false);
+  });
+
+  it("is a no-op onto itself or an unknown target", () => {
+    expect(computeProjectReorder(all, "A", "A")).toEqual([]);
+    expect(computeProjectReorder(all, "A", "nope")).toEqual([]);
+    expect(computeProjectReorder(all, "ghost", "C")).toEqual([]);
   });
 });

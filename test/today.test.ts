@@ -6,6 +6,7 @@ import {
   subtasksDueBy,
   leaveTodayBody,
   undoLeaveTodayBody,
+  stalePlannedTasks,
 } from "../src/client/lib/today";
 import type { Subtask, Task } from "../src/shared/types";
 
@@ -49,6 +50,57 @@ describe("inToday — every reason a task surfaces in Today", () => {
     expect(inToday(task({ due_date: "2026-07-20" }), TODAY)).toBe(false);
     expect(inToday(task({ planned_date: "2026-07-20" }), TODAY)).toBe(false);
     expect(inToday(task(), TODAY)).toBe(false);
+  });
+});
+
+describe("stalePlannedTasks", () => {
+  const old = "2026-06-20"; // 25 days before TODAY (2026-07-15)
+  const recent = "2026-07-10"; // 5 days before, not yet stale
+
+  it("flags a task planned long ago with nothing else keeping it in Today", () => {
+    expect(stalePlannedTasks([task({ planned_date: old })], TODAY).length).toBe(1);
+  });
+
+  it("does not flag a recently planned task", () => {
+    expect(stalePlannedTasks([task({ planned_date: recent })], TODAY)).toEqual([]);
+  });
+
+  it("respects the threshold boundary (>= days, not >)", () => {
+    // TODAY is 2026-07-15, so 14 days back is 2026-07-01 (stale); 13 back is not.
+    expect(stalePlannedTasks([task({ planned_date: "2026-07-01" })], TODAY).length).toBe(1);
+    expect(stalePlannedTasks([task({ planned_date: "2026-07-02" })], TODAY)).toEqual([]);
+  });
+
+  // Excluded because clearing the plan would NOT drop them out of Today: they are
+  // there for another reason, so nagging about the plan is wrong.
+  it("ignores a stale plan that is ALSO due/overdue", () => {
+    expect(
+      stalePlannedTasks([task({ planned_date: old, due_date: "2026-07-01" })], TODAY)
+    ).toEqual([]);
+  });
+
+  it("ignores a stale plan that is ALSO time-blocked today", () => {
+    expect(
+      stalePlannedTasks(
+        [task({ planned_date: old, scheduled_start: `${TODAY}T09:00:00` })],
+        TODAY
+      )
+    ).toEqual([]);
+  });
+
+  it("ignores a done task", () => {
+    expect(
+      stalePlannedTasks([task({ planned_date: old, status: "done" })], TODAY)
+    ).toEqual([]);
+  });
+
+  it("returns nothing for a task with no plan", () => {
+    expect(stalePlannedTasks([task({ due_date: "2026-07-01" })], TODAY)).toEqual([]);
+  });
+
+  it("survives a DST boundary in the day count", () => {
+    // Around Brussels spring-forward: 15 days before 2026-04-12 is 2026-03-28.
+    expect(stalePlannedTasks([task({ planned_date: "2026-03-28" })], "2026-04-12").length).toBe(1);
   });
 });
 

@@ -25,6 +25,10 @@ export type DropData =
 export type DropAction =
   | { kind: "update"; id: string; body: Record<string, unknown> }
   | { kind: "move-project"; id: string; areaId: string | null }
+  // Reorder a project WITHIN its area: drop it on another project card there. The
+  // final positions need the whole ordered list, which resolveDrop does not have,
+  // so it only names the two ends; AppShell computes the order (computeReorder).
+  | { kind: "reorder-project"; id: string; overId: string }
   // Complete/reopen a task through the dedicated endpoint (handles completed_at
   // + recurrence), with an optional follow-up update once it has reopened.
   | { kind: "complete"; id: string; done: boolean; then?: Record<string, unknown> }
@@ -38,13 +42,26 @@ export function resolveDrop(
 ): DropAction {
   if (!dragged || !target) return null;
 
-  // Dragging a PROJECT: the only valid target is an area, and it re-homes the
-  // project (and its tasks) there. A drop on its own area is a no-op.
+  // Dragging a PROJECT. Two outcomes:
+  //   - dropped on an AREA (sidebar): re-home it there (a drop on its own area
+  //     is a no-op).
+  //   - dropped on ANOTHER PROJECT in the SAME area: reorder. Cross-area is left
+  //     to the area drop above, so this cannot accidentally re-home a project by
+  //     grazing a card in a different area's list.
   if (dragged.type === "move-project" && dragged.project) {
     const project = dragged.project;
     if (target.type === "area" && target.areaId) {
       if (target.areaId === project.area_id) return null;
       return { kind: "move-project", id: project.id, areaId: target.areaId };
+    }
+    if (
+      target.type === "project" &&
+      target.projectId &&
+      target.projectId !== project.id &&
+      target.areaId != null &&
+      target.areaId === project.area_id
+    ) {
+      return { kind: "reorder-project", id: project.id, overId: target.projectId };
     }
     return null;
   }
@@ -127,4 +144,35 @@ export function resolveDrop(
     default:
       return null;
   }
+}
+
+// The new positions after dragging project `draggedId` onto `overId`. Pure and
+// tested so the drag maths is not buried in AppShell.
+//
+// Scoped to the dragged project's OWN area: the payload only ever renumbers that
+// area, so a reorder cannot disturb another area's positions. Returns compact
+// 0..n-1 positions for the whole area, which keeps them dense (no drift after
+// repeated reorders) and is cheap since an area holds few projects. Empty array
+// (a no-op) when either end is missing or the two are already adjacent-equal.
+export function computeProjectReorder(
+  allProjects: Project[],
+  draggedId: string,
+  overId: string
+): { id: string; position: number }[] {
+  const dragged = allProjects.find((p) => p.id === draggedId);
+  if (!dragged || draggedId === overId) return [];
+
+  const inArea = allProjects
+    .filter((p) => p.area_id === dragged.area_id)
+    .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+
+  const from = inArea.findIndex((p) => p.id === draggedId);
+  const to = inArea.findIndex((p) => p.id === overId);
+  if (from === -1 || to === -1) return [];
+
+  const next = [...inArea];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+
+  return next.map((p, i) => ({ id: p.id, position: i }));
 }

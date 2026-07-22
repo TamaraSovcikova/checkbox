@@ -9,9 +9,14 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import type { Task } from "../shared/types";
+import type { Project, Task } from "../shared/types";
 import { api } from "./lib/api";
-import { resolveDrop, type DragData, type DropData } from "./lib/dnd";
+import {
+  resolveDrop,
+  computeProjectReorder,
+  type DragData,
+  type DropData,
+} from "./lib/dnd";
 import { Sidebar, MobileSidebar } from "./components/Sidebar";
 import { TaskSheet } from "./components/TaskSheet";
 import { CommandCapture } from "./components/CommandCapture";
@@ -62,6 +67,36 @@ export function AppShell() {
     try {
       if (action.kind === "move-project") {
         await api.updateProject(action.id, { area_id: action.areaId });
+      } else if (action.kind === "reorder-project") {
+        // The ordered list lives in the projects query, but under whichever key
+        // the current page used (`["projects","all"]` or `["projects",<areaId>]`).
+        // Gather every cached projects list and dedupe, so the reorder does not
+        // depend on which page you happen to be on.
+        const seen = new Map<string, Project>();
+        for (const [, list] of client.getQueriesData<Project[]>({
+          queryKey: ["projects"],
+        })) {
+          for (const p of list ?? []) if (!seen.has(p.id)) seen.set(p.id, p);
+        }
+        const positions = computeProjectReorder(
+          [...seen.values()],
+          action.id,
+          action.overId
+        );
+        if (positions.length) {
+          // Optimistic: renumber every cached projects list right away, so the
+          // cards settle into their new order on drop instead of after the round
+          // trip. The finally-block invalidate reconciles with the server.
+          const byId = new Map(positions.map((p) => [p.id, p.position]));
+          client.setQueriesData<Project[]>({ queryKey: ["projects"] }, (list) =>
+            list
+              ? [...list]
+                  .map((p) => (byId.has(p.id) ? { ...p, position: byId.get(p.id)! } : p))
+                  .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
+              : list
+          );
+          await api.reorderProjects(positions);
+        }
       } else if (action.kind === "complete") {
         await api.completeTask(action.id, action.done);
         if (action.then) await api.updateTask(action.id, action.then);

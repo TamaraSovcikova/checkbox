@@ -32,6 +32,7 @@ import { PinsStrip, PinsSide, useAddPin, useSidePins } from "./components/Pins";
 import { scopeForView, scopeForArea } from "./lib/pinScope";
 import { StatsWidget } from "./components/StatsWidget";
 import { CheatSheet } from "./components/CheatSheet";
+import { StalePlanNudge } from "./components/StalePlanNudge";
 import { NotesInbox } from "./components/NotesInbox";
 import { InstallHint } from "./components/InstallHint";
 import { FilterIcon, SnoozeIcon, ReviewIcon, RepeatIcon } from "./lib/icons";
@@ -626,6 +627,7 @@ export function ViewPage({ name }: { name: string }) {
           {isToday && <InstallHint />}
           <PinsStrip scope={pinScope} />
           {isToday && <CheatSheet />}
+          {isToday && <StalePlanNudge tasks={tasks} />}
           {isToday && <SuggestToday />}
           {isToday && showBoard ? (
             // The board's Done column already shows today's completed tasks, so
