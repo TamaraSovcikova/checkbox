@@ -7,6 +7,7 @@ import {
   encodeSpot,
   decodeSpot,
   spotValueOf,
+  spotLabel,
   isLoose,
   spotOptions,
 } from "../src/client/lib/pinScope";
@@ -70,6 +71,29 @@ describe("spotValueOf / isLoose", () => {
   it("defaults a missing scope to today", () => {
     const p = pin({ placement: "top", scope: "" });
     expect(spotValueOf(p)).toBe("top@today");
+  });
+});
+
+describe("spotLabel", () => {
+  const areas = [{ id: "a1", name: "Health" }] as Area[];
+
+  it("reads Loose for a loose pin regardless of its stored scope", () => {
+    expect(spotLabel(pin({ placement: "unpinned", scope: "area:a1" }), areas)).toBe("Loose");
+  });
+
+  it("reads page and spot for a placed pin", () => {
+    expect(spotLabel(pin({ placement: "top", scope: "today" }), areas)).toBe(
+      "Today · top strip"
+    );
+    expect(spotLabel(pin({ placement: "side", scope: "area:a1" }), areas)).toBe(
+      "Health · side column"
+    );
+  });
+
+  it("names a deleted area rather than showing a raw id", () => {
+    expect(spotLabel(pin({ placement: "top", scope: "area:gone" }), areas)).toBe(
+      "Deleted area · top strip"
+    );
   });
 });
 

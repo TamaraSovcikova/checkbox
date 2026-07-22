@@ -74,6 +74,13 @@ export function decodeSpot(value: string): PinSpot {
 export const spotValueOf = (p: Pin): string =>
   isLoose(p) ? "nowhere" : encodeSpot(p.scope || "today", p.placement);
 
+// One-line "where it shows" for a card chip: "Loose", or "Today · top strip".
+export function spotLabel(p: Pin, areas: Area[]): string {
+  if (isLoose(p)) return "Loose";
+  const spot = p.placement === "top" ? "top strip" : "side column";
+  return `${scopeLabel(p.scope || "today", areas)} · ${spot}`;
+}
+
 // The grouped options for the "Show on" dropdown: Nowhere first, then Today
 // (top/side), then each area (top/side). Views are omitted here to keep the list
 // short: a pin can still be scoped to a view via older data, and the label

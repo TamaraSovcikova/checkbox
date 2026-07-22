@@ -26,6 +26,7 @@ import {
   isLoose,
   spotOptions,
   spotValueOf,
+  spotLabel,
   decodeSpot,
 } from "../lib/pinScope";
 import { CadenceStrip } from "./Cadences";
@@ -37,6 +38,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
 import {
   PinsIcon,
@@ -657,39 +660,48 @@ function PinCard({
       )}
       </div>
 
-      {/* Where this pin shows, as ONE choice (scope + placement together). Only
-          on the Pins page (full card): that is where you organise, and it would
-          be noise on the pin itself in situ. "Nowhere" keeps it as a loose list. */}
+      {/* Where this pin shows, as one chip (scope + placement together). Only on
+          the Pins page (full card): that is where you organise, and it would be
+          noise on the pin itself in situ. The chip reads the current home
+          ("Loose", "Today · top strip") and opens the move menu. */}
       {!compact && (
-        <label className="mt-2 flex items-center gap-2 border-t border-border pt-2 text-[11px] text-subtle">
-          <span className="shrink-0">Show on</span>
-          <select
-            value={spotValueOf(pin)}
-            onChange={(e) => {
-              const { scope, placement } = decodeSpot(e.target.value);
-              update.mutate({ id: pin.id, body: { scope, placement } });
-            }}
-            className="h-7 min-w-0 flex-1 rounded border border-input bg-surface px-1.5 text-[11px] text-foreground outline-none focus:border-primary"
-          >
-            {spotOptions(areas).map((grp) =>
-              grp.group ? (
-                <optgroup key={grp.group} label={grp.group}>
+        <div className="mt-2 border-t border-border pt-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={cn(
+                  "inline-flex h-6 max-w-full items-center gap-1 truncate rounded-full border px-2 text-[11px] transition-colors",
+                  isLoose(pin)
+                    ? "border-dashed border-border text-subtle hover:text-foreground"
+                    : "border-border bg-surface-2 text-foreground hover:bg-surface"
+                )}
+              >
+                <span className="truncate">{spotLabel(pin, areas)}</span>
+                <ChevronDownIcon className="h-3 w-3 shrink-0 text-subtle" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+              {spotOptions(areas).map((grp, i) => (
+                <div key={grp.group || "nowhere"}>
+                  {i > 0 && <DropdownMenuSeparator />}
+                  {grp.group && <DropdownMenuLabel>{grp.group}</DropdownMenuLabel>}
                   {grp.options.map((o) => (
-                    <option key={o.value} value={o.value}>
+                    <DropdownMenuCheckboxItem
+                      key={o.value}
+                      checked={spotValueOf(pin) === o.value}
+                      onCheckedChange={() => {
+                        const { scope, placement } = decodeSpot(o.value);
+                        update.mutate({ id: pin.id, body: { scope, placement } });
+                      }}
+                    >
                       {o.label}
-                    </option>
+                    </DropdownMenuCheckboxItem>
                   ))}
-                </optgroup>
-              ) : (
-                grp.options.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))
-              )
-            )}
-          </select>
-        </label>
+                </div>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       )}
 
       {/* Corner grip. Stays out of the way until you hover the pin. */}
@@ -796,24 +808,18 @@ export function PinsPage() {
   const { data: areas = [] } = useAreas();
   const create = useCreatePin();
   const [q, setQ] = useState("");
-  // Collapsed sections, by scope. Collapsing is the main tool once you have more
-  // pins than fit on a screen, so it is one click from the section header.
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const toggleGroup = (scope: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(scope)) next.delete(scope);
-      else next.add(scope);
-      return next;
-    });
+  // Which chip is active: "all", "loose", or a page scope. Filtering, not
+  // collapsible sections: sections hid every card behind bare header rows, so
+  // the page showed nothing. With chips the cards are always on screen and the
+  // chip row doubles as the count-per-page overview.
+  const [filter, setFilter] = useState("all");
 
   const found = pins.filter((p) => pinMatches(p, q));
 
-  // Loose pins (not on any page) form their OWN group, keyed "loose", first -
-  // they are the "just a list I keep" pile and their scope is meaningless, so
-  // bucketing them under Today (their default scope) was the old confusion. The
-  // rest group by the page they live on, in the picker's order so the sequence
-  // is stable as pins move.
+  // Loose pins (not on any page) get their own chip, first: they are the "just
+  // a list I keep" pile and their scope is meaningless, so bucketing them under
+  // Today (their default scope) was the old confusion. The rest bucket by the
+  // page they live on, in the picker's order so the chip row is stable.
   const loose = found.filter(isLoose);
   const placed = found.filter((p) => !isLoose(p));
   const order = scopeOptions(areas).map((o) => o.value);
@@ -828,12 +834,20 @@ export function PinsPage() {
       label: scopeLabel(scope, areas),
       pins: placed.filter((p) => (p.scope || "today") === scope),
     }));
-  const groups = [
-    ...(loose.length ? [{ key: "loose", label: "Loose lists", pins: loose }] : []),
-    ...placedGroups,
+  const chips = [
+    { key: "all", label: "All", count: found.length },
+    ...(loose.length ? [{ key: "loose", label: "Loose", count: loose.length }] : []),
+    ...placedGroups.map((g) => ({ key: g.key, label: g.label, count: g.pins.length })),
   ];
-
-  const allCollapsed = groups.length > 0 && groups.every((g) => collapsed.has(g.key));
+  // A chip can vanish under you (last pin moved off a page, or a search that
+  // empties it); fall back to All rather than showing an empty grid.
+  const active = chips.some((c) => c.key === filter) ? filter : "all";
+  const visible =
+    active === "all"
+      ? [...loose, ...placedGroups.flatMap((g) => g.pins)]
+      : active === "loose"
+        ? loose
+        : (placedGroups.find((g) => g.key === active)?.pins ?? []);
 
   return (
     <div className="max-w-4xl pt-4 md:pt-6">
@@ -848,11 +862,10 @@ export function PinsPage() {
         )}
       </div>
       <p className="mb-4 text-sm text-subtle">
-        Lists and reminders you keep beside your tasks. A new one is loose (kept
-        here, on no page) until you give it a home: pick a page and spot under
-        &ldquo;Show on&rdquo; (Today or an area, top strip or side column).
-        Colour them to tell them apart; drag a pinned card&rsquo;s corner where
-        it shows to resize it.
+        Lists and reminders you keep beside your tasks. The chip on each card
+        says where it shows; click it to move the pin between Loose (kept here
+        only), Today, or an area. Colour them to tell them apart; drag a pinned
+        card&rsquo;s corner where it shows to resize it.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -883,28 +896,40 @@ export function PinsPage() {
         </Button>
 
         {pins.length > 0 && (
-          <>
-            <div className="relative ml-auto">
-              <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search pins"
-                className="h-8 w-44 rounded-md border border-input bg-surface pl-7 pr-2 text-xs text-foreground outline-none placeholder:text-subtle focus:border-primary"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                setCollapsed(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)))
-              }
-              className="text-xs text-subtle transition-colors hover:text-foreground"
-            >
-              {allCollapsed ? "Expand all" : "Collapse all"}
-            </button>
-          </>
+          <div className="relative ml-auto">
+            <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search pins"
+              className="h-8 w-44 rounded-md border border-input bg-surface pl-7 pr-2 text-xs text-foreground outline-none placeholder:text-subtle focus:border-primary"
+            />
+          </div>
         )}
       </div>
+
+      {/* Page filter. Only pages that have pins get a chip, so the row is also
+          the "what lives where" overview at a glance. */}
+      {found.length > 0 && chips.length > 2 && (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5">
+          {chips.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => setFilter(c.key)}
+              className={cn(
+                "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors",
+                active === c.key
+                  ? "border-primary bg-primary/10 font-medium text-foreground"
+                  : "border-border text-subtle hover:text-foreground"
+              )}
+            >
+              {c.label}
+              <span className="text-[11px] tabular-nums text-muted">{c.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {pins.length === 0 ? (
         <div className="rounded-xl border border-border bg-surface/40 p-6 text-center">
@@ -914,44 +939,17 @@ export function PinsPage() {
             topics; a reminder is good for a goal or a quote you go by.
           </p>
         </div>
-      ) : groups.length === 0 ? (
+      ) : found.length === 0 ? (
         <p className="rounded-lg border border-border bg-surface/40 p-4 text-center text-sm text-subtle">
           Nothing matches &ldquo;{q}&rdquo;.
         </p>
       ) : (
-        // Grouped by the page each pin lives on, so this reads as "what is on
-        // Today, what is on Health" rather than one undifferentiated pile.
-        <div className="space-y-5">
-          {groups.map((g) => {
-            const isCollapsed = collapsed.has(g.key);
-            return (
-              <section key={g.key}>
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(g.key)}
-                  className="mb-2 flex w-full items-center gap-2 border-b border-border pb-1 text-xs font-semibold uppercase tracking-wide text-subtle transition-colors hover:text-foreground"
-                >
-                  <ChevronDownIcon
-                    className={cn(
-                      "h-3.5 w-3.5 transition-transform",
-                      isCollapsed && "-rotate-90"
-                    )}
-                  />
-                  {g.label}
-                  <span className="rounded-full bg-surface-2 px-1.5 text-[11px] font-normal tabular-nums text-muted">
-                    {g.pins.length}
-                  </span>
-                </button>
-                {!isCollapsed && (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {g.pins.map((p) => (
-                      <PinCard key={p.id} pin={p} />
-                    ))}
-                  </div>
-                )}
-              </section>
-            );
-          })}
+        // One flat grid, loose pins first. Each card carries its own location
+        // chip, so no section headers are needed to say what lives where.
+        <div className="grid gap-2 sm:grid-cols-2">
+          {visible.map((p) => (
+            <PinCard key={p.id} pin={p} />
+          ))}
         </div>
       )}
     </div>
