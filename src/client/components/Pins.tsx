@@ -19,7 +19,15 @@ import {
 } from "../lib/queries";
 import { useTaskUI } from "../lib/ui-context";
 import { AREA_COLORS, areaColorVar } from "../lib/colors";
-import { pinsForScope, scopeLabel, scopeOptions } from "../lib/pinScope";
+import {
+  pinsForScope,
+  scopeLabel,
+  scopeOptions,
+  isLoose,
+  spotOptions,
+  spotValueOf,
+  decodeSpot,
+} from "../lib/pinScope";
 import { CadenceStrip } from "./Cadences";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -109,10 +117,12 @@ function ColorPicker({
 // icon so it never crowds the card.
 function PinMenu({
   placement,
+  showPlacement,
   onSet,
   onDelete,
 }: {
   placement: Placement;
+  showPlacement: boolean;
   onSet: (p: Placement) => void;
   onDelete: () => void;
 }) {
@@ -127,18 +137,22 @@ function PinMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuCheckboxItem
-          checked={placement === "top"}
-          onSelect={() => onSet(placement === "top" ? "unpinned" : "top")}
-        >
-          Show at top of Today
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem
-          checked={placement === "side"}
-          onSelect={() => onSet(placement === "side" ? "unpinned" : "side")}
-        >
-          Show in Today side column
-        </DropdownMenuCheckboxItem>
+        {showPlacement && (
+          <>
+            <DropdownMenuCheckboxItem
+              checked={placement === "top"}
+              onSelect={() => onSet(placement === "top" ? "unpinned" : "top")}
+            >
+              Show at top
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={placement === "side"}
+              onSelect={() => onSet(placement === "side" ? "unpinned" : "side")}
+            >
+              Show in side column
+            </DropdownMenuCheckboxItem>
+          </>
+        )}
         <DropdownMenuItem className="text-danger" onSelect={onDelete}>
           Delete pin
         </DropdownMenuItem>
@@ -548,6 +562,10 @@ function PinCard({
         />
         <PinMenu
           placement={pin.placement}
+          // The full Pins-page card has the "Show on" select for placement, so
+          // the menu there only needs Delete. In situ (compact) it is the only
+          // control, so it keeps the quick top/side/unpin toggles.
+          showPlacement={!!compact}
           onSet={(p) => update.mutate({ id: pin.id, body: { placement: p } })}
           onDelete={() => del.mutate(pin.id)}
         />
@@ -639,21 +657,37 @@ function PinCard({
       )}
       </div>
 
-      {/* Which page this pin lives on. Only on the Pins page (full card): that is
-          where you organise, and it would be noise on the pin itself in situ. */}
+      {/* Where this pin shows, as ONE choice (scope + placement together). Only
+          on the Pins page (full card): that is where you organise, and it would
+          be noise on the pin itself in situ. "Nowhere" keeps it as a loose list. */}
       {!compact && (
         <label className="mt-2 flex items-center gap-2 border-t border-border pt-2 text-[11px] text-subtle">
           <span className="shrink-0">Show on</span>
           <select
-            value={pin.scope || "today"}
-            onChange={(e) => update.mutate({ id: pin.id, body: { scope: e.target.value } })}
+            value={spotValueOf(pin)}
+            onChange={(e) => {
+              const { scope, placement } = decodeSpot(e.target.value);
+              update.mutate({ id: pin.id, body: { scope, placement } });
+            }}
             className="h-7 min-w-0 flex-1 rounded border border-input bg-surface px-1.5 text-[11px] text-foreground outline-none focus:border-primary"
           >
-            {scopeOptions(areas).map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
+            {spotOptions(areas).map((grp) =>
+              grp.group ? (
+                <optgroup key={grp.group} label={grp.group}>
+                  {grp.options.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : (
+                grp.options.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))
+              )
+            )}
           </select>
         </label>
       )}
@@ -775,23 +809,31 @@ export function PinsPage() {
 
   const found = pins.filter((p) => pinMatches(p, q));
 
-  // Group by scope, in the picker's order, so the page always lists pages in the
-  // same sequence rather than jumping around as pins move.
+  // Loose pins (not on any page) form their OWN group, keyed "loose", first -
+  // they are the "just a list I keep" pile and their scope is meaningless, so
+  // bucketing them under Today (their default scope) was the old confusion. The
+  // rest group by the page they live on, in the picker's order so the sequence
+  // is stable as pins move.
+  const loose = found.filter(isLoose);
+  const placed = found.filter((p) => !isLoose(p));
   const order = scopeOptions(areas).map((o) => o.value);
-  const groups = [...new Set(found.map((p) => p.scope || "today"))]
+  const placedGroups = [...new Set(placed.map((p) => p.scope || "today"))]
     .sort((a, b) => {
       const ia = order.indexOf(a);
       const ib = order.indexOf(b);
-      // A scope we do not recognise (e.g. a deleted area) sorts last.
       return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
     })
     .map((scope) => ({
-      scope,
+      key: scope,
       label: scopeLabel(scope, areas),
-      pins: found.filter((p) => (p.scope || "today") === scope),
+      pins: placed.filter((p) => (p.scope || "today") === scope),
     }));
+  const groups = [
+    ...(loose.length ? [{ key: "loose", label: "Loose lists", pins: loose }] : []),
+    ...placedGroups,
+  ];
 
-  const allCollapsed = groups.length > 0 && groups.every((g) => collapsed.has(g.scope));
+  const allCollapsed = groups.length > 0 && groups.every((g) => collapsed.has(g.key));
 
   return (
     <div className="max-w-4xl pt-4 md:pt-6">
@@ -800,37 +842,42 @@ export function PinsPage() {
         <h1 className="text-xl font-bold tracking-tight text-foreground">Pins</h1>
         {pins.length > 0 && (
           <span className="text-xs text-subtle">
-            {pins.length} across {new Set(pins.map((p) => p.scope || "today")).size} page
-            {new Set(pins.map((p) => p.scope || "today")).size === 1 ? "" : "s"}
+            {pins.length} pin{pins.length === 1 ? "" : "s"}
+            {loose.length > 0 && ` · ${loose.length} loose`}
           </span>
         )}
       </div>
       <p className="mb-4 text-sm text-subtle">
-        Lists you edit day to day and reminders you want on your eyes, kept beside
-        your tasks. &ldquo;Show on&rdquo; picks the page a pin lives on (Today, a view, or
-        an area); the Top / Side toggle picks where on that page; colour them so
-        they stand apart. Drag a pin&rsquo;s corner where it shows up to resize it.
+        Lists and reminders you keep beside your tasks. A new one is loose (kept
+        here, on no page) until you give it a home: pick a page and spot under
+        &ldquo;Show on&rdquo; (Today or an area, top strip or side column).
+        Colour them to tell them apart; drag a pinned card&rsquo;s corner where
+        it shows to resize it.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        {/* New pins start LOOSE (not on any page): the Pins page is where you
+            keep lists, and putting one on Today/an area is a deliberate later
+            step via "Show on". The area/view ... menus still create pins already
+            attached to that page - there the placement is the whole point. */}
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => create.mutate({ kind: "list", placement: "top" })}
+          onClick={() => create.mutate({ kind: "list", placement: "unpinned" })}
         >
           <AddIcon className="h-4 w-4" /> New list
         </Button>
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => create.mutate({ kind: "note", placement: "top" })}
+          onClick={() => create.mutate({ kind: "note", placement: "unpinned" })}
         >
           <AddIcon className="h-4 w-4" /> New reminder
         </Button>
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => create.mutate({ kind: "tracker", placement: "side" })}
+          onClick={() => create.mutate({ kind: "tracker", placement: "unpinned" })}
         >
           <AddIcon className="h-4 w-4" /> New cadence card
         </Button>
@@ -849,7 +896,7 @@ export function PinsPage() {
             <button
               type="button"
               onClick={() =>
-                setCollapsed(allCollapsed ? new Set() : new Set(groups.map((g) => g.scope)))
+                setCollapsed(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)))
               }
               className="text-xs text-subtle transition-colors hover:text-foreground"
             >
@@ -876,12 +923,12 @@ export function PinsPage() {
         // Today, what is on Health" rather than one undifferentiated pile.
         <div className="space-y-5">
           {groups.map((g) => {
-            const isCollapsed = collapsed.has(g.scope);
+            const isCollapsed = collapsed.has(g.key);
             return (
-              <section key={g.scope}>
+              <section key={g.key}>
                 <button
                   type="button"
-                  onClick={() => toggleGroup(g.scope)}
+                  onClick={() => toggleGroup(g.key)}
                   className="mb-2 flex w-full items-center gap-2 border-b border-border pb-1 text-xs font-semibold uppercase tracking-wide text-subtle transition-colors hover:text-foreground"
                 >
                   <ChevronDownIcon

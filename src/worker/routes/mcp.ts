@@ -17,6 +17,7 @@ import { extractNoteTasks } from "../../shared/notes";
 import { insertCandidates, type CandidateInput } from "./notes";
 import { upsertMailCandidate, type MailCandidateInput } from "./mail";
 import { nextDueDate } from "../../shared/recurrence";
+import { startCheckpointBody } from "../../shared/checkpoint";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { enforceProjectArea } from "../lib/section";
 
@@ -341,6 +342,22 @@ const TOOLS = [
         due_time: { type: "string", description: "HH:MM, or null to clear" },
       },
       required: ["id", "due_date"],
+    },
+  },
+  {
+    name: "set_task_checkpoint",
+    description:
+      "Set (or clear) a checkpoint on a task: make it surface in Today every N days to check progress, without changing its due date. Use for a long-horizon task that needs steady work ('write the thesis'). days = 0 (or omitted) turns checkpoints off. Checkpoints stop on their own once the next pulse would reach the due date.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        days: {
+          type: "number",
+          description: "Interval in days between check-ins. 0 or omit to turn off.",
+        },
+      },
+      required: ["id"],
     },
   },
   {
@@ -1028,6 +1045,34 @@ async function handleTool(
       ).bind(args.due_date ?? null, args.due_time ?? null, now(), args.id, userId).run();
       await gcalSync(env, userId, args.id as string);
       return text(`Rescheduled task ${args.id} to ${args.due_date ?? "no date"}.`);
+    }
+
+    // ── set_task_checkpoint ──────────────────────────────────────────────────
+    case "set_task_checkpoint": {
+      const id = args.id as string;
+      // The due date decides where checkpoints stop, so read it (and confirm
+      // ownership) before computing.
+      const t = await db
+        .prepare("SELECT due_date FROM tasks WHERE id = ? AND user_id = ?")
+        .bind(id, userId)
+        .first<{ due_date: string | null }>();
+      if (!t) return text(`Task ${id} not found.`);
+
+      const days = typeof args.days === "number" ? args.days : 0;
+      const body = startCheckpointBody(todayStr(), days, t.due_date);
+      await db
+        .prepare(
+          "UPDATE tasks SET checkpoint_days = ?, checkpoint_next = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+        )
+        .bind(body.checkpoint_days, body.checkpoint_next, now(), id, userId)
+        .run();
+      return text(
+        body.checkpoint_days
+          ? `Checkpoint set: every ${body.checkpoint_days} days, next ${body.checkpoint_next}.`
+          : days > 0
+          ? `No checkpoint set: the first pulse would fall on or after the due date (${t.due_date}), so there is nothing to pace.`
+          : `Checkpoints turned off for task ${id}.`
+      );
     }
 
     // ── schedule_block ───────────────────────────────────────────────────────

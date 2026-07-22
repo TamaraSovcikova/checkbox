@@ -43,3 +43,51 @@ export function scopeOptions(areas: Area[]): { value: string; label: string }[] 
     ...areas.map((a) => ({ value: scopeForArea(a.id), label: a.name })),
   ];
 }
+
+// ── Where a pin shows, as ONE choice ─────────────────────────────────────────
+//
+// A pin has two stored fields, `scope` (which page) and `placement` (top/side/
+// unpinned on it). Exposed separately they read as a puzzle: a "side" placement
+// on a "today" scope, and an unpinned pin still carrying a meaningless scope.
+// This collapses the pair into a single "Show on" choice (Nowhere, or a page
+// with a spot) so the card offers one clear dropdown.
+//
+// A LOOSE pin is placement "unpinned": a list you keep without putting it on any
+// page. Its scope is irrelevant, so it is not read.
+
+export type PinSpot = { scope: string; placement: Pin["placement"] };
+
+export const isLoose = (p: Pin): boolean => p.placement === "unpinned";
+
+// Encode a scope+placement pair as one select value. "nowhere" is the loose case.
+export function encodeSpot(scope: string, placement: Pin["placement"]): string {
+  return placement === "unpinned" ? "nowhere" : `${placement}@${scope}`;
+}
+
+export function decodeSpot(value: string): PinSpot {
+  if (value === "nowhere") return { scope: "today", placement: "unpinned" };
+  const at = value.indexOf("@");
+  const placement = value.slice(0, at) as Pin["placement"];
+  return { scope: value.slice(at + 1), placement };
+}
+
+export const spotValueOf = (p: Pin): string =>
+  isLoose(p) ? "nowhere" : encodeSpot(p.scope || "today", p.placement);
+
+// The grouped options for the "Show on" dropdown: Nowhere first, then Today
+// (top/side), then each area (top/side). Views are omitted here to keep the list
+// short: a pin can still be scoped to a view via older data, and the label
+// handles it, but the common homes are Today and areas.
+export function spotOptions(
+  areas: Area[]
+): { group: string; options: { value: string; label: string }[] }[] {
+  const page = (scope: string) => [
+    { value: encodeSpot(scope, "top"), label: "Top strip" },
+    { value: encodeSpot(scope, "side"), label: "Side column" },
+  ];
+  return [
+    { group: "", options: [{ value: "nowhere", label: "Nowhere (just a list)" }] },
+    { group: "Today", options: page("today") },
+    ...areas.map((a) => ({ group: a.name, options: page(scopeForArea(a.id)) })),
+  ];
+}
