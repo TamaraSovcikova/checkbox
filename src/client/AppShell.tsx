@@ -153,7 +153,10 @@ export function AppShell() {
                 scroll region and supplies its own top padding. A top padding here
                 would collapse with the header's margins and push content under the
                 pinned bar (header-less pages add their own pt). */}
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-6 md:pb-6">
+            {/* Mobile bottom padding clears the capture FAB (56px + offset), so
+                the last row's controls are never stuck underneath it at the end
+                of the scroll. Desktop has no FAB and keeps the tighter pad. */}
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 md:px-6 md:pb-6">
               <Outlet />
             </div>
           </main>

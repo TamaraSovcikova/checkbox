@@ -549,7 +549,9 @@ function PinCard({
         ) : (
           <button
             onClick={() => setEditingTitle(true)}
-            className="flex-1 text-left text-xs text-subtle opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+            // Ghost until hover on desktop; small screens have no hover, so the
+            // affordance stays faintly visible there or titles are unreachable.
+            className="flex-1 text-left text-xs text-subtle opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 max-md:opacity-60"
           >
             + title
           </button>
@@ -616,7 +618,9 @@ function PinCard({
               <button
                 onClick={() => removeItem(it.id)}
                 aria-label="Remove line"
-                className="hidden shrink-0 text-subtle hover:text-danger group-hover:block"
+                // Hover-revealed on desktop; always present on small screens,
+                // where group-hover never fires and a line could not be removed.
+                className="hidden shrink-0 text-subtle hover:text-danger group-hover:block max-md:block"
               >
                 <TrashIcon className="h-3 w-3" />
               </button>
