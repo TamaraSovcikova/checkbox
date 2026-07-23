@@ -1039,9 +1039,9 @@ export function AreaPage() {
           {!showRecurring && (
             <div className="mb-5">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs uppercase tracking-wide text-subtle">
+                <h2 className="text-xs uppercase tracking-wide text-subtle">
                   Projects
-                </span>
+                </h2>
                 <button
                   onClick={() => setNewProject(true)}
                   className="text-sm text-primary"
@@ -1060,9 +1060,9 @@ export function AreaPage() {
             </div>
           )}
 
-          <div className="mb-2 text-xs uppercase tracking-wide text-subtle">
+          <h2 className="mb-2 text-xs uppercase tracking-wide text-subtle">
             {showRecurring ? "Recurring" : "Loose tasks"}
-          </div>
+          </h2>
           {!showRecurring && (
             <div className="mb-3">
               <QuickCapture defaultAreaId={id} />

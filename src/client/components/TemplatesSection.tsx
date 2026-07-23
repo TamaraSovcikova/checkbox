@@ -15,7 +15,7 @@ import {
 function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
     <div className="mb-1 flex items-center justify-between px-2">
-      <span className="text-[11px] font-medium uppercase tracking-wide text-subtle">
+      <span className="text-xs font-medium uppercase tracking-wide text-subtle">
         {title}
       </span>
       {action}

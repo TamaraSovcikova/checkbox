@@ -12,6 +12,7 @@ import {
   useDistantTone,
 } from "./TaskMeta";
 import { cn } from "@/lib/utils";
+import { useTaskHover } from "./TaskHoverCard";
 
 // Draggable board card. Drops resolve in the app-level DndContext (AppShell),
 // so a card can go to another column OR onto a sidebar area/project.
@@ -30,6 +31,9 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
   const done = task.status === "done";
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: task.id, data: { type: "task", task } });
+  // Same hover preview as the list rows, so a card and a row of the same task
+  // answer the same question at rest.
+  const { hoverProps, card } = useTaskHover(task, isDragging);
   return (
     <div
       ref={setNodeRef}
@@ -48,7 +52,9 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
       )}
       {...attributes}
       {...listeners}
+      {...hoverProps}
     >
+      {card}
       <div className="flex items-start gap-1.5">
         <div
           className={cn(
@@ -97,9 +103,9 @@ function Column({
         isOver && "ring-1 ring-primary"
       )}
     >
-      <div className="px-1 text-xs font-medium uppercase tracking-wide text-muted">
+      <h2 className="px-1 text-xs font-medium uppercase tracking-wide text-muted">
         {name} <span className="text-subtle">{tasks.length}</span>
-      </div>
+      </h2>
       {tasks.map((t) => (
         <BoardCard key={t.id} task={t} onOpen={onOpen} />
       ))}

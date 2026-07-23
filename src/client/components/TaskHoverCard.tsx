@@ -113,7 +113,7 @@ function TaskHoverCardBody({
   if (openBlockers.length > 0 || waitDate) {
     sections.push(
       <div key="blockers" className="space-y-1">
-        <div className="text-[10px] font-medium uppercase tracking-wide text-warning">
+        <div className="text-[11px] font-medium uppercase tracking-wide text-warning">
           Waiting on
         </div>
         {waitDate && <div className="text-xs text-subtle">until {waitDate}</div>}

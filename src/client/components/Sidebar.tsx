@@ -293,7 +293,7 @@ function SectionHeader({
 }) {
   return (
     <div className="mb-1 flex items-center justify-between px-2">
-      <span className="text-[11px] font-medium uppercase tracking-wide text-subtle">
+      <span className="text-xs font-medium uppercase tracking-wide text-subtle">
         {title}
       </span>
       {action}
@@ -485,7 +485,7 @@ function SidebarInner() {
             <button
               type="button"
               onClick={() => setMoreOpen((o) => !o)}
-              className="mb-1 flex w-full items-center gap-1 px-2 text-[11px] font-medium uppercase tracking-wide text-subtle transition-colors hover:text-foreground"
+              className="mb-1 flex w-full items-center gap-1 px-2 text-xs font-medium uppercase tracking-wide text-subtle transition-colors hover:text-foreground"
             >
               {moreOpen || manage ? (
                 <ChevronDownIcon className="h-3 w-3" />
@@ -507,7 +507,7 @@ function SidebarInner() {
         {/* Hidden (manage mode) */}
         {manage && hiddenViews.length > 0 && (
           <div className="mt-2 rounded-md border border-border p-2">
-            <div className="mb-1 px-1 text-[11px] uppercase tracking-wide text-subtle">
+            <div className="mb-1 px-1 text-xs uppercase tracking-wide text-subtle">
               Hidden
             </div>
             {hiddenViews.map((s) => {

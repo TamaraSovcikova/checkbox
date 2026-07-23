@@ -42,9 +42,9 @@ function StageColumn({
         isOver && "ring-1 ring-primary"
       )}
     >
-      <div className="px-1 text-xs font-medium uppercase tracking-wide text-muted">
+      <h2 className="px-1 text-xs font-medium uppercase tracking-wide text-muted">
         {label} <span className="text-subtle">{tasks.length}</span>
-      </div>
+      </h2>
       {tasks.map((t) => (
         <BoardCard key={t.id} task={t} onOpen={onOpen} />
       ))}

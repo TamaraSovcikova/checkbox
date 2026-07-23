@@ -34,7 +34,7 @@ export function StatsWidget() {
               <div className="text-sm font-semibold tabular-nums text-foreground">
                 {data.streak_days}
               </div>
-              <div className="text-[10px] uppercase tracking-wide text-subtle">
+              <div className="text-[11px] uppercase tracking-wide text-subtle">
                 day streak
               </div>
             </div>
@@ -74,7 +74,7 @@ function Stat({ value, label }: { value: number; label: string }) {
   return (
     <div className="leading-tight">
       <div className="text-sm font-semibold tabular-nums text-foreground">{value}</div>
-      <div className="text-[10px] uppercase tracking-wide text-subtle">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-subtle">{label}</div>
     </div>
   );
 }
