@@ -1,0 +1,74 @@
+// The one-subrequest SQL sweep that reclassifies already-recorded pending rows
+// whose stored sender reads as a robot. Rows the user ruled on (locked) and
+// human senders are never touched.
+
+import { describe, it, expect, beforeEach } from "vitest";
+import { join } from "node:path";
+import { freshDb, type TestD1, type Db } from "./d1-adapter";
+import { reclassifyBulkPending } from "../src/worker/lib/gmail";
+
+const MIGRATIONS = join(__dirname, "..", "migrations");
+const USER = "user-a";
+
+let raw: Db;
+let d1: TestD1;
+
+beforeEach(() => {
+  ({ raw, d1 } = freshDb(MIGRATIONS));
+  raw.exec(`INSERT INTO users (id, email) VALUES ('${USER}', 'a@example.com');`);
+});
+
+function seed(id: string, from: string | null, verdict = "pending", locked = 0) {
+  raw
+    .prepare(
+      `INSERT INTO mail_candidates
+         (id, user_id, source, thread_id, message_id, from_addr, verdict,
+          user_locked, created_at, updated_at)
+       VALUES (?, ?, 'gmail_sync', ?, ?, ?, ?, ?, '2026-07-22', '2026-07-22')`
+    )
+    .run(id, USER, `th-${id}`, `m-${id}`, from, verdict, locked);
+}
+
+const verdictOf = (id: string) =>
+  (raw.prepare("SELECT verdict, reason FROM mail_candidates WHERE id = ?").get(id) as any);
+
+describe("reclassifyBulkPending", () => {
+  it("sweeps robot senders to skipped and leaves humans pending", async () => {
+    seed("news", '"SME" <newsletter@mg.sme.sk>');
+    seed("noreply", "Eventbrite <noreply@event.eventbrite.com>");
+    seed("notif", "GitHub <notifications@github.com>");
+    seed("human", "Anouar <anouar@vikingqa.io>");
+    seed("nofrom", null);
+    await reclassifyBulkPending(d1 as any, USER);
+
+    expect(verdictOf("news").verdict).toBe("skipped");
+    expect(verdictOf("news").reason).toBe("bulk mail (auto)");
+    expect(verdictOf("noreply").verdict).toBe("skipped");
+    expect(verdictOf("notif").verdict).toBe("skipped");
+    expect(verdictOf("human").verdict).toBe("pending");
+    expect(verdictOf("nofrom").verdict).toBe("pending");
+  });
+
+  it("never touches locked or already-decided rows", async () => {
+    seed("locked", "noreply@example.com", "pending", 1);
+    seed("filed", "noreply@example.com", "filed", 0);
+    await reclassifyBulkPending(d1 as any, USER);
+    expect(verdictOf("locked").verdict).toBe("pending");
+    expect(verdictOf("filed").verdict).toBe("filed");
+  });
+
+  it("scopes to the given user", async () => {
+    raw.exec(`INSERT INTO users (id, email) VALUES ('user-b', 'b@example.com');`);
+    raw
+      .prepare(
+        `INSERT INTO mail_candidates
+           (id, user_id, source, thread_id, message_id, from_addr, verdict,
+            user_locked, created_at, updated_at)
+         VALUES ('theirs', 'user-b', 'gmail_sync', 'th-x', 'm-x',
+                 'noreply@example.com', 'pending', 0, '2026-07-22', '2026-07-22')`
+      )
+      .run();
+    await reclassifyBulkPending(d1 as any, USER);
+    expect(verdictOf("theirs").verdict).toBe("pending");
+  });
+});

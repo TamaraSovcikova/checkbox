@@ -214,6 +214,36 @@ function header(meta: GmailMeta, name: string): string | null {
   );
 }
 
+// New meta fetches per sync run. Each new message costs one Gmail fetch plus
+// two D1 queries; 12 keeps the whole sync (list + existing-ids query + trash
+// reconcile + account bookkeeping) inside the free-plan 50-subrequest cap.
+const MAX_NEW_PER_SYNC = 12;
+
+// Sweep still-pending, unlocked rows whose stored sender reads as a robot
+// (do-not-reply, newsletter, notifications, mailer-daemon) into skipped.
+// SQL-side so the backlog reclassifies in ONE subrequest, not one per row.
+// Exported for tests.
+export async function reclassifyBulkPending(
+  db: D1Database,
+  userId: string
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE mail_candidates
+         SET verdict = 'skipped', reason = 'bulk mail (auto)', updated_at = ?
+       WHERE user_id = ? AND verdict = 'pending' AND user_locked = 0
+         AND (lower(from_addr) LIKE '%no-reply%'
+           OR lower(from_addr) LIKE '%noreply%'
+           OR lower(from_addr) LIKE '%do-not-reply%'
+           OR lower(from_addr) LIKE '%donotreply%'
+           OR lower(from_addr) LIKE '%newsletter%'
+           OR lower(from_addr) LIKE '%notification%'
+           OR lower(from_addr) LIKE '%mailer-daemon%')`
+    )
+    .bind(new Date().toISOString(), userId)
+    .run();
+}
+
 // Pull recent threads and record a `pending` coverage row per message. The
 // upsert precedence means anything the planner or the user already filed/skipped
 // (or locked) is left alone; only genuinely new mail surfaces as pending.
@@ -228,8 +258,24 @@ export async function syncGmail(
     const token = await getValidGmailToken(env, account);
     // Fetch universe: last 7 days, excluding chats. Cap at 100 (design OQ1).
     const refs = await listMessageRefs(token, "newer_than:7d -in:chats", 100);
+
+    // Only fetch meta for messages not already recorded. A recorded message's
+    // content never changes, so re-upserting the whole week every run was pure
+    // subrequest burn, and it killed the sync outright: ~100 meta fetches plus
+    // two D1 queries each blew the Workers per-invocation subrequest cap and
+    // the sync died 'Too many subrequests' for a week (last_error 07-16).
+    // The per-run cap keeps the whole sync inside the free-plan budget; the
+    // 15-minute cron absorbs any backlog within a few runs.
+    const { results: existingRows } = await env.DB.prepare(
+      "SELECT message_id FROM mail_candidates WHERE user_id = ?"
+    )
+      .bind(userId)
+      .all<{ message_id: string }>();
+    const existing = new Set(existingRows.map((r) => r.message_id));
+    const fresh = refs.filter((r) => !existing.has(r.id)).slice(0, MAX_NEW_PER_SYNC);
+
     let upserted = 0;
-    for (const ref of refs) {
+    for (const ref of fresh) {
       const meta = await getMessageMeta(token, ref.id);
       const received = meta.internalDate
         ? new Date(Number(meta.internalDate)).toISOString()
@@ -257,6 +303,12 @@ export async function syncGmail(
       });
       upserted++;
     }
+
+    // Rows recorded before classification existed never see headers again (the
+    // skip-existing filter above), so sweep still-pending rows by their stored
+    // sender address. Catches the do-not-reply subset; header-based signals
+    // only apply to new mail.
+    await reclassifyBulkPending(env.DB, userId);
 
     // Reconcile deletions: mail the user has since trashed in Gmail should leave
     // the coverage list. Pull recently-trashed messages and drop any still-
