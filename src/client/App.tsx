@@ -11,10 +11,10 @@ import {
   LabelPage,
   ProjectPage,
   ViewPage,
-  SettingsPage,
   FilterPage,
-  ReviewPage,
 } from "./pages";
+import { SettingsPage } from "./SettingsPage";
+import { ReviewPage } from "./ReviewPage";
 import { MailInboxPage } from "./components/MailInbox";
 import { PinsPage } from "./components/Pins";
 import { CadencesPage } from "./components/Cadences";
