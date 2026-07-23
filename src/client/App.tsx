@@ -15,6 +15,7 @@ import {
 } from "./pages";
 import { SettingsPage } from "./SettingsPage";
 import { ReviewPage } from "./ReviewPage";
+import { SharePage } from "./SharePage";
 import { MailInboxPage } from "./components/MailInbox";
 import { PinsPage } from "./components/Pins";
 import { CadencesPage } from "./components/Cadences";
@@ -114,6 +115,7 @@ export default function App() {
                 }
               />
               <Route path="settings" element={<SettingsPage />} />
+              <Route path="share" element={<SharePage />} />
             </Route>
           </Routes>
         </BrowserRouter>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -32,6 +32,20 @@ function openCapture() {
   window.dispatchEvent(new Event("checkbox:capture"));
 }
 
+// The home-screen "Add task" shortcut opens the app at /?quickadd=1: open the
+// capture surface once, then strip the param so refresh/back do not re-open it.
+// (The manifest shortcut existed before anything handled the param.)
+function useQuickAddParam() {
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("quickadd") !== "1") return;
+    url.searchParams.delete("quickadd");
+    window.history.replaceState({}, "", url.toString());
+    // CommandCapture mounts in this same tree; give it a tick to attach.
+    setTimeout(openCapture, 150);
+  }, []);
+}
+
 // The app shell: sidebar + scrollable content region + ONE app-level DndContext.
 // A single onDragEnd routes each drop by the droppable's declared type. Sidebar
 // reassignment lands here today; the board and calendar surfaces fold their
@@ -43,6 +57,7 @@ function openCapture() {
 //                     ├── "view:today"   -> plan it for today (planned_date)
 //                     └── "view:backlog" -> clear area_id + project_id
 export function AppShell() {
+  useQuickAddParam();
   const [task, setTask] = useState<Task | null>(null);
   const [drawer, setDrawer] = useState(false);
   const client = useQueryClient();

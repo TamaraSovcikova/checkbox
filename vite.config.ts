@@ -31,8 +31,16 @@ export default defineConfig({
           },
         ],
         shortcuts: [
-          { name: "Quick Add", short_name: "Add", url: "/?quickadd=1" },
+          { name: "Add task", short_name: "Add", url: "/?quickadd=1" },
+          { name: "Today", short_name: "Today", url: "/today" },
         ],
+        // Android share sheet -> GET /share?title&text&url -> instant Backlog
+        // capture through the NLP parser (SharePage).
+        share_target: {
+          action: "/share",
+          method: "GET",
+          params: { title: "title", text: "text", url: "url" },
+        },
       },
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
