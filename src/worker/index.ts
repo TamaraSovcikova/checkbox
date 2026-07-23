@@ -26,6 +26,7 @@ import { syncCalendar, renewWatchChannel } from "./lib/sync";
 import { sendMorningBrief } from "./lib/brief";
 import { generateDayPlansForAll } from "./lib/planner";
 import { emitTrackerTasks } from "./lib/trackers";
+import { sendDueReminders } from "./lib/reminders";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -95,13 +96,14 @@ export default {
       return;
     }
 
-    // Every 15 min: calendar sync + watch renewal
+    // Every 15 min: calendar sync + watch renewal + due-time reminders
     const { results } = await env.DB.prepare("SELECT id FROM users").all<{
       id: string;
     }>();
     for (const { id: userId } of results) {
       ctx.waitUntil(syncCalendar(env, userId).catch(console.error));
       ctx.waitUntil(renewWatchChannel(env, userId).catch(console.error));
+      ctx.waitUntil(sendDueReminders(env, userId).then(() => {}).catch(console.error));
     }
   },
 };

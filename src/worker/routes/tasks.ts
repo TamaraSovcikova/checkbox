@@ -206,7 +206,12 @@ tasks.patch("/:id", async (c) => {
   await enforceProjectArea(c.env.DB, userId, b);
   const fields = WRITABLE.filter((f) => f in b);
   if (fields.length) {
-    const set = fields.map((f) => `${f} = ?`).join(", ");
+    let set = fields.map((f) => `${f} = ?`).join(", ");
+    // A rescheduled task earns a fresh due-time reminder: the once-guard is
+    // per (date, time), not per task forever.
+    if (fields.includes("due_date") || fields.includes("due_time")) {
+      set += ", reminder_sent_at = NULL";
+    }
     await c.env.DB.prepare(
       `UPDATE tasks SET ${set}, updated_at = ? WHERE id = ? AND user_id = ?`
     )

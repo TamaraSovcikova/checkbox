@@ -31,31 +31,50 @@ registerRoute(
 precacheAndRoute(self.__WB_MANIFEST);
 
 // ── Push notification handler ──────────────────────────────────────────────────
-// Service worker wakes on a data-less push, fetches brief-data, shows notification.
+// Push is data-less, so the SW asks the server what this wake-up was about:
+// /notify-data answers "reminder" (a due-time just passed) or "brief". Falls
+// back to the brief shape so a push never shows nothing.
 
 self.addEventListener("push", (event) => {
-  const show = fetch("/api/push/brief-data")
-    .then((r) => r.json() as Promise<{ total: number; urgent: number; overdue: number; date: string }>)
-    .then((data) => {
-      const body =
-        data.total > 0
-          ? `${data.total} task${data.total !== 1 ? "s" : ""} today${
-              data.overdue ? ` · ${data.overdue} overdue` : ""
-            }${data.urgent ? ` · ${data.urgent} urgent` : ""}`
-          : "Nothing due today. Enjoy! 🎉";
+  const showBrief = () =>
+    fetch("/api/push/brief-data")
+      .then((r) => r.json() as Promise<{ total: number; urgent: number; overdue: number; date: string }>)
+      .then((data) => {
+        const body =
+          data.total > 0
+            ? `${data.total} task${data.total !== 1 ? "s" : ""} today${
+                data.overdue ? ` · ${data.overdue} overdue` : ""
+              }${data.urgent ? ` · ${data.urgent} urgent` : ""}`
+            : "Nothing due today. Enjoy! 🎉";
 
-      return self.registration.showNotification(`Checkbox · ${data.date}`, {
-        body,
-        icon: "/icon-192.png",
-        badge: "/icon-192.png",
-        tag: "morning-brief",
+        return self.registration.showNotification(`Checkbox · ${data.date}`, {
+          body,
+          icon: "/icon-192.png",
+          badge: "/icon-192.png",
+          tag: "morning-brief",
+        });
       });
+
+  const show = fetch("/api/push/notify-data")
+    .then((r) => r.json() as Promise<{ kind: string; title?: string; body?: string }>)
+    .then((data) => {
+      if (data.kind === "reminder" && data.body) {
+        return self.registration.showNotification(data.title || "Due now", {
+          body: data.body,
+          icon: "/icon-192.png",
+          badge: "/icon-192.png",
+          tag: "due-reminder",
+        });
+      }
+      return showBrief();
     })
     .catch(() =>
-      self.registration.showNotification("Checkbox", {
-        body: "Morning brief ready",
-        tag: "morning-brief",
-      })
+      showBrief().catch(() =>
+        self.registration.showNotification("Checkbox", {
+          body: "You have an update",
+          tag: "morning-brief",
+        })
+      )
     );
 
   event.waitUntil(show);

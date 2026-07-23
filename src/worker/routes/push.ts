@@ -65,6 +65,33 @@ push.delete("/subscribe", async (c) => {
   return c.json({ ok: true });
 });
 
+// GET /notify-data: what should THIS push show? Push is data-less, so the SW
+// asks. A due-time reminder marked within the last 20 minutes wins (that push
+// was almost certainly the reminder sweep); otherwise fall through to the
+// morning-brief summary shape.
+push.get("/notify-data", async (c) => {
+  const userId = await getUserId(c);
+  const since = new Date(Date.now() - 20 * 60_000).toISOString();
+  const { results } = await c.env.DB.prepare(
+    `SELECT title, due_time FROM tasks
+       WHERE user_id = ? AND status != 'done' AND reminder_sent_at >= ?
+       ORDER BY due_time LIMIT 3`
+  )
+    .bind(userId, since)
+    .all<{ title: string; due_time: string | null }>();
+
+  if (results.length > 0) {
+    const first = results[0];
+    const more = results.length - 1;
+    return c.json({
+      kind: "reminder",
+      title: first.due_time ? `Due ${first.due_time}` : "Due now",
+      body: first.title + (more > 0 ? ` (and ${more} more)` : ""),
+    });
+  }
+  return c.json({ kind: "brief" });
+});
+
 // GET /brief-data: lightweight summary fetched by the service worker when a push arrives
 push.get("/brief-data", async (c) => {
   const userId = await getUserId(c);
