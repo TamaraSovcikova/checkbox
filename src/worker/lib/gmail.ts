@@ -13,6 +13,7 @@ import {
   getGoogleEmail,
 } from "./gcal";
 import { upsertMailCandidate } from "../routes/mail";
+import { isBulkMail } from "../../shared/mail";
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1";
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -196,6 +197,9 @@ async function getMessageMeta(token: string, id: string): Promise<GmailMeta> {
   const params = new URLSearchParams({ format: "metadata" });
   params.append("metadataHeaders", "From");
   params.append("metadataHeaders", "Subject");
+  // Bulk-mail signals for isBulkMail (shared/mail.ts).
+  params.append("metadataHeaders", "List-Unsubscribe");
+  params.append("metadataHeaders", "Precedence");
   const res = await fetch(`${GMAIL_BASE}/users/me/messages/${id}?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -230,6 +234,15 @@ export async function syncGmail(
       const received = meta.internalDate
         ? new Date(Number(meta.internalDate)).toISOString()
         : null;
+      // Bulk mail (newsletters, robot notifications) cannot "slip", so it files
+      // as skipped up front instead of burying the mail that can. Unlocked, and
+      // skipped outranks pending in the lattice, so a re-sync also upgrades
+      // rows that were filed as pending before this classification existed.
+      const bulk = isBulkMail(
+        header(meta, "From"),
+        header(meta, "List-Unsubscribe"),
+        header(meta, "Precedence")
+      );
       await upsertMailCandidate(env.DB, userId, {
         source: "gmail_sync",
         thread_id: meta.threadId,
@@ -239,7 +252,8 @@ export async function syncGmail(
         snippet: meta.snippet ?? null,
         received_at: received,
         permalink: `https://mail.google.com/mail/u/0/#all/${meta.threadId}`,
-        verdict: "pending",
+        verdict: bulk ? "skipped" : "pending",
+        reason: bulk ? "bulk mail (auto)" : null,
       });
       upserted++;
     }

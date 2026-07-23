@@ -990,6 +990,16 @@ export function TaskSheet({
               {/* Checkpoints: surface a long-horizon task in Today every N days
                   to check it is on track, without moving its due date. */}
               <CheckpointControl task={task} save={save} today={todayStr()} />
+
+              {/* The app has three repetition mechanisms; this is the one place
+                  they sit together, so this is where the signpost lives. */}
+              <p className="text-[11px] leading-relaxed text-subtle">
+                Which one? <span className="text-muted">Repeat</span> runs on a
+                schedule. <span className="text-muted">Checkpoints</span> nudge
+                you to check progress until the due date. For things that reset
+                whenever you do them (call mum, water plants), use a{" "}
+                <span className="text-muted">cadence</span> (sidebar, More).
+              </p>
             </div>
 
             {/* Tracking - a discreet inline strip, not a whole section: the

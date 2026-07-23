@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   resolveMailUpsert,
   coverageState,
+  isBulkMail,
   type MailCandidate,
   type Verdict,
 } from "../src/shared/mail";
@@ -127,5 +128,34 @@ describe("coverageState", () => {
   it("passes pending and skipped through", () => {
     expect(coverageState({ verdict: "pending", task_id: null })).toBe("pending");
     expect(coverageState({ verdict: "skipped", task_id: null })).toBe("skipped");
+  });
+});
+
+describe("isBulkMail — ingest classification", () => {
+  it("List-Unsubscribe is the canonical bulk marker", () => {
+    expect(isBulkMail("Semafor <flagship@semafor.com>", "<mailto:unsub@semafor.com>", null)).toBe(true);
+  });
+
+  it("Precedence bulk/list/junk marks bulk", () => {
+    expect(isBulkMail("someone@example.com", null, "bulk")).toBe(true);
+    expect(isBulkMail("someone@example.com", null, "list")).toBe(true);
+    expect(isBulkMail("someone@example.com", null, "junk")).toBe(true);
+  });
+
+  it("do-not-reply style senders mark bulk", () => {
+    expect(isBulkMail("Eventbrite <noreply@event.eventbrite.com>", null, null)).toBe(true);
+    expect(isBulkMail("GitHub <notifications@github.com>", null, null)).toBe(true);
+    expect(isBulkMail("Acme <do-not-reply@acme.com>", null, null)).toBe(true);
+    expect(isBulkMail("SME <newsletter@mg.sme.sk>", null, null)).toBe(true);
+  });
+
+  it("a human sender with no bulk signals is NOT bulk", () => {
+    expect(isBulkMail("Anouar <anouar@vikingqa.io>", null, null)).toBe(false);
+    expect(isBulkMail(null, null, null)).toBe(false);
+    expect(isBulkMail("Franz <franz@gmail.com>", "", null)).toBe(false);
+  });
+
+  it("Precedence 'first-class' or unrelated values are not bulk", () => {
+    expect(isBulkMail("a@b.com", null, "first-class")).toBe(false);
   });
 });

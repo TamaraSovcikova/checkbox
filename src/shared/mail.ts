@@ -92,3 +92,29 @@ export function coverageState(
   if (row.verdict === "filed") return row.task_id ? "filed" : "needs_attention";
   return row.verdict;
 }
+
+// ── Bulk-mail classification ──────────────────────────────────────────────────
+//
+// The coverage list exists to catch mail a human might owe a response to. Bulk
+// mail (newsletters, notifications, receipts from robots) cannot slip in that
+// sense, and at ~a dozen threads a day it buried the mail that could. gmail
+// sync classifies at ingest and files bulk as skipped ('bulk mail (auto)'),
+// unlocked, so the planner or the user can still upgrade a thread that turns
+// out to matter (the verdict lattice allows skipped -> filed).
+//
+// Signals, strongest first: a List-Unsubscribe header is the canonical bulk
+// marker (senders must include it to keep deliverability); Precedence
+// bulk/list/junk is the older equivalent; and a do-not-reply style sender
+// address says the sender does not expect an answer.
+
+export function isBulkMail(
+  from: string | null,
+  listUnsubscribe: string | null,
+  precedence: string | null
+): boolean {
+  if (listUnsubscribe && listUnsubscribe.trim() !== "") return true;
+  if (precedence && /\b(bulk|list|junk)\b/i.test(precedence)) return true;
+  if (from && /\b(no-?reply|do-?not-?reply|newsletter|mailer-daemon)\b|notifications?@/i.test(from))
+    return true;
+  return false;
+}
