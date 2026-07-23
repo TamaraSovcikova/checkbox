@@ -43,15 +43,25 @@ push.post("/subscribe", async (c) => {
   return c.json({ ok: true });
 });
 
-// DELETE /subscribe: remove a specific subscription
+// DELETE /subscribe: remove a specific subscription, or ALL of the user's
+// subscriptions when no endpoint is given. The no-endpoint form is what
+// "Disable" in settings means: the enabled/disabled label counts rows across
+// every device, so disabling only this browser's endpoint left stale rows from
+// other devices keeping the label "enabled" and the button doing nothing.
 push.delete("/subscribe", async (c) => {
   const userId = await getUserId(c);
-  const body = await c.req.json<{ endpoint: string }>();
-  await c.env.DB.prepare(
-    "DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?"
-  )
-    .bind(userId, body.endpoint)
-    .run();
+  const body = await c.req.json<{ endpoint?: string }>().catch(() => ({}) as { endpoint?: string });
+  if (body.endpoint) {
+    await c.env.DB.prepare(
+      "DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?"
+    )
+      .bind(userId, body.endpoint)
+      .run();
+  } else {
+    await c.env.DB.prepare("DELETE FROM push_subscriptions WHERE user_id = ?")
+      .bind(userId)
+      .run();
+  }
   return c.json({ ok: true });
 });
 

@@ -1816,13 +1816,15 @@ export function SettingsPage() {
   async function disablePush() {
     if (!swReady) return;
     setPushBusy(true);
+    setPushError(null);
     try {
+      // Unhook this browser if it holds a subscription, but do not depend on
+      // it: the enabled label counts rows from EVERY device, so the sub may
+      // live elsewhere (or be stale). Disable means all of them go.
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
-      if (sub) {
-        await api.pushUnsubscribe(sub.endpoint);
-        await sub.unsubscribe();
-      }
+      if (sub) await sub.unsubscribe();
+      await api.pushUnsubscribeAll();
       await refetchPush();
     } catch (e) {
       setPushError(String(e));

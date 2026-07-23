@@ -229,6 +229,12 @@ export const api = {
       method: "DELETE",
       body: JSON.stringify({ endpoint }),
     }),
+  // No endpoint = delete every subscription this user has, on any device.
+  pushUnsubscribeAll: () =>
+    http<{ ok: boolean }>("/api/push/subscribe", {
+      method: "DELETE",
+      body: JSON.stringify({}),
+    }),
 
   // auth
   me: () => fetchMe(),

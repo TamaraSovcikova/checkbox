@@ -166,8 +166,10 @@ function DueDatePicker({
 
 // The due TIME, as a small popover that only exists once there is a due date.
 // Time is the rarer half of a deadline, so it should not sit as a permanent
-// empty field: a compact "＋ time" chip that becomes "HH:MM" when set, opening a
-// native time input on click. Clearable from inside.
+// empty field: a bare clock icon that becomes "HH:MM" when set, opening a
+// native time input on click. Clearable from inside. Unset shows the icon
+// alone (no "time" word): the tooltip explains it, and the label was noise
+// beside the date control.
 function DueTimePopover({
   value,
   onChange,
@@ -190,7 +192,7 @@ function DueTimePopover({
           )}
         >
           <ClockIcon className="h-3.5 w-3.5" />
-          {value || "time"}
+          {value || null}
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
