@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useState,
+  useEffect,
   type ComponentType,
 } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
@@ -74,14 +75,22 @@ const TASK_VIEWS: NavDef[] = [
   { to: "/snoozed", label: "Snoozed", icon: SnoozeIcon },
   { to: "/logbook", label: "Logbook", icon: LogbookIcon },
 ];
+// Grouped by WHEN you visit, not by theme. Plan = daily planning surface.
+// Review = the "did anything slip" rituals (weekly review, mail coverage).
+// More = management pages you organise occasionally (cards, cadences); collapsed
+// by default so the daily nav stays short.
 const PLAN_VIEWS: NavDef[] = [
   { to: "/calendar", label: "Calendar", icon: CalendarIcon },
-  { to: "/mail", label: "Mail coverage", icon: MailIcon },
-  { to: "/pins", label: "Pins", icon: PinsIcon },
-  { to: "/cadences", label: "Cadences", icon: CadenceIcon },
-  { to: "/review", label: "Weekly review", icon: ReviewIcon },
 ];
-const ALL_VIEWS = [...TASK_VIEWS, ...PLAN_VIEWS];
+const REVIEW_VIEWS: NavDef[] = [
+  { to: "/review", label: "Weekly review", icon: ReviewIcon },
+  { to: "/mail", label: "Mail coverage", icon: MailIcon },
+];
+const MORE_VIEWS: NavDef[] = [
+  { to: "/pins", label: "Cards", icon: PinsIcon },
+  { to: "/cadences", label: "Cadences", icon: CadenceIcon },
+];
+const ALL_VIEWS = [...TASK_VIEWS, ...PLAN_VIEWS, ...REVIEW_VIEWS, ...MORE_VIEWS];
 
 // Wraps a sidebar node as a drop target for tasks being dragged.
 type DropSpec = { id: string; data: Record<string, unknown> };
@@ -373,6 +382,14 @@ function SidebarInner() {
   const { data: overdue = [] } = useView("overdue");
   const { online, pending } = useOnlineStatus();
   const { hide, show, isHidden } = useViewPrefs();
+  // Collapsed "More" group, remembered per browser. Default closed: these are
+  // occasional management pages, not daily nav.
+  const [moreOpen, setMoreOpen] = useState(
+    () => localStorage.getItem("cb-sidebar-more") === "open"
+  );
+  useEffect(() => {
+    localStorage.setItem("cb-sidebar-more", moreOpen ? "open" : "closed");
+  }, [moreOpen]);
   const closeNav = useSidebarNav();
   const overdueCount = overdue.length;
   const [manage, setManage] = useState(false);
@@ -443,6 +460,47 @@ function SidebarInner() {
                 <NavItem key={s.to} def={s} onHide={manage ? () => hide(s.to) : undefined} />
               ))}
             </nav>
+          </>
+        )}
+
+        {/* Review: the "did anything slip" rituals. */}
+        {visible(REVIEW_VIEWS).length > 0 && (
+          <>
+            <div className="mt-5" />
+            <SectionHeader title="Review" />
+            <nav className="space-y-0.5">
+              {visible(REVIEW_VIEWS).map((s) => (
+                <NavItem key={s.to} def={s} onHide={manage ? () => hide(s.to) : undefined} />
+              ))}
+            </nav>
+          </>
+        )}
+
+        {/* More: occasional management pages, collapsed by default. The header
+            itself is the toggle. Manage mode forces it open so the hide
+            buttons stay reachable. */}
+        {visible(MORE_VIEWS).length > 0 && (
+          <>
+            <div className="mt-5" />
+            <button
+              type="button"
+              onClick={() => setMoreOpen((o) => !o)}
+              className="mb-1 flex w-full items-center gap-1 px-2 text-[11px] font-medium uppercase tracking-wide text-subtle transition-colors hover:text-foreground"
+            >
+              {moreOpen || manage ? (
+                <ChevronDownIcon className="h-3 w-3" />
+              ) : (
+                <ChevronRightIcon className="h-3 w-3" />
+              )}
+              More
+            </button>
+            {(moreOpen || manage) && (
+              <nav className="space-y-0.5">
+                {visible(MORE_VIEWS).map((s) => (
+                  <NavItem key={s.to} def={s} onHide={manage ? () => hide(s.to) : undefined} />
+                ))}
+              </nav>
+            )}
           </>
         )}
 

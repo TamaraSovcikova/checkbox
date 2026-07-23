@@ -22,6 +22,7 @@ import { emittedTaskTitle } from "../../shared/tracker";
 import { areaColorVar } from "../lib/colors";
 import { todayStr } from "@/lib/utils";
 import { Button } from "./ui/button";
+import { PageIntro } from "./PageIntro";
 import { AddIcon, TrashIcon, CadenceIcon } from "../lib/icons";
 import {
   DropdownMenu,
@@ -370,11 +371,11 @@ export function CadencesPage() {
           </span>
         )}
       </div>
-      <p className="mb-4 text-sm text-subtle">
+      <PageIntro id="cadences">
         Things measured by how long it has been, not by a deadline: people worth
         staying in touch with, plants, backups. Hit Log when you do it and the
         count restarts. A cadence is optional; without one a tracker just counts.
-      </p>
+      </PageIntro>
 
       <AddCadence />
 

@@ -30,6 +30,7 @@ import {
   ChevronDownIcon,
 } from "../lib/icons";
 import { ConfirmSubtasksDialog } from "./ConfirmSubtasksDialog";
+import { useTaskHover } from "./TaskHoverCard";
 import type { RowSelection } from "./TaskListControls";
 
 export function TaskRow({
@@ -80,6 +81,9 @@ export function TaskRow({
     id: task.id,
     data: { type: "task", task },
   });
+  // Rest the mouse on a row to read its notes and blockers without opening the
+  // sheet. Suppressed mid-drag.
+  const { hoverProps, card } = useTaskHover(task, isDragging);
 
   // Mark on track: advance the checkpoint to its next pulse, so the task drops
   // out of Today until then. Undoable to the exact prior pulse date.
@@ -134,6 +138,7 @@ export function TaskRow({
   const accent = tintArea && area ? areaColorVar(area.color) : undefined;
   return (
     <div
+      {...hoverProps}
       className={cn(
         // A hairline border so each row reads as its own card against the page,
         // rather than text floating on the background.
@@ -148,6 +153,7 @@ export function TaskRow({
         ...(accent ? { boxShadow: `inset 3px 0 0 ${accent}` } : {}),
       }}
     >
+      {card}
       {/* The whole row is the drag surface (grab anywhere, including on touch via
           press-and-hold). A plain click still opens the task, because the sensor
           only starts a drag past a movement/hold threshold. Action controls below

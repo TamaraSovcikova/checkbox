@@ -24,6 +24,7 @@ export {
   Check as CheckIcon,
   Plus as AddIcon,
   X as CloseIcon,
+  Info as InfoIcon,
   Menu as MenuIcon,
   GripVertical as DragIcon,
   ChevronLeft as ChevronLeftIcon,

@@ -10,6 +10,7 @@ import {
 import { useToast } from "../lib/toast";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
+import { PageIntro } from "./PageIntro";
 import {
   MailIcon,
   CheckIcon,
@@ -186,11 +187,12 @@ export function MailInboxPage() {
           </Button>
         )}
       </div>
-      <p className="mb-4 text-sm text-subtle">
+      <PageIntro id="mail">
         Every email thread the planner reviewed in the last 7 days, with what it
         did. Confirm nothing slipped, or file the ones it missed, without opening
-        Gmail. Populated by the planner via the <code className="rounded bg-surface-2 px-1 text-[11px]">add_mail_candidates</code> tool.
-      </p>
+        Gmail. Pending threads older than the window expire to skipped on their
+        own. Populated by the planner via the <code className="rounded bg-surface-2 px-1 text-[11px]">add_mail_candidates</code> tool.
+      </PageIntro>
 
       {/* Coverage summary */}
       <div className="mb-5 flex flex-wrap gap-2 text-xs">

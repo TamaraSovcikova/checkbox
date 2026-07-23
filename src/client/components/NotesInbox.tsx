@@ -62,6 +62,23 @@ export function NotesInbox() {
 
   const hasCandidates = candidates.length > 0;
 
+  // Nothing to review and no paste in progress: one quiet line, not a box. The
+  // full inbox only earns its panel when there is actual work in it.
+  if (!hasCandidates && !pasteOpen) {
+    return (
+      <div className="mb-2 flex items-center gap-2 px-1 text-xs text-subtle">
+        <NotesIcon className="h-3.5 w-3.5" />
+        <span>From your notes: nothing waiting.</span>
+        <button
+          onClick={() => setPasteOpen(true)}
+          className="text-primary hover:underline"
+        >
+          paste a note
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="mb-5 rounded-xl border border-border bg-surface/40 p-4">
       <div className="mb-3 flex items-center justify-between">

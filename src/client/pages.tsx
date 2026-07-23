@@ -480,7 +480,7 @@ function SideRail({
               )}
             >
               {t === "pins"
-                ? `Pins ${sidePins.length}`
+                ? `Cards ${sidePins.length}`
                 : showCalendar
                 ? "Calendar"
                 : "Cadences"}
@@ -763,57 +763,70 @@ function BacklogBody({ tasks, list }: { tasks: Task[]; list: ReactNode }) {
       {/* From your notes (Obsidian extraction inbox) */}
       <NotesInbox />
 
-      {/* Triage panel */}
-      <div className="mb-5 rounded-xl border border-border bg-surface/40 p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <span className="text-sm font-medium">AI Triage</span>
-            <span className="ml-2 text-xs text-subtle">
-              {tasks.length} task{tasks.length !== 1 ? "s" : ""} in backlog
-            </span>
-          </div>
-          <Button
-            variant="subtle"
-            className="h-7 text-xs"
+      {/* Triage. Closed it is one quiet line, so the backlog's tasks lead the
+          page; the panel only appears once suggestions are asked for. */}
+      {!triageOpen ? (
+        <div className="mb-4 flex items-center gap-2 px-1 text-xs text-subtle">
+          <span>
+            AI Triage: {tasks.length} task{tasks.length !== 1 ? "s" : ""} in backlog.
+          </span>
+          <button
             onClick={handleGenerate}
             disabled={generate.isPending || tasks.length === 0}
+            className="text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
           >
             {generate.isPending ? "Analysing…" : "Suggest placements"}
-          </Button>
+          </button>
         </div>
+      ) : (
+        <div className="mb-5 rounded-xl border border-border bg-surface/40 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <span className="text-sm font-medium">AI Triage</span>
+              <span className="ml-2 text-xs text-subtle">
+                {tasks.length} task{tasks.length !== 1 ? "s" : ""} in backlog
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="subtle"
+                className="h-7 text-xs"
+                onClick={handleGenerate}
+                disabled={generate.isPending || tasks.length === 0}
+              >
+                {generate.isPending ? "Analysing…" : "Suggest placements"}
+              </Button>
+              <button
+                onClick={() => setTriageOpen(false)}
+                className="text-xs text-subtle hover:text-foreground"
+              >
+                close
+              </button>
+            </div>
+          </div>
 
-        {triageOpen && (
-          <>
-            {loadingSugs && !pending.length ? (
-              <p className="text-xs text-subtle">Loading suggestions…</p>
-            ) : pending.length === 0 ? (
-              <p className="text-xs text-subtle">
-                {tasks.length === 0
-                  ? "Backlog is empty."
-                  : "No suggestions yet. Click «Suggest placements» to analyse."}
-              </p>
-            ) : (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {pending.map((s) => (
-                  <TriageCard
-                    key={s.id}
-                    sug={s}
-                    onAccept={(id, dest) => accept.mutate({ id, dest })}
-                    onReject={(id) => reject.mutate(id)}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-
-        {!triageOpen && tasks.length > 0 && (
-          <p className="text-xs text-subtle">
-            Keyword-match suggestions across your areas and projects.
-            Claude can do deeper triage via MCP → <code>triage_backlog</code>.
-          </p>
-        )}
-      </div>
+          {loadingSugs && !pending.length ? (
+            <p className="text-xs text-subtle">Loading suggestions…</p>
+          ) : pending.length === 0 ? (
+            <p className="text-xs text-subtle">
+              {tasks.length === 0
+                ? "Backlog is empty."
+                : "No suggestions yet. Click «Suggest placements» to analyse."}
+            </p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {pending.map((s) => (
+                <TriageCard
+                  key={s.id}
+                  sug={s}
+                  onAccept={(id, dest) => accept.mutate({ id, dest })}
+                  onReject={(id) => reject.mutate(id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Task list (grid/list + sort/group applied by ViewPage) */}
       {list}

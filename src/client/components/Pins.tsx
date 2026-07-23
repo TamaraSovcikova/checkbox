@@ -54,6 +54,7 @@ import {
   LinkIcon,
 } from "../lib/icons";
 import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
+import { PageIntro } from "./PageIntro";
 
 const newItem = (text: string): PinItem => ({
   id: crypto.randomUUID(),
@@ -853,20 +854,20 @@ export function PinsPage() {
     <div className="max-w-4xl pt-4 md:pt-6">
       <div className="mb-1 flex items-center gap-2">
         <PinsIcon className="h-5 w-5 text-primary" />
-        <h1 className="text-xl font-bold tracking-tight text-foreground">Pins</h1>
+        <h1 className="text-xl font-bold tracking-tight text-foreground">Cards</h1>
         {pins.length > 0 && (
           <span className="text-xs text-subtle">
-            {pins.length} pin{pins.length === 1 ? "" : "s"}
+            {pins.length} card{pins.length === 1 ? "" : "s"}
             {loose.length > 0 && ` · ${loose.length} loose`}
           </span>
         )}
       </div>
-      <p className="mb-4 text-sm text-subtle">
-        Lists and reminders you keep beside your tasks. The chip on each card
-        says where it shows; click it to move the pin between Loose (kept here
-        only), Today, or an area. Colour them to tell them apart; drag a pinned
-        card&rsquo;s corner where it shows to resize it.
-      </p>
+      <PageIntro id="cards">
+        Lists, reminders and gauges you keep beside your tasks. The chip on each
+        card says where it shows; click it to pin the card to Today or an area,
+        or keep it Loose (here only). Colour them to tell them apart; drag a
+        pinned card&rsquo;s corner where it shows to resize it.
+      </PageIntro>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {/* New pins start LOOSE (not on any page): the Pins page is where you
@@ -935,7 +936,7 @@ export function PinsPage() {
         <div className="rounded-xl border border-border bg-surface/40 p-6 text-center">
           <PinsIcon className="mx-auto mb-2 h-6 w-6 text-subtle" />
           <p className="text-sm text-subtle">
-            No pins yet. A list is good for a running shopping list or conversation
+            No cards yet. A list is good for a running shopping list or conversation
             topics; a reminder is good for a goal or a quote you go by.
           </p>
         </div>

@@ -124,13 +124,31 @@ function withCoverage(r: Row) {
 
 // ── Coverage list ─────────────────────────────────────────────────────────────
 // Recent mail within the fetch window (default 7 days). The UI groups by thread.
+//
+// Pending rows EXPIRE. The page promises a 7-day review window, so a pending
+// row that ages past it stops being "needs review" and self-skips; otherwise
+// the queue grows into an unfinishable pile (it hit 92 before this existed).
+// Rows the user decided on (user_locked) are never touched, and rows with no
+// received_at expire off created_at so nothing lives forever.
 mail.get("/candidates", async (c) => {
   const userId = await getUserId(c);
   const days = Math.min(Math.max(Number(c.req.query("days") ?? 7), 1), 90);
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
+
+  await c.env.DB.prepare(
+    `UPDATE mail_candidates
+       SET verdict = 'skipped', reason = 'expired unreviewed', updated_at = ?
+     WHERE user_id = ? AND verdict = 'pending' AND user_locked = 0
+       AND COALESCE(received_at, created_at) < ?`
+  )
+    .bind(now(), userId, since)
+    .run();
+
+  // Same age rule as the expiry above: no received_at falls back to created_at,
+  // so undated rows age out of the list instead of showing forever.
   const { results } = await c.env.DB.prepare(
     `SELECT * FROM mail_candidates
-       WHERE user_id = ? AND (received_at IS NULL OR received_at >= ?)
+       WHERE user_id = ? AND COALESCE(received_at, created_at) >= ?
        ORDER BY received_at DESC, created_at DESC
        LIMIT 300`
   )
