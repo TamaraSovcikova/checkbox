@@ -194,6 +194,20 @@ export function MailInboxPage() {
         own. Populated by the planner via the <code className="rounded bg-surface-2 px-1 text-[11px]">add_mail_candidates</code> tool.
       </PageIntro>
 
+      {/* A dead sync makes this whole page silently lie (it shows a stale week
+          as if it were current). Say so HERE, on the page being lied on, not
+          only in Settings: the July 2026 subrequest breakage sat unnoticed for
+          a week because the only banner lived a page away. */}
+      {gmail?.sync_broken && (
+        <div className="mb-4 rounded-md border border-danger/40 bg-danger/10 p-2.5 text-xs text-danger">
+          Gmail sync is broken, so this list may be stale.{" "}
+          <a href="/settings" className="underline">
+            Check Settings
+          </a>
+          . <span className="opacity-70">{gmail.last_error}</span>
+        </div>
+      )}
+
       {/* Coverage summary */}
       <div className="mb-5 flex flex-wrap gap-2 text-xs">
         <span className="rounded-md bg-success/15 px-2 py-1 text-success">
