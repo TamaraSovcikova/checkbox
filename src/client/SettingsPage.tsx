@@ -737,6 +737,27 @@ export function SettingsPage() {
           16 tools: task CRUD, triage, plan-my-day, daily brief, weekly review.
         </p>
       </Section>
+
+      <Section title="Data">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm text-foreground">Export everything</p>
+            <p className="text-xs text-subtle">
+              Your complete data (tasks, areas, cards, trackers, coverage) as one
+              JSON file. Your data is yours.
+            </p>
+          </div>
+          <Button
+            variant="subtle"
+            className="h-8 shrink-0 text-xs"
+            onClick={() => {
+              window.location.href = "/api/export";
+            }}
+          >
+            Download my data
+          </Button>
+        </div>
+      </Section>
     </div>
   );
 }
