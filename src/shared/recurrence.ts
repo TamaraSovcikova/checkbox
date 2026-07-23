@@ -136,3 +136,27 @@ export const RECURRENCE_PRESETS: { value: string; label: string }[] = [
   { value: "monthly", label: "Monthly" },
   { value: "yearly", label: "Yearly" },
 ];
+
+// ── End conditions ───────────────────────────────────────────────────────────
+// A recurrence can end: `until` is the last calendar day an occurrence may
+// land on; `count` is occurrences REMAINING including the one being resolved.
+// Completing (or skipping) the last occurrence finishes the series: the caller
+// clears the recurrence fields so the task behaves like a plain task after.
+
+export type RollDecision =
+  | { kind: "roll"; due_date: string; recurrence_count: number | null }
+  | { kind: "finish" };
+
+export function rollDecision(
+  next: string | null,
+  until: string | null,
+  count: number | null
+): RollDecision {
+  if (!next) return { kind: "finish" };
+  if (until && next > until) return { kind: "finish" };
+  if (count != null) {
+    if (count <= 1) return { kind: "finish" };
+    return { kind: "roll", due_date: next, recurrence_count: count - 1 };
+  }
+  return { kind: "roll", due_date: next, recurrence_count: null };
+}

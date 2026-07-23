@@ -385,6 +385,10 @@ export function TaskSheet({
   const [recurrence, setRecurrence] = useState("");
   const [recurrenceMode, setRecurrenceMode] =
     useState<Task["recurrence_mode"]>("fixed");
+  // End conditions: "" = never, "count" = after N times, "until" = on a date.
+  const [recEnd, setRecEnd] = useState<"" | "count" | "until">("");
+  const [recCount, setRecCount] = useState<number | "">("");
+  const [recUntil, setRecUntil] = useState("");
   const [newSub, setNewSub] = useState("");
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [optional, setOptional] = useState(false);
@@ -400,6 +404,9 @@ export function TaskSheet({
     setEstimate(task.time_estimate_min ?? "");
     setRecurrence(task.recurrence ?? "");
     setRecurrenceMode(task.recurrence_mode ?? "fixed");
+    setRecEnd(task.recurrence_count != null ? "count" : task.recurrence_until ? "until" : "");
+    setRecCount(task.recurrence_count ?? "");
+    setRecUntil(task.recurrence_until ?? "");
     setSubtasks(task.subtasks ?? []);
     setOptional(!!task.optional);
     // Keyed on the task's ID, not the task object: `task` is now a live cache
@@ -984,6 +991,78 @@ export function TaskSheet({
                     Completing this task rolls it to the next occurrence, and drops it
                     out of Today, instead of finishing it.
                   </p>
+                )}
+                {/* End conditions + skip. "After N times" stores occurrences
+                    REMAINING; the roll that reaches zero completes for real. */}
+                {recurrence && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <select
+                      value={recEnd}
+                      onChange={(e) => {
+                        const v = e.target.value as "" | "count" | "until";
+                        setRecEnd(v);
+                        if (v === "") {
+                          setRecCount("");
+                          setRecUntil("");
+                          save({ recurrence_count: null, recurrence_until: null });
+                        }
+                      }}
+                      className="h-8 rounded-md border border-input bg-surface px-2 text-xs text-foreground outline-none focus:border-primary"
+                    >
+                      <option value="">Ends never</option>
+                      <option value="count">after N times</option>
+                      <option value="until">on a date</option>
+                    </select>
+                    {recEnd === "count" && (
+                      <input
+                        type="number"
+                        min={1}
+                        value={recCount}
+                        onChange={(e) => {
+                          const n = e.target.value === "" ? "" : Math.max(1, Number(e.target.value));
+                          setRecCount(n);
+                          save({
+                            recurrence_count: n === "" ? null : n,
+                            recurrence_until: null,
+                          });
+                        }}
+                        placeholder="N"
+                        className="h-8 w-16 rounded-md border border-input bg-surface px-2 text-xs text-foreground outline-none focus:border-primary"
+                        title="Occurrences remaining"
+                      />
+                    )}
+                    {recEnd === "until" && (
+                      <input
+                        type="date"
+                        value={recUntil}
+                        onChange={(e) => {
+                          setRecUntil(e.target.value);
+                          save({
+                            recurrence_until: e.target.value || null,
+                            recurrence_count: null,
+                          });
+                        }}
+                        className="h-8 rounded-md border border-input bg-surface px-2 text-xs text-foreground outline-none focus:border-primary"
+                        title="Last day an occurrence may land on"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const r = await api.skipOccurrence(task.id);
+                        invalidate();
+                        toast(
+                          r.ended
+                            ? "That was the last occurrence: repeat ended"
+                            : `Skipped · next ${r.due_date}`
+                        );
+                      }}
+                      className="h-8 rounded-md bg-surface-2 px-2 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+                      title="Move to the next occurrence without completing this one"
+                    >
+                      Skip occurrence
+                    </button>
+                  </div>
                 )}
               </div>
 

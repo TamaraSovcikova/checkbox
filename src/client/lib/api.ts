@@ -126,6 +126,11 @@ export const api = {
       "POST",
       `/api/tasks/${id}/complete?done=${done ? 1 : 0}`
     ),
+  skipOccurrence: (id: string) =>
+    httpMutate<{ ok: boolean; skipped: boolean; due_date: string | null; ended: boolean }>(
+      "POST",
+      `/api/tasks/${id}/skip-occurrence`
+    ),
   rescheduleTask: (id: string, due_date: string | null, due_time?: string | null) =>
     httpMutate("POST", `/api/tasks/${id}/reschedule`, { due_date, due_time }),
   reorderTasks: (

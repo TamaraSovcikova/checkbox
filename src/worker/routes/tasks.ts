@@ -4,7 +4,7 @@ import { hydrateTasks } from "./_hydrate";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { logTrackerForTask, unlogTrackerForTask } from "../lib/trackers";
 import { enforceProjectArea } from "../lib/section";
-import { nextDueDate } from "../../shared/recurrence";
+import { nextDueDate, rollDecision } from "../../shared/recurrence";
 
 export const tasks = new Hono<{ Bindings: Bindings }>();
 
@@ -264,13 +264,16 @@ tasks.post("/:id/complete", async (c) => {
 
   if (done) {
     const t = await c.env.DB.prepare(
-      "SELECT recurrence, recurrence_mode, due_date FROM tasks WHERE id = ? AND user_id = ?"
+      `SELECT recurrence, recurrence_mode, due_date, recurrence_until, recurrence_count
+         FROM tasks WHERE id = ? AND user_id = ?`
     )
       .bind(id, userId)
       .first<{
         recurrence: string | null;
         recurrence_mode: string | null;
         due_date: string | null;
+        recurrence_until: string | null;
+        recurrence_count: number | null;
       }>();
 
     if (t?.recurrence) {
@@ -279,17 +282,18 @@ tasks.post("/:id/complete", async (c) => {
           ? todayStr()
           : t.due_date ?? todayStr();
       const next = nextDueDate(t.recurrence, anchor);
-      if (next) {
+      const decision = rollDecision(next, t.recurrence_until, t.recurrence_count);
+      if (decision.kind === "roll") {
         // Roll forward to the next occurrence AND let go of today: clear the
         // "work on it today" intent and today's time block, so ticking a
         // recurring task drops it out of Today rather than having the next
         // instance cling there. It reappears in Today on its next due day.
         await c.env.DB.prepare(
-          `UPDATE tasks SET due_date = ?, status = 'todo', completed_at = NULL,
-             planned_date = NULL, scheduled_start = NULL, scheduled_end = NULL,
-             updated_at = ? WHERE id = ? AND user_id = ?`
+          `UPDATE tasks SET due_date = ?, recurrence_count = ?, status = 'todo',
+             completed_at = NULL, planned_date = NULL, scheduled_start = NULL,
+             scheduled_end = NULL, updated_at = ? WHERE id = ? AND user_id = ?`
         )
-          .bind(next, now(), id, userId)
+          .bind(decision.due_date, decision.recurrence_count, now(), id, userId)
           .run();
         // reset checklist for the next cycle
         await c.env.DB.prepare(
@@ -300,8 +304,17 @@ tasks.post("/:id/complete", async (c) => {
         c.executionCtx?.waitUntil(
           pushTaskToGcal(c.env, id, userId).catch(console.error)
         );
-        return c.json({ ok: true, recurred: true, due_date: next });
+        return c.json({ ok: true, recurred: true, due_date: decision.due_date });
       }
+      // The series ends here (count exhausted or past `until`): strip the
+      // recurrence so the task completes below like a plain task and never
+      // resurrects.
+      await c.env.DB.prepare(
+        `UPDATE tasks SET recurrence = NULL, recurrence_until = NULL,
+           recurrence_count = NULL, updated_at = ? WHERE id = ? AND user_id = ?`
+      )
+        .bind(now(), id, userId)
+        .run();
     }
   }
 
@@ -361,6 +374,53 @@ tasks.post("/:id/complete", async (c) => {
     c.executionCtx?.waitUntil(pushTaskToGcal(c.env, id, userId).catch(console.error));
   }
   return c.json({ ok: true, recurred: false });
+});
+
+// Skip one occurrence of a recurring task: advance the due date to the next
+// occurrence WITHOUT completing anything. Skipping consumes an occurrence, so
+// count decrements and `until` is respected; skipping the last occurrence
+// ends the series (recurrence cleared, task left as-is for a manual decision).
+tasks.post("/:id/skip-occurrence", async (c) => {
+  const userId = await getUserId(c);
+  const id = c.req.param("id");
+  const t = await c.env.DB.prepare(
+    `SELECT recurrence, due_date, recurrence_until, recurrence_count
+       FROM tasks WHERE id = ? AND user_id = ?`
+  )
+    .bind(id, userId)
+    .first<{
+      recurrence: string | null;
+      due_date: string | null;
+      recurrence_until: string | null;
+      recurrence_count: number | null;
+    }>();
+  if (!t) return c.json({ error: "not found" }, 404);
+  if (!t.recurrence) return c.json({ error: "not recurring" }, 400);
+
+  // Skip advances from the occurrence being skipped (its due date), falling
+  // back to today for a recurring task that has no date yet.
+  const next = nextDueDate(t.recurrence, t.due_date ?? todayStr());
+  const decision = rollDecision(next, t.recurrence_until, t.recurrence_count);
+
+  if (decision.kind === "roll") {
+    await c.env.DB.prepare(
+      `UPDATE tasks SET due_date = ?, recurrence_count = ?, planned_date = NULL,
+         scheduled_start = NULL, scheduled_end = NULL, updated_at = ?
+       WHERE id = ? AND user_id = ?`
+    )
+      .bind(decision.due_date, decision.recurrence_count, now(), id, userId)
+      .run();
+    c.executionCtx?.waitUntil(pushTaskToGcal(c.env, id, userId).catch(console.error));
+    return c.json({ ok: true, skipped: true, due_date: decision.due_date, ended: false });
+  }
+
+  await c.env.DB.prepare(
+    `UPDATE tasks SET recurrence = NULL, recurrence_until = NULL,
+       recurrence_count = NULL, updated_at = ? WHERE id = ? AND user_id = ?`
+  )
+    .bind(now(), id, userId)
+    .run();
+  return c.json({ ok: true, skipped: true, due_date: t.due_date, ended: true });
 });
 
 // reschedule due date/time
