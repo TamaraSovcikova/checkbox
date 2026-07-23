@@ -21,6 +21,7 @@ import { AreaDialog } from "./components/AreaDialog";
 import { ProjectDialog } from "./components/ProjectDialog";
 import { SuggestToday } from "./components/SuggestToday";
 import { CapacityLine } from "./components/CapacityLine";
+import { RenegotiateLink } from "./components/RenegotiateLink";
 import { PinsStrip, PinsSide, useAddPin, useSidePins } from "./components/Pins";
 import { scopeForView, scopeForArea } from "./lib/pinScope";
 import { CheatSheet } from "./components/CheatSheet";
@@ -598,6 +599,7 @@ export function ViewPage({ name }: { name: string }) {
           {isToday && <StalePlanNudge tasks={tasks} />}
           {isToday && <SuggestToday />}
           {isToday && <CapacityLine tasks={tasks} />}
+          {name === "overdue" && <RenegotiateLink count={tasks.length} />}
           {isToday && showBoard ? (
             // The board's Done column already shows today's completed tasks, so
             // the separate CompletedToday strip is redundant here.
