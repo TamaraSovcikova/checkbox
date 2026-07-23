@@ -15,13 +15,25 @@ export function DependencyEditor({ task }: { task: Task }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Task[]>([]);
   const [blockedUntil, setBlockedUntil] = useState(task.blocked_until ?? "");
+  const [waitingOn, setWaitingOn] = useState(task.waiting_on ?? "");
+  const [waitingExpected, setWaitingExpected] = useState(task.waiting_expected ?? "");
 
   useEffect(() => setDeps(task.depends_on ?? []), [task]);
   useEffect(() => setBlockedUntil(task.blocked_until ?? ""), [task]);
+  useEffect(() => setWaitingOn(task.waiting_on ?? ""), [task]);
+  useEffect(() => setWaitingExpected(task.waiting_expected ?? ""), [task]);
 
   async function setBlock(date: string | null) {
     setBlockedUntil(date ?? "");
     await api.updateTask(task.id, { blocked_until: date });
+    invalidate();
+  }
+
+  async function saveWaiting(on: string, expected: string) {
+    await api.updateTask(task.id, {
+      waiting_on: on.trim() || null,
+      waiting_expected: on.trim() ? expected || null : null,
+    });
     invalidate();
   }
 
@@ -169,6 +181,50 @@ export function DependencyEditor({ task }: { task: Task }) {
           {blockedUntil && (
             <button
               onClick={() => setBlock(null)}
+              className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Waiting on an EXTERNAL event ("Revolut card arrives"): not a block,
+          the task stays visible with a chip; once the expected date passes the
+          chip flips to "chase". Blockers wait on tasks, this waits on the
+          world. */}
+      <div className="mt-3">
+        <span className="flex items-center gap-1.5 text-xs text-muted">
+          <BlockedIcon className="h-3.5 w-3.5" /> Waiting on
+          {task.waiting_expected && task.waiting_on && (
+            <span className="text-warning">by {task.waiting_expected}</span>
+          )}
+        </span>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <input
+            value={waitingOn}
+            onChange={(e) => setWaitingOn(e.target.value)}
+            onBlur={() => saveWaiting(waitingOn, waitingExpected)}
+            placeholder="e.g. Revolut card arrives"
+            className="h-8 min-w-0 flex-1 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none placeholder:text-subtle focus:border-primary"
+          />
+          <input
+            type="date"
+            value={waitingExpected}
+            onChange={(e) => {
+              setWaitingExpected(e.target.value);
+              if (waitingOn.trim()) saveWaiting(waitingOn, e.target.value);
+            }}
+            title="Expected by"
+            className="h-8 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
+          />
+          {(waitingOn || waitingExpected) && (
+            <button
+              onClick={() => {
+                setWaitingOn("");
+                setWaitingExpected("");
+                saveWaiting("", "");
+              }}
               className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
             >
               Clear

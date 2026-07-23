@@ -28,3 +28,23 @@ export function blockedLabel(task: Task, today: string): string | null {
   if (n > 0) return `${n} blocker${n > 1 ? "s" : ""}`;
   return null;
 }
+
+// ── Waiting on an external event ─────────────────────────────────────────────
+// Not a block: the task stays fully visible. The chip states what it waits on;
+// once the expected date passes it flips into a chase nudge, because at that
+// point the useful action is chasing the sender, not more waiting.
+
+export type WaitingChip = { kind: "waiting" | "chase"; label: string };
+
+export function waitingChip(
+  task: Pick<Task, "status" | "waiting_on" | "waiting_expected">,
+  today: string
+): WaitingChip | null {
+  if (task.status === "done") return null;
+  const what = task.waiting_on?.trim();
+  if (!what) return null;
+  if (task.waiting_expected && task.waiting_expected < today) {
+    return { kind: "chase", label: `chase: ${what}` };
+  }
+  return { kind: "waiting", label: `waiting: ${what}` };
+}

@@ -7,13 +7,14 @@ import { cn, todayStr, monthAheadStr } from "@/lib/utils";
 import { inToday, subtasksDueBy, hasCheckpointDue } from "../lib/today";
 import { dueLabel, isOverdue } from "../lib/due";
 import { useToggleToday } from "../lib/use-toggle-today";
-import { isBlocked, blockedLabel } from "../lib/blocked";
+import { isBlocked, blockedLabel, waitingChip } from "../lib/blocked";
 import {
   RepeatIcon,
   BlockedIcon,
   TimerIcon,
   TodayIcon,
   DoingIcon,
+  SnoozeIcon,
   SubtaskIcon,
   CheckpointIcon,
 } from "../lib/icons";
@@ -119,6 +120,7 @@ export function TaskMeta({
   const today = todayStr();
   const blocked = isBlocked(task, today);
   const blockedText = blockedLabel(task, today);
+  const waiting = waitingChip(task, today);
   const running = !!task.timer_started_at;
 
   // A task can be sitting in Today purely because one of its STEPS is due, while
@@ -208,6 +210,27 @@ export function TaskMeta({
         >
           <BlockedIcon className="h-3 w-3" />
           {blockedText ? `blocked ${blockedText}` : "blocked"}
+        </span>
+      )}
+      {/* Waiting on an external event. Quiet while the expected date holds;
+          warning-toned "chase" once it has passed, because then the useful
+          action is chasing, not waiting. */}
+      {waiting && (
+        <span
+          className={cn(
+            "inline-flex items-center gap-0.5 rounded px-1 py-0.5",
+            waiting.kind === "chase"
+              ? "bg-warning/15 text-warning"
+              : "bg-surface-2 text-subtle"
+          )}
+          title={
+            task.waiting_expected
+              ? `Expected by ${task.waiting_expected}`
+              : "Waiting on an external event"
+          }
+        >
+          <SnoozeIcon className="h-3 w-3" />
+          {waiting.label}
         </span>
       )}
       {running && (

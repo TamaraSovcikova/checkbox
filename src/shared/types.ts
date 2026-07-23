@@ -95,6 +95,16 @@ export interface Task {
   timer_started_at: string | null; // ISO instant a running timer began
   snoozed_until: string | null; // YYYY-MM-DD; hidden from views until this day
   blocked_until: string | null; // YYYY-MM-DD; task is blocked until this date
+  // Waiting on an EXTERNAL event ("Revolut card arrives"), optionally expected
+  // by a date. Not a block: the task stays visible with a chip, and once the
+  // expected date passes the chip flips into a chase nudge.
+  waiting_on: string | null;
+  waiting_expected: string | null; // YYYY-MM-DD
+  // Recurrence end conditions: last day an occurrence may land on, and/or how
+  // many occurrences REMAIN (decremented per completion-roll; reaching 0
+  // completes the task and clears the recurrence). See shared/recurrence.ts.
+  recurrence_until: string | null;
+  recurrence_count: number | null;
   // 1 = keep this task off Google Calendar without touching its dates (set by
   // hiding its chip in the calendar's all-day box). Reversible; see sync.ts.
   gcal_hidden: number;

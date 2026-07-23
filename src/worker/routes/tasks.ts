@@ -42,6 +42,10 @@ const WRITABLE = [
   "gcal_hidden",
   "checkpoint_days",
   "checkpoint_next",
+  "waiting_on",
+  "waiting_expected",
+  "recurrence_until",
+  "recurrence_count",
 ];
 
 // Does this task belong to this user? Used to gate subtask + label mutations.
