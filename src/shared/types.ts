@@ -105,6 +105,13 @@ export interface Task {
   // completes the task and clears the recurrence). See shared/recurrence.ts.
   recurrence_until: string | null;
   recurrence_count: number | null;
+  // Vault linkage (two-way Obsidian sync, v1). source_text is both the match
+  // key and the change detector; vault_dirty means Checkbox changed done-state
+  // or due date since the vault last agreed. See shared/vault.ts.
+  source_path: string | null;
+  source_line: number | null;
+  source_text: string | null;
+  vault_dirty: number;
   // 1 = keep this task off Google Calendar without touching its dates (set by
   // hiding its chip in the calendar's all-day box). Reversible; see sync.ts.
   gcal_hidden: number;

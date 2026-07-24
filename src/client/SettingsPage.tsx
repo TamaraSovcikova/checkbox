@@ -734,7 +734,7 @@ export function SettingsPage() {
           </div>
         </div>
         <p className="mt-3 text-xs text-subtle">
-          16 tools: task CRUD, triage, plan-my-day, daily brief, weekly review.
+          Task CRUD, triage, plan-my-day, daily brief, weekly review, vault sync.
         </p>
       </Section>
 

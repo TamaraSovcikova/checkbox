@@ -18,6 +18,7 @@ import { insertCandidates, type CandidateInput } from "./notes";
 import { upsertMailCandidate, type MailCandidateInput } from "./mail";
 import { nextDueDate } from "../../shared/recurrence";
 import { startCheckpointBody } from "../../shared/checkpoint";
+import { parseVaultLine, renderVaultLine, pullDecision } from "../../shared/vault";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { enforceProjectArea } from "../lib/section";
 
@@ -522,6 +523,59 @@ const TOOLS = [
     },
   },
   {
+    name: "sync_vault_tasks",
+    description:
+      "Two-way vault sync, PULL direction. Pass the CURRENT state of every task checkbox line found in vault notes that have linked tasks (tasks store source_path). For each linked task the server reconciles v1 fields only (done-state, due date via the Obsidian Tasks date field, #now -> planned today): a line the vault edited since last sync applies to the task; a line unchanged while Checkbox changed waits for writeback; both changed = CONFLICT, resolved vault-wins-on-done / Checkbox-wins-on-date, and REPORTED back so the user hears about it. Titles never sync in either direction. Lines with no linked task are returned as unmatched (offer scan_notes_for_tasks for those). Safe to re-run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          description: "Every checkbox task line from the synced notes, verbatim.",
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string", description: "Vault-relative note path" },
+              line: { type: "number", description: "1-indexed line number now" },
+              text: { type: "string", description: "The full line, verbatim" },
+            },
+            required: ["path", "line", "text"],
+          },
+        },
+      },
+      required: ["items"],
+    },
+  },
+  {
+    name: "list_vault_writebacks",
+    description:
+      "Two-way vault sync, PUSH direction, step 1. Returns every linked task whose done-state or due date changed in Checkbox since the vault last agreed, with the exact old line (source_text) and the exact new line to write (new_text, computed server-side: only the checkbox char and the date token differ). APPLY PROTOCOL, follow strictly: (1) in each file, replace the old line with new_text ONLY on an exact match of the old line; (2) never delete, reorder, or otherwise edit lines; (3) never touch a file not named here; (4) if the old line is not found, skip that item and say so; (5) on the user's FIRST sync pass, show the planned edits and ask before writing (dry run); (6) report every edit made; (7) finish by calling confirm_vault_writebacks with what was actually applied.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "confirm_vault_writebacks",
+    description:
+      "Two-way vault sync, PUSH direction, step 2. After applying edits from list_vault_writebacks, confirm what was written so the server clears the dirty flags and stores the new line text/number. Only confirm lines you actually wrote.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Task id" },
+              new_text: { type: "string", description: "The line as now written in the file" },
+              new_line: { type: "number", description: "1-indexed line number now (optional)" },
+            },
+            required: ["id", "new_text"],
+          },
+        },
+      },
+      required: ["items"],
+    },
+  },
+  {
     name: "daily_brief",
     description:
       "Return a concise summary of today: task stats, what's due, what's overdue, and today's calendar events.",
@@ -961,7 +1015,11 @@ async function handleTool(
       await enforceProjectArea(db, userId, args);
       const fields = TASK_WRITABLE.filter((f) => f in args);
       if (fields.length) {
-        const set = fields.map((f) => `${f} = ?`).join(", ");
+        let set = fields.map((f) => `${f} = ?`).join(", ");
+        // Vault-born tasks owe their note an edit when synced fields change here.
+        if (fields.includes("status") || fields.includes("due_date")) {
+          set += ", vault_dirty = CASE WHEN source_path IS NOT NULL THEN 1 ELSE vault_dirty END";
+        }
         await db.prepare(
           `UPDATE tasks SET ${set}, updated_at = ? WHERE id = ? AND user_id = ?`
         ).bind(...fields.map((f) => args[f]), now(), id, userId).run();
@@ -1009,7 +1067,9 @@ async function handleTool(
       }
 
       await db.prepare(
-        "UPDATE tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+        `UPDATE tasks SET status = ?, completed_at = ?, updated_at = ?,
+           vault_dirty = CASE WHEN source_path IS NOT NULL THEN 1 ELSE vault_dirty END
+         WHERE id = ? AND user_id = ?`
       ).bind(done ? "done" : "todo", done ? now() : null, now(), id, userId).run();
       // Re-completing keeps the event; un-completing re-pushes it.
       await gcalSync(env, userId, id);
@@ -1041,7 +1101,9 @@ async function handleTool(
     // ── reschedule_task ──────────────────────────────────────────────────────
     case "reschedule_task": {
       await db.prepare(
-        "UPDATE tasks SET due_date = ?, due_time = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+        `UPDATE tasks SET due_date = ?, due_time = ?, updated_at = ?,
+           vault_dirty = CASE WHEN source_path IS NOT NULL THEN 1 ELSE vault_dirty END
+         WHERE id = ? AND user_id = ?`
       ).bind(args.due_date ?? null, args.due_time ?? null, now(), args.id, userId).run();
       await gcalSync(env, userId, args.id as string);
       return text(`Rescheduled task ${args.id} to ${args.due_date ?? "no date"}.`);
@@ -1232,6 +1294,172 @@ async function handleTool(
         unscheduled: res.plan.unscheduled,
         note: "Draft saved. The user can accept it in the app to write the time-blocks.",
       });
+    }
+
+    // ── sync_vault_tasks (pull) ────────────────────────────────────────────────
+    case "sync_vault_tasks": {
+      const items =
+        (args.items as { path: string; line: number; text: string }[] | undefined) ?? [];
+      const today = todayBrussels();
+      const applied: string[] = [];
+      const conflicts: string[] = [];
+      const unmatched: string[] = [];
+      const seenTaskIds = new Set<string>();
+
+      for (const item of items) {
+        const parsed = parseVaultLine(item.text);
+        if (!parsed) continue; // not a task checkbox line at all
+
+        // Match by exact stored line text first (line numbers drift), then by
+        // stored line number as the fallback for lines the vault edited.
+        let t = await db
+          .prepare(
+            `SELECT id, title, status, due_date, vault_dirty, source_text FROM tasks
+               WHERE user_id = ? AND source_path = ? AND source_text = ? LIMIT 1`
+          )
+          .bind(userId, item.path, item.text.trim())
+          .first<{ id: string; title: string; status: string; due_date: string | null; vault_dirty: number; source_text: string | null }>();
+        if (!t) {
+          t = await db
+            .prepare(
+              `SELECT id, title, status, due_date, vault_dirty, source_text FROM tasks
+                 WHERE user_id = ? AND source_path = ? AND source_line = ? LIMIT 1`
+            )
+            .bind(userId, item.path, item.line)
+            .first<typeof t extends infer _ ? any : never>();
+        }
+        if (!t || seenTaskIds.has(t.id)) {
+          if (!t) unmatched.push(`${item.path}:${item.line} ${item.text.trim().slice(0, 60)}`);
+          continue;
+        }
+        seenTaskIds.add(t.id);
+
+        const decision = pullDecision(item.text, t.source_text, !!t.vault_dirty);
+        if (decision.kind === "apply_vault") {
+          // Vault is the fresh side: its done-state, date and #now apply.
+          const status = parsed.checked ? "done" : t.status === "done" ? "todo" : t.status;
+          await db
+            .prepare(
+              `UPDATE tasks SET status = ?, completed_at = ?, due_date = ?,
+                 planned_date = COALESCE(?, planned_date),
+                 source_text = ?, source_line = ?, updated_at = ?
+               WHERE id = ? AND user_id = ?`
+            )
+            .bind(
+              status,
+              parsed.checked ? now() : null,
+              parsed.due_date,
+              parsed.now ? today : null,
+              item.text.trim(),
+              item.line,
+              now(),
+              t.id,
+              userId
+            )
+            .run();
+          applied.push(`${t.title}: ${parsed.checked ? "done" : "open"}${parsed.due_date ? `, due ${parsed.due_date}` : ""}`);
+        } else if (decision.kind === "conflict") {
+          // Both sides changed. Vault wins on done-state, Checkbox wins on the
+          // date; the stored line stays as the vault has it and the task stays
+          // dirty, so the next writeback re-asserts Checkbox's date into the
+          // note. Reported, never silent.
+          const status = parsed.checked ? "done" : t.status === "done" ? "todo" : t.status;
+          await db
+            .prepare(
+              `UPDATE tasks SET status = ?, completed_at = ?,
+                 source_text = ?, source_line = ?, updated_at = ?
+               WHERE id = ? AND user_id = ?`
+            )
+            .bind(status, parsed.checked ? now() : null, item.text.trim(), item.line, now(), t.id, userId)
+            .run();
+          conflicts.push(
+            `${t.title}: both sides changed. Kept vault's done-state (${parsed.checked ? "done" : "open"}) and Checkbox's date (${t.due_date ?? "none"}); the note's date will be updated on writeback.`
+          );
+        } else if (decision.kind === "in_sync" ) {
+          // Only the line number may have drifted; keep it fresh.
+          await db
+            .prepare("UPDATE tasks SET source_line = ? WHERE id = ? AND user_id = ?")
+            .bind(item.line, t.id, userId)
+            .run();
+        }
+        // writeback_pending: nothing to pull; list_vault_writebacks handles it.
+      }
+
+      const lines = [
+        `Pull done: ${applied.length} applied, ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"}, ${unmatched.length} unmatched.`,
+        ...(applied.length ? ["", "Applied:", ...applied.map((s) => `- ${s}`)] : []),
+        ...(conflicts.length ? ["", "CONFLICTS (tell the user):", ...conflicts.map((s) => `- ${s}`)] : []),
+        ...(unmatched.length
+          ? ["", "Unmatched lines (no linked task; scan_notes_for_tasks can file them):", ...unmatched.slice(0, 10).map((s) => `- ${s}`)]
+          : []),
+        "",
+        "Now call list_vault_writebacks to see what Checkbox owes the vault.",
+      ];
+      return text(lines.join("\n"));
+    }
+
+    // ── list_vault_writebacks (push, step 1) ───────────────────────────────────
+    case "list_vault_writebacks": {
+      const { results } = await db
+        .prepare(
+          `SELECT id, title, status, due_date, source_path, source_line, source_text
+             FROM tasks WHERE user_id = ? AND vault_dirty = 1 AND source_path IS NOT NULL
+             ORDER BY source_path, source_line`
+        )
+        .bind(userId)
+        .all<{
+          id: string;
+          title: string;
+          status: string;
+          due_date: string | null;
+          source_path: string;
+          source_line: number | null;
+          source_text: string | null;
+        }>();
+
+      const items = (results ?? [])
+        .map((t) => {
+          const newText = t.source_text
+            ? renderVaultLine(t.source_text, {
+                checked: t.status === "done",
+                due_date: t.due_date,
+              })
+            : null;
+          return { t, newText };
+        })
+        .filter((x) => x.newText && x.newText !== x.t.source_text);
+
+      if (items.length === 0) return text("Nothing to write back: the vault already agrees with Checkbox.");
+
+      const lines = [
+        `${items.length} line${items.length === 1 ? "" : "s"} to write back. Apply protocol: exact-match replace only, never delete or reorder lines, never touch other files, skip and report any line you cannot find, then call confirm_vault_writebacks with what you actually wrote. First-ever pass: show the user these edits and ask before writing.`,
+        "",
+        ...items.flatMap(({ t, newText }) => [
+          `task ${t.id} · ${t.source_path}${t.source_line ? `:${t.source_line}` : ""}`,
+          `  old: ${t.source_text}`,
+          `  new: ${newText}`,
+        ]),
+      ];
+      return text(lines.join("\n"));
+    }
+
+    // ── confirm_vault_writebacks (push, step 2) ────────────────────────────────
+    case "confirm_vault_writebacks": {
+      const items =
+        (args.items as { id: string; new_text: string; new_line?: number }[] | undefined) ?? [];
+      let confirmed = 0;
+      for (const item of items) {
+        const r = await db
+          .prepare(
+            `UPDATE tasks SET vault_dirty = 0, source_text = ?,
+               source_line = COALESCE(?, source_line), updated_at = ?
+             WHERE id = ? AND user_id = ? AND vault_dirty = 1`
+          )
+          .bind(item.new_text.trim(), item.new_line ?? null, now(), item.id, userId)
+          .run();
+        if (r.meta.changes > 0) confirmed++;
+      }
+      return text(`Confirmed ${confirmed} writeback${confirmed === 1 ? "" : "s"}. Vault and Checkbox agree again.`);
     }
 
     // ── scan_notes_for_tasks ───────────────────────────────────────────────────

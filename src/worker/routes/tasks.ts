@@ -44,6 +44,9 @@ const WRITABLE = [
   "checkpoint_next",
   "waiting_on",
   "waiting_expected",
+  "source_path",
+  "source_line",
+  "source_text",
   "recurrence_until",
   "recurrence_count",
 ];
@@ -216,6 +219,10 @@ tasks.patch("/:id", async (c) => {
     if (fields.includes("due_date") || fields.includes("due_time")) {
       set += ", reminder_sent_at = NULL";
     }
+    // A vault-born task whose synced fields change here owes the note an edit.
+    if (fields.includes("due_date") || fields.includes("status")) {
+      set += ", vault_dirty = CASE WHEN source_path IS NOT NULL THEN 1 ELSE vault_dirty END";
+    }
     await c.env.DB.prepare(
       `UPDATE tasks SET ${set}, updated_at = ? WHERE id = ? AND user_id = ?`
     )
@@ -335,7 +342,9 @@ tasks.post("/:id/complete", async (c) => {
     }>();
 
   await c.env.DB.prepare(
-    `UPDATE tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ? AND user_id = ?`
+    `UPDATE tasks SET status = ?, completed_at = ?, updated_at = ?,
+       vault_dirty = CASE WHEN source_path IS NOT NULL THEN 1 ELSE vault_dirty END
+     WHERE id = ? AND user_id = ?`
   )
     .bind(done ? "done" : "todo", done ? now() : null, now(), id, userId)
     .run();

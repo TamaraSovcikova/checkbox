@@ -40,6 +40,7 @@ import {
   SnoozeIcon,
   TodayIcon,
   CheckpointIcon,
+  NotesIcon,
   MailIcon,
   ExternalLinkIcon,
   PlanIcon,
@@ -1106,6 +1107,19 @@ export function TaskSheet({
             <div className="space-y-3 border-t border-border pt-3">
               <DependencyEditor task={task} />
               <AttachmentList taskId={task.id} />
+              {/* Vault-born tasks link back to their note. Vault name is fixed:
+                  single-user app, her vault is "Workspace". */}
+              {task.source_path && (
+                <a
+                  href={`obsidian://open?vault=Workspace&file=${encodeURIComponent(task.source_path)}`}
+                  className="flex items-center gap-1.5 text-xs text-subtle transition-colors hover:text-primary"
+                  title={`Open in Obsidian${task.source_line ? ` (line ${task.source_line})` : ""}${task.vault_dirty ? " · note not yet updated with the latest change" : ""}`}
+                >
+                  <NotesIcon className="h-3.5 w-3.5" />
+                  From note: {task.source_path}
+                  {!!task.vault_dirty && <span className="text-warning">· sync pending</span>}
+                </a>
+              )}
             </div>
 
             <div className="mt-2 border-t border-border pt-4">

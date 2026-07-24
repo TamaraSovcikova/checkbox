@@ -82,6 +82,7 @@ notes.post("/candidates/:id/accept", async (c) => {
       title: string;
       source_path: string | null;
       source_line: number | null;
+      context: string | null;
     }>();
   if (!cand) return c.json({ error: "not found" }, 404);
 
@@ -89,10 +90,22 @@ notes.post("/candidates/:id/accept", async (c) => {
     ? `From \`${cand.source_path}\`${cand.source_line ? ` · line ${cand.source_line}` : ""}`
     : null;
   const taskId = uuid();
+  // Structured linkage, not just the notes backlink: this is what the vault
+  // sync tools match on (shared/vault.ts).
   await c.env.DB.prepare(
-    "INSERT INTO tasks (id, user_id, title, notes, priority) VALUES (?, ?, ?, ?, 4)"
+    `INSERT INTO tasks (id, user_id, title, notes, priority,
+       source_path, source_line, source_text)
+     VALUES (?, ?, ?, ?, 4, ?, ?, ?)`
   )
-    .bind(taskId, userId, cand.title, backlink)
+    .bind(
+      taskId,
+      userId,
+      cand.title,
+      backlink,
+      cand.source_path,
+      cand.source_line,
+      cand.context ?? null
+    )
     .run();
   await c.env.DB.prepare(
     "UPDATE note_candidates SET status = 'accepted' WHERE id = ? AND user_id = ?"
