@@ -234,7 +234,7 @@ export interface TriageSuggestion {
 export interface ViewDefault {
   // "board" is Today-only (To do/Doing/Done); "recurring" is area-only (routines
   // parked out of the list until due, see client/lib/recurring).
-  mode?: "grid" | "list" | "board" | "recurring";
+  mode?: "grid" | "list" | "board" | "recurring" | "flow";
   sort?: string;
   group?: string;
   filter?: string; // "all" | "p1".."p4" | "overdue" | "planned"

@@ -67,6 +67,8 @@ export {
   Gauge as CadenceIcon,
   // A checkpoint is a pulse along the way to the due date: a flag on the route.
   Flag as CheckpointIcon,
+  // The Flow tab draws the project as connected stations; so does this glyph.
+  Waypoints as FlowIcon,
 } from "lucide-react";
 
 // Curated icon set an area can be tagged with (the picker offers these by name;

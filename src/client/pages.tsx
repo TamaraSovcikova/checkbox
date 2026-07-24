@@ -36,6 +36,7 @@ import { areaIcon } from "./lib/icons";
 import { useTaskUI } from "./lib/ui-context";
 import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
+import { ProjectFlow } from "./components/ProjectFlow";
 import { TodayBoard } from "./components/TodayBoard";
 import { CadenceStrip } from "./components/Cadences";
 import { TaskRow } from "./components/TaskRow";
@@ -49,6 +50,7 @@ import { Header } from "./components/PageHeader";
 import {
   ListIcon,
   BoardIcon,
+  FlowIcon,
   TodayIcon,
   UpcomingIcon,
   OverdueIcon,
@@ -332,7 +334,7 @@ function useTaskCollection(
 // and supported neither multi-select nor keyboard nav. Note that a PROJECT's old
 // "Grid" tab was never this component - it draws the kanban board, and is now
 // labelled as such.
-type ViewMode = "list" | "board" | "recurring";
+type ViewMode = "list" | "board" | "recurring" | "flow";
 
 const LIST_TAB: Tab<ViewMode> = {
   id: "list",
@@ -352,8 +354,13 @@ const AREA_TABS: Tab<ViewMode>[] = [
 ];
 // Today also offers a To do / Doing / Done board you can drag between.
 const TODAY_TABS: Tab<ViewMode>[] = [LIST_TAB, BOARD_TAB];
-// A project's two real shapes. Board first: it is the one worth defaulting to.
-const PROJECT_TABS: Tab<ViewMode>[] = [BOARD_TAB, LIST_TAB];
+// A project's three shapes. Board first: it is the one worth defaulting to.
+// Flow is the read-only dependency map (metro rendering, see ProjectFlow).
+const PROJECT_TABS: Tab<ViewMode>[] = [
+  BOARD_TAB,
+  LIST_TAB,
+  { id: "flow", label: "Flow", icon: <FlowIcon className={ICON_SIZE} /> },
+];
 
 // The right rail: the day timeline and that view's pins, sharing ONE slot.
 //
@@ -1155,12 +1162,16 @@ export function ProjectPage() {
         }
       />
       <ProjectDialog open={edit} onOpenChange={setEdit} existing={project} />
-      <ProjectBoard
-        project={project}
-        view={view === "list" ? "list" : "board"}
-        onOpen={open}
-        transform={(ts) => sortTasks(filterTasks(ts, filter), sort)}
-      />
+      {view === "flow" ? (
+        <ProjectFlow project={project} />
+      ) : (
+        <ProjectBoard
+          project={project}
+          view={view === "list" ? "list" : "board"}
+          onOpen={open}
+          transform={(ts) => sortTasks(filterTasks(ts, filter), sort)}
+        />
+      )}
     </div>
   );
 }
