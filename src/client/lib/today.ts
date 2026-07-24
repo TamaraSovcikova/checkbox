@@ -1,4 +1,5 @@
 import type { Subtask, Task } from "../../shared/types";
+import { addDays } from "../../shared/recurrence";
 
 // A task is in Today ON ITS OWN ACCOUNT for any of these reasons: planned for
 // today or any earlier day and still open, due today or overdue, or time-blocked
@@ -8,11 +9,10 @@ import type { Subtask, Task } from "../../shared/types";
 // instead of dropping out at midnight; mirrors the server's /views/today. Keep
 // the two in sync.
 //
-// This is the rule the Add/Remove Today toggle is bound to, and that is why it
-// deliberately does NOT include "has a subtask due today" (see below). Every
-// reason listed here is one leaveTodayBody can clear; a subtask's due date is
-// not. Folding it in would give a task a lit "Remove from Today" button that
-// silently could not remove it.
+// These are the reasons leaveTodayBody can CLEAR outright. They are not the
+// whole story of the Today view (a subtask due today or a due checkpoint also
+// carries a task in, see inTodayView below); the toggle is bound to inTodayView,
+// and for those two reasons Remove defers rather than clears.
 export function inToday(task: Task, today: string): boolean {
   if (task.planned_date != null && task.planned_date <= today) return true;
   if (task.due_date != null && task.due_date <= today) return true;
@@ -34,8 +34,9 @@ export const hasSubtaskDueToday = (task: Task, today: string): boolean =>
   subtasksDueBy(task, today).length > 0;
 
 // A checkpoint pulse is due: the task is in Today to be marked on track. Like a
-// subtask due, this is NOT one of inToday's toggle reasons (leaveTodayBody could
-// not clear it), so it lives in inTodayView only.
+// subtask due, this is not a reason leaveTodayBody can clear outright (the
+// checkpoint schedule and the subtask's deadline are real data); Remove handles
+// both by snoozing the task to tomorrow instead.
 export const hasCheckpointDue = (task: Task, today: string): boolean =>
   task.checkpoint_next != null && task.checkpoint_next <= today;
 
@@ -73,21 +74,31 @@ export function stalePlannedTasks(
 }
 
 // Everything the Today VIEW holds: the task's own reasons, plus a task carried in
-// by one of its subtasks. Mirrors the server's /views/today; keep the two in sync.
+// by one of its subtasks or a due checkpoint. Mirrors the server's /views/today;
+// keep the two in sync.
 //
-// Split from inToday on purpose, so a task pulled in by a subtask still reads as
-// "Add to Today" (it is not planned; adding it is a real, additive action) rather
-// than offering a Remove that cannot work.
+// This is the rule the Add/Remove Today toggle is bound to: if the view shows the
+// task, the button must be able to take it out. It used to be bound to inToday
+// alone, on the theory that a subtask-carried task should read "Add to Today"
+// because Remove could not clear a subtask's deadline. The mixed case broke that:
+// a task planned for today AND carrying a due subtask offered Remove, cleared the
+// plan, toasted success, and stayed in the view. Remove now defers what it cannot
+// clear (see leaveTodayBody), so the lit state and the view agree by definition.
 export const inTodayView = (task: Task, today: string): boolean =>
   inToday(task, today) ||
   hasSubtaskDueToday(task, today) ||
   hasCheckpointDue(task, today);
 
-// The update body that removes a task from Today for good: clear EVERY trigger
-// (the today plan, a today time-block, and a today/overdue deadline). Area and
-// project are left untouched, so the task falls back to its section, or to the
-// Backlog when it has neither. Returns only the fields that actually change, so
-// the caller can snapshot exactly those for an undo.
+// The update body that removes a task from Today for good: clear EVERY trigger it
+// is safe to clear (the today plan, a today time-block, and a today/overdue
+// deadline). The two reasons that are NOT safe to clear (a subtask's own
+// deadline, a checkpoint schedule) are real data; when one of those would still
+// hold the task in the view, snooze it to tomorrow instead. The Today view
+// already hides snoozed tasks, so Remove works for every task the view can show,
+// and the deferred reason comes back tomorrow, still true. Area and project are
+// left untouched, so the task falls back to its section, or to the Backlog when
+// it has neither. Returns only the fields that actually change, so the caller
+// can snapshot exactly those for an undo.
 export function leaveTodayBody(task: Task, today: string): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   // `<= today` matches inToday: a carried-over plan (planned on an earlier day,
@@ -102,17 +113,24 @@ export function leaveTodayBody(task: Task, today: string): Record<string, unknow
     body.due_date = null;
     if (task.due_time != null) body.due_time = null;
   }
+  if (hasSubtaskDueToday(task, today) || hasCheckpointDue(task, today)) {
+    body.snoozed_until = addDays(today, 1);
+  }
   return body;
 }
 
-// The previous values of whatever leaveTodayBody would change, for a one-tap undo.
+// The previous values of whatever leaveTodayBody would change, for a one-tap
+// undo. `?? null` and not the raw value: every field here is a nullable column,
+// and a snapshot that simply lacks the key (undefined) must still serialize into
+// the PATCH body, or the undo silently skips that field. JSON.stringify drops
+// undefined; it keeps null.
 export function undoLeaveTodayBody(
   task: Task,
   changed: Record<string, unknown>
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   for (const key of Object.keys(changed)) {
-    body[key] = (task as unknown as Record<string, unknown>)[key];
+    body[key] = (task as unknown as Record<string, unknown>)[key] ?? null;
   }
   return body;
 }

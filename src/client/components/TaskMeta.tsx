@@ -4,7 +4,7 @@ import { recurrenceLabel } from "../../shared/recurrence";
 import { areaColorVar, shouldPill } from "../lib/colors";
 import { PriorityPill } from "./ui";
 import { cn, todayStr, monthAheadStr } from "@/lib/utils";
-import { inToday, subtasksDueBy, hasCheckpointDue } from "../lib/today";
+import { inTodayView, subtasksDueBy, hasCheckpointDue } from "../lib/today";
 import { dueLabel, isOverdue } from "../lib/due";
 import { useToggleToday } from "../lib/use-toggle-today";
 import { isBlocked, blockedLabel, waitingChip } from "../lib/blocked";
@@ -63,9 +63,11 @@ export function useDistantTone(task: Task) {
 }
 
 // The clickable Today marker. Lit (solid, primary) when the task is in Today for
-// ANY reason - planned, due today/overdue, or time-blocked today - so it reads as
-// a state, not just a button you pressed. On a row it reveals on hover when off;
-// on a card there is no hover-reveal, since a card is the whole hit target.
+// ANY reason the view shows it - planned, due today/overdue, time-blocked today,
+// carried in by a due subtask, or a due checkpoint - so it reads as a state, not
+// just a button you pressed, and Remove is offered exactly when there is
+// something to remove. On a row it reveals on hover when off; on a card there is
+// no hover-reveal, since a card is the whole hit target.
 export function TodayToggle({
   task,
   alwaysVisible = false,
@@ -76,7 +78,7 @@ export function TodayToggle({
   className?: string;
 }) {
   const toggleToday = useToggleToday();
-  const on = inToday(task, todayStr());
+  const on = inTodayView(task, todayStr());
   return (
     <button
       aria-label={on ? "Remove from Today" : "Add to Today"}

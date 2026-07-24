@@ -24,7 +24,7 @@ function daysInMonth(y: number, m: number): number {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
-function addDays(date: string, n: number): string {
+export function addDays(date: string, n: number): string {
   const [y, m, d] = parse(date);
   const dt = new Date(Date.UTC(y, m - 1, d + n));
   return fmt(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());

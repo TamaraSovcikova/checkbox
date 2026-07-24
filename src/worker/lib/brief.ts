@@ -22,6 +22,18 @@ export async function sendMorningBrief(env: Bindings): Promise<void> {
   for (const user of users) {
     const today = todayBrussels();
 
+    // The brief's on/off switch is the subscription table: Settings' Disable
+    // deletes every one of the user's rows, Enable adds one. Zero rows means
+    // the user turned the brief off, so NOTHING sends: not the push, and not
+    // the email digest either. The email used to be gated only on
+    // RESEND_API_KEY, which is how a disabled brief kept arriving by mail.
+    const { results: subRows } = await env.DB.prepare(
+      "SELECT endpoint, keys FROM push_subscriptions WHERE user_id = ?"
+    )
+      .bind(user.id)
+      .all<{ endpoint: string; keys: string }>();
+    if (subRows.length === 0) continue;
+
     const { results: tasks } = await env.DB.prepare(
       `SELECT title, priority, due_date, due_time
        FROM tasks
@@ -46,20 +58,11 @@ export async function sendMorningBrief(env: Bindings): Promise<void> {
     // ── Push notification ──────────────────────────────────────────────────────
 
     if (env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY_JWK) {
-      const { results: subRows } = await env.DB.prepare(
-        "SELECT endpoint, keys FROM push_subscriptions WHERE user_id = ?"
-      )
-        .bind(user.id)
-        .all<{ endpoint: string; keys: string }>();
-
       const subs: PushSub[] = subRows.map((r) => ({
         endpoint: r.endpoint,
         keys: JSON.parse(r.keys),
       }));
-
-      if (subs.length > 0) {
-        await sendPush(subs, env).catch(console.error);
-      }
+      await sendPush(subs, env).catch(console.error);
     }
 
     // ── Resend email digest ────────────────────────────────────────────────────

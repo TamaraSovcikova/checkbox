@@ -12,6 +12,7 @@ import {
 import type { Subtask, Task } from "../src/shared/types";
 
 const TODAY = "2026-07-15";
+const TOMORROW = "2026-07-16";
 
 const task = (over: Partial<Task> = {}): Task =>
   ({
@@ -176,13 +177,15 @@ describe("subtasks carry a task into Today", () => {
     expect(hasSubtaskDueToday(task(farOff), TODAY)).toBe(false);
   });
 
-  // The whole reason the two rules are separate: the toggle is bound to inToday,
-  // and leaveTodayBody cannot clear a subtask's due date. If a subtask made
-  // inToday true, the row would offer a Remove that silently does nothing.
-  it("does NOT make the task inToday on its own account", () => {
+  // inToday stays the clearable-reasons rule: a subtask's deadline is not the
+  // task's own plan/due/schedule. The TOGGLE, though, is bound to inTodayView,
+  // and Remove handles a subtask-carried task by snoozing it to tomorrow: the
+  // deadline is real data Remove must not delete, but the view must still let
+  // go of the task, or the button reads as doing nothing.
+  it("does NOT make the task inToday on its own account; Remove snoozes it", () => {
     const t = task({ ...farOff, subtasks: [sub({ due_date: TODAY })] });
     expect(inToday(t, TODAY)).toBe(false);
-    expect(leaveTodayBody(t, TODAY)).toEqual({});
+    expect(leaveTodayBody(t, TODAY)).toEqual({ snoozed_until: TOMORROW });
   });
 
   it("returns the due subtasks themselves, for the row to name them", () => {
@@ -248,6 +251,55 @@ describe("leaveTodayBody — clears every trigger, nothing else", () => {
   });
 });
 
+// The bug this guards against: a task planned for today AND carrying a due
+// subtask offered "Remove from Today", cleared the plan, toasted success, and
+// stayed in the view via the subtask clause. Remove must clear what it can and
+// defer past what it cannot, so the task actually leaves.
+describe("leaveTodayBody — mixed reasons: clears what it can, snoozes past the rest", () => {
+  it("planned + due subtask: clears the plan AND snoozes to tomorrow", () => {
+    const t = task({
+      planned_date: TODAY,
+      due_date: "2026-09-01",
+      subtasks: [sub({ due_date: TODAY })],
+    });
+    expect(leaveTodayBody(t, TODAY)).toEqual({
+      planned_date: null,
+      snoozed_until: TOMORROW,
+    });
+  });
+  it("due today + due checkpoint: clears the deadline AND snoozes", () => {
+    const t = task({ due_date: TODAY, checkpoint_next: TODAY });
+    expect(leaveTodayBody(t, TODAY)).toEqual({
+      due_date: null,
+      snoozed_until: TOMORROW,
+    });
+  });
+  it("checkpoint only: snoozes, never touches the checkpoint schedule", () => {
+    const t = task({ due_date: "2026-09-01", checkpoint_next: "2026-07-10" });
+    const body = leaveTodayBody(t, TODAY);
+    expect(body).toEqual({ snoozed_until: TOMORROW });
+    expect("checkpoint_next" in body).toBe(false);
+    expect("checkpoint_days" in body).toBe(false);
+  });
+  it("no residual reason: no snooze added", () => {
+    expect(leaveTodayBody(task({ planned_date: TODAY }), TODAY)).toEqual({
+      planned_date: null,
+    });
+  });
+  it("a future checkpoint or future subtask does not trigger the snooze", () => {
+    expect(
+      leaveTodayBody(
+        task({
+          planned_date: TODAY,
+          checkpoint_next: "2026-07-20",
+          subtasks: [sub({ due_date: "2026-07-20" })],
+        }),
+        TODAY
+      )
+    ).toEqual({ planned_date: null });
+  });
+});
+
 describe("undoLeaveTodayBody — restores exactly the changed fields", () => {
   it("mirrors the changed keys back to their old values", () => {
     const t = task({ planned_date: TODAY, due_date: TODAY, due_time: "15:00" });
@@ -256,6 +308,19 @@ describe("undoLeaveTodayBody — restores exactly the changed fields", () => {
       planned_date: TODAY,
       due_date: TODAY,
       due_time: "15:00",
+    });
+  });
+
+  it("a snoozed Remove undoes back to un-snoozed", () => {
+    const t = task({ planned_date: TODAY, subtasks: [sub({ due_date: TODAY })] });
+    const body = leaveTodayBody(t, TODAY);
+    expect(body).toEqual({ planned_date: null, snoozed_until: TOMORROW });
+    // The task had no snooze before, so undo must clear the one Remove set,
+    // putting the task straight back into the Today view. null, not undefined:
+    // undefined would vanish from the PATCH body and leave the snooze standing.
+    expect(undoLeaveTodayBody(t, body)).toEqual({
+      planned_date: TODAY,
+      snoozed_until: null,
     });
   });
 });

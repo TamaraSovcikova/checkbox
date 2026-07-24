@@ -17,7 +17,7 @@ import { parseDatePhrase, parseCapture } from "../lib/nlp";
 import { PRIORITY_VAR, shouldPill } from "../lib/colors";
 import { cn, todayStr } from "@/lib/utils";
 import {
-  inToday,
+  inTodayView,
   leaveTodayBody,
   undoLeaveTodayBody,
   hasCheckpointDue,
@@ -482,9 +482,10 @@ export function TaskSheet({
   }
 
   const subDone = subtasks.filter((s) => s.done).length;
-  // "In Today" for any reason (planned, due today/overdue, blocked today), so the
-  // toggle can actually remove it. Add sets a plan; Remove clears every trigger.
-  const isInToday = task ? inToday(task, todayStr()) : false;
+  // "In Today" for any reason the VIEW holds it (planned, due, time-blocked, a
+  // due subtask, a due checkpoint), so the toggle can actually remove it. Add
+  // sets a plan; Remove clears what it safely can and snoozes past the rest.
+  const isInToday = task ? inTodayView(task, todayStr()) : false;
 
   // Where the task lives. A project carries its area; an area clears any project;
   // "none" drops both, sending the task to the Backlog.
@@ -512,7 +513,14 @@ export function TaskSheet({
       const body = leaveTodayBody(task, todayStr());
       save(body);
       const prev = undoLeaveTodayBody(task, body);
-      toast("Removed from Today", () => save(prev));
+      // Mirrors useToggleToday: name the deferral so tomorrow's return
+      // (subtask or checkpoint still due) is announced up front.
+      toast(
+        body.snoozed_until != null
+          ? "Removed from Today until tomorrow"
+          : "Removed from Today",
+        () => save(prev)
+      );
     } else {
       save({ planned_date: todayStr() });
       toast("Added to Today");
