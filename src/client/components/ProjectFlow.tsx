@@ -1,44 +1,38 @@
 // The Flow tab: a project's dependency graph drawn as a metro map. Read-only
-// by design; the one interaction is clicking a station to peek at the task in
-// the sheet. Layout comes from shared/flow (layering, frontier, critical path,
-// cycle parking); this file only places and paints it.
+// by design; the one interaction is clicking a station (or a pool pill) to
+// peek at the task in the sheet. Layout comes from shared/flow; this file
+// only places and paints it.
 //
-// Chosen over step-columns and cascade-bands on a live mockup board (see the
-// vault's DESIGN-project-flow.md): the critical path draws as the thick indigo
-// trunk line, side chains as muted colored branches merging where they
-// unblock, tasks as stations (filled = done, glowing ring = ready now,
-// hollow = waiting), and a faint date rail zones the canvas.
+// v2 after the first real project: line-first. Each line from the layout owns
+// one horizontal band, drawn as a single straight run; only merge edges
+// curve. Tasks with no dependency edges never enter the canvas; they list in
+// a quiet "Not on a line yet" strip below, because unconnected stations
+// scattered between the tracks are what made v1 unreadable. Dates annotate
+// columns as small "by <date>" chips; v1's timeline-shaped rail lied the
+// moment due dates stopped correlating with dependency depth.
 
 import { useMemo } from "react";
 import type { Project, Task } from "../../shared/types";
-import { flowLayout, dateRail } from "../../shared/flow";
+import { flowLayout, stepDues } from "../../shared/flow";
 import { useTasks } from "../lib/queries";
 import { useTaskUI } from "../lib/ui-context";
 import { dueLabel } from "../lib/due";
 import { todayStr } from "@/lib/utils";
 
 const STEP_W = 250; // horizontal room per dependency step
-const LANE_H = 92; // vertical room per lane (station + two label lines)
+const LANE_H = 96; // vertical room per lane (station + two label lines)
 const X0 = 130; // first station's x, leaves room for step-0 labels
-const RAIL_H = 34; // date rail strip at the top
+const TOP_PAD = 36; // "by <date>" chip row
 const LEGEND_H = 40;
 
-// Branch colors by how far a lane sits from the trunk. Muted enough to stay
-// quiet on both themes; the trunk itself always draws in the app primary.
-const LANE_COLORS = ["#64748b", "#2dd4bf", "#d97706", "#38bdf8", "#fb7185"];
+// Branch line colors, cycled by line. The trunk always draws in the app
+// primary. Muted enough to stay quiet on both themes.
+const LINE_COLORS = ["#2dd4bf", "#d97706", "#38bdf8", "#fb7185", "#a78bfa", "#64748b"];
 
 const fmtEstimate = (min: number) =>
   min < 60 ? `${min}m` : min % 60 === 0 ? `${min / 60}h` : `${Math.floor(min / 60)}h${min % 60}`;
 
 const truncate = (s: string, n = 26) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-
-interface StationPos {
-  task: Task;
-  x: number;
-  y: number;
-  lane: number;
-  color: string; // the line color this station belongs to
-}
 
 export function ProjectFlow({ project }: { project: Project }) {
   const { open } = useTaskUI();
@@ -48,228 +42,287 @@ export function ProjectFlow({ project }: { project: Project }) {
   const { data: openTasks = [] } = useTasks({ project_id: project.id });
   const { data: doneTasks = [] } = useTasks({ project_id: project.id, status: "done" });
 
-  const { layout, stations, zones, width, height, structured } = useMemo(() => {
-    const tasks = [...openTasks, ...doneTasks];
-    const layout = flowLayout(tasks);
-    // A project with no recorded dependencies has no meaningful frontier
-    // (every open task is "ready") and no spine. Glow and trunk paint only
-    // exist once the map has structure, or the scarce signal drowns in itself.
-    const structured = layout.edges.length > 0;
+  const { layout, pos, lineColor, dues, width, height } = useMemo(() => {
+    const layout = flowLayout([...openTasks, ...doneTasks]);
 
-    // Lanes: the critical task of a step holds the trunk lane (0); the rest
-    // fan out alternating above and below, nearest-first, so a step reads
-    // outward from the spine.
-    const stations = new Map<string, StationPos>();
-    let minLane = 0;
-    let maxLane = 0;
-    layout.steps.forEach((bucket, step) => {
-      const trunk = bucket.filter((t) => layout.critical.has(t.id));
-      const rest = bucket.filter((t) => !layout.critical.has(t.id));
-      const lanes: [Task, number][] = trunk.map((t) => [t, 0]);
-      let i = 0;
-      for (const t of rest) {
-        // -1, +1, -2, +2, ... shifted to 0, -1, +1, ... when no trunk here.
-        const k = trunk.length > 0 ? i : i - 1;
-        const lane =
-          k < 0 ? 0 : k % 2 === 0 ? -(Math.floor(k / 2) + 1) : Math.floor(k / 2) + 1;
-        lanes.push([t, lane]);
-        i++;
-      }
-      for (const [t, lane] of lanes) {
-        minLane = Math.min(minLane, lane);
-        maxLane = Math.max(maxLane, lane);
-        stations.set(t.id, {
-          task: t,
-          x: X0 + step * STEP_W,
-          y: 0, // filled below once lane extent is known
-          lane,
-          color:
-            structured && layout.critical.has(t.id)
-              ? "var(--primary)"
-              : LANE_COLORS[Math.min(Math.abs(lane), LANE_COLORS.length - 1)],
-        });
-      }
-    });
-    const yCenter = RAIL_H + 26 + -minLane * LANE_H + LANE_H / 2;
-    for (const s of stations.values()) s.y = yCenter + s.lane * LANE_H;
+    const lanes = layout.lines.map((l) => l.lane);
+    const minLane = Math.min(0, ...lanes);
+    const maxLane = Math.max(0, ...lanes);
+    const y = (lane: number) => TOP_PAD + (lane - minLane) * LANE_H + LANE_H / 2;
+    const x = (step: number) => X0 + step * STEP_W;
 
-    const width = Math.max(720, X0 + (layout.steps.length - 1) * STEP_W + 150);
-    const height = RAIL_H + 26 + (maxLane - minLane + 1) * LANE_H + LEGEND_H;
-    const zones = dateRail(layout.steps, today);
-    return { layout, stations, zones, width, height, structured };
-  }, [openTasks, doneTasks, today]);
+    const pos = new Map<string, { x: number; y: number; lane: number }>();
+    for (const line of layout.lines) {
+      for (const id of line.ids) {
+        const step = layout.stepOf.get(id)!;
+        pos.set(id, { x: x(step), y: y(line.lane), lane: line.lane });
+      }
+    }
+    const lineColor = (lineIndex: number) => {
+      const line = layout.lines[lineIndex];
+      return line.color === -1
+        ? "var(--primary)"
+        : LINE_COLORS[line.color % LINE_COLORS.length];
+    };
+
+    const dues = stepDues(layout.steps);
+    const width = Math.max(720, X0 + Math.max(0, layout.steps.length - 1) * STEP_W + 150);
+    const height = TOP_PAD + (maxLane - minLane + 1) * LANE_H + LEGEND_H;
+    return { layout, pos, lineColor, dues, width, height };
+  }, [openTasks, doneTasks]);
 
   const tasksCount = openTasks.length + doneTasks.length;
   if (tasksCount === 0) {
     return <p className="mt-6 text-sm text-subtle">No tasks in this project yet.</p>;
   }
 
-  // Metro-style connector: straight when the lanes agree, an S-curve when the
-  // line changes lanes to merge.
-  const edgePath = (a: StationPos, b: StationPos) => {
-    if (a.y === b.y) return `M ${a.x} ${a.y} H ${b.x}`;
-    const mx = (a.x + b.x) / 2;
-    return `M ${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`;
+  const hasMap = layout.lines.length > 0;
+
+  // A line's own body is one straight run; only cross-line edges curve.
+  const lineEdgeKeys = new Set<string>();
+  for (const line of layout.lines) {
+    for (let i = 1; i < line.ids.length; i++) {
+      lineEdgeKeys.add(`${line.ids[i - 1]}>${line.ids[i]}`);
+    }
+  }
+  const crossEdges = layout.edges.filter((e) => !lineEdgeKeys.has(`${e.from}>${e.to}`));
+  const taskById = new Map(layout.steps.flat().map((t) => [t.id, t]));
+
+  // A merge or fork carries the color of its non-trunk participant, so a
+  // branch visibly flows into (or out of) the trunk in its own color.
+  const crossColor = (e: { from: string; to: string }) => {
+    const fromLine = layout.lineOf.get(e.from)!;
+    const toLine = layout.lineOf.get(e.to)!;
+    if (layout.lines[toLine].color === -1) return lineColor(fromLine);
+    if (layout.lines[fromLine].color === -1) return lineColor(toLine);
+    return lineColor(fromLine);
   };
 
   // Sub-line under (or over) a station: the why-it-matters in six words.
   const subFor = (t: Task) => {
-    if (t.status === "done") return { text: "done", fill: "#64748b" };
+    if (t.status === "done") return { text: "done", fill: "var(--subtle)" };
     const bits: string[] = [];
     if (t.priority <= 2) bits.push(`P${t.priority}`);
     if (t.due_date) bits.push(`due ${dueLabel(t.due_date, today)}`);
-    if (structured && layout.frontier.has(t.id)) {
+    if (layout.frontier.has(t.id)) {
       if (t.time_estimate_min) bits.push(fmtEstimate(t.time_estimate_min));
       return {
         text: bits.join(" · ") || "ready now",
-        fill: t.priority === 1 ? "var(--danger, #f87171)" : t.priority === 2 ? "#d97706" : "#818cf8",
+        fill: t.priority === 1 ? "var(--danger, #f87171)" : t.priority === 2 ? "#d97706" : "var(--primary)",
       };
     }
     const waits = (t.depends_on ?? []).filter((d) => d.status !== "done").length;
     if (waits > 0) bits.push(`waits on ${waits}`);
-    return { text: bits.join(" · "), fill: "#64748b" };
+    return { text: bits.join(" · "), fill: "var(--subtle)" };
   };
 
   return (
-    <div className="mt-4">
-      {layout.edges.length === 0 && tasksCount > 1 && (
-        <p className="mb-3 text-xs text-subtle">
-          No dependencies recorded yet, so every task is step 1. Link tasks with
-          "Blocked by" in the task sheet and the map takes shape.
-        </p>
-      )}
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface/30">
-        <svg
-          width={width}
-          height={height}
-          viewBox={`0 0 ${width} ${height}`}
-          role="img"
-          aria-label={`Dependency map of ${project.name}`}
-          className="block"
-        >
-          {/* ── Date rail ─────────────────────────────────────────────── */}
-          {zones.length > 0 && (
-            <g>
-              <line x1={0} y1={RAIL_H} x2={width} y2={RAIL_H} stroke="var(--border)" strokeOpacity={0.6} />
-              {zones.map((z, i) => {
-                const zx = X0 + z.fromStep * STEP_W - STEP_W / 2;
+    <div className="mt-4 space-y-3">
+      {hasMap ? (
+        <div className="overflow-x-auto rounded-xl border border-border bg-surface/30">
+          <svg
+            width={width}
+            height={height}
+            viewBox={`0 0 ${width} ${height}`}
+            role="img"
+            aria-label={`Dependency map of ${project.name}`}
+            className="block"
+          >
+            {/* ── "by <date>" chips over the columns ─────────────────────── */}
+            {dues.map((d, step) =>
+              d ? (
+                <text
+                  key={step}
+                  x={X0 + step * STEP_W}
+                  y={20}
+                  textAnchor="middle"
+                  fontSize={10}
+                  fontWeight={600}
+                  letterSpacing="0.06em"
+                  fill="var(--subtle)"
+                  opacity={0.85}
+                >
+                  BY {dueLabel(d, today).toUpperCase()}
+                </text>
+              ) : null
+            )}
+
+            {/* ── Line bodies (branches under, trunk on top) ─────────────── */}
+            {layout.lines
+              .slice()
+              .sort((a, b) => Number(a.color === -1) - Number(b.color === -1))
+              .map((line, idx) => {
+                if (line.ids.length < 2) return null;
+                const a = pos.get(line.ids[0])!;
+                const b = pos.get(line.ids[line.ids.length - 1])!;
+                const trunk = line.color === -1;
+                const d = `M ${a.x} ${a.y} H ${b.x}`;
                 return (
-                  <g key={z.label + z.fromStep}>
-                    {i > 0 && (
-                      <line x1={zx} y1={RAIL_H} x2={zx} y2={height - LEGEND_H} stroke="var(--border)" strokeOpacity={0.5} strokeDasharray="3 6" />
+                  <g key={`line-${idx}-${line.ids[0]}`}>
+                    {/* Soft underlay keeps the trunk the visually heaviest
+                        line in ANY palette; in a monochrome one (graphite)
+                        the colored branches would otherwise out-shout a
+                        neutral trunk. */}
+                    {trunk && (
+                      <path d={d} fill="none" stroke="var(--primary)" strokeWidth={12} strokeOpacity={0.15} strokeLinecap="round" />
                     )}
-                    <text x={Math.max(zx + 14, 14)} y={22} fontSize={10} fontWeight={600} letterSpacing="0.08em" fill="#64748b" opacity={0.8}>
-                      {z.label.toUpperCase()}
-                    </text>
+                    <path
+                      d={d}
+                      fill="none"
+                      stroke={trunk ? "var(--primary)" : LINE_COLORS[line.color % LINE_COLORS.length]}
+                      strokeWidth={trunk ? 6 : 3.5}
+                      strokeOpacity={trunk ? 0.9 : 0.65}
+                      strokeLinecap="round"
+                    />
                   </g>
                 );
               })}
-            </g>
-          )}
 
-          {/* ── Lines (branches under, trunk on top) ──────────────────── */}
-          {layout.edges
-            .slice()
-            .sort((a, b) => Number(a.critical) - Number(b.critical))
-            .map((e) => {
-              const a = stations.get(e.from);
-              const b = stations.get(e.to);
+            {/* ── Merge and fork curves ──────────────────────────────────── */}
+            {crossEdges.map((e) => {
+              const a = pos.get(e.from);
+              const b = pos.get(e.to);
               if (!a || !b) return null;
+              const mx = (a.x + b.x) / 2;
               return (
                 <path
                   key={`${e.from}>${e.to}`}
-                  d={edgePath(a, b)}
+                  d={
+                    a.y === b.y
+                      ? `M ${a.x} ${a.y} H ${b.x}`
+                      : `M ${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`
+                  }
                   fill="none"
-                  stroke={e.critical ? "var(--primary)" : a.color}
-                  strokeWidth={e.critical ? 6 : 3.5}
-                  strokeOpacity={e.critical ? 0.9 : 0.4}
+                  stroke={crossColor(e)}
+                  strokeWidth={3}
+                  strokeOpacity={0.5}
                   strokeLinecap="round"
                 />
               );
             })}
 
-          {/* ── Stations ──────────────────────────────────────────────── */}
-          {[...stations.values()].map((s) => {
-            const t = s.task;
-            const done = t.status === "done";
-            const ready = structured && layout.frontier.has(t.id);
-            const above = s.lane <= 0;
-            const sub = subFor(t);
-            const titleY = above ? s.y - 24 : s.y + 30;
-            const subY = above ? s.y - 40 : s.y + 46;
-            return (
-              <g
-                key={t.id}
-                onClick={() => open(t)}
-                className="cursor-pointer"
-                role="button"
-                aria-label={t.title}
-              >
-                <title>{t.title}</title>
-                {ready && (
-                  <circle cx={s.x} cy={s.y} r={15} fill="none" stroke="var(--primary)" strokeOpacity={0.3} strokeWidth={5} />
-                )}
-                <circle
-                  cx={s.x}
-                  cy={s.y}
-                  r={9}
-                  fill={done ? s.color : "var(--surface)"}
-                  stroke={
-                    layout.cyclic.has(t.id)
-                      ? "#d97706"
-                      : done
-                      ? s.color
-                      : ready
-                      ? "var(--primary)"
-                      : "#475569"
-                  }
-                  strokeWidth={ready ? 3 : 2.5}
-                />
-                {done && (
-                  <text x={s.x} y={s.y + 3.5} textAnchor="middle" fontSize={10} fill="#fff">
-                    ✓
-                  </text>
-                )}
-                <text
-                  x={s.x}
-                  y={titleY}
-                  textAnchor="middle"
-                  fontSize={12}
-                  fontWeight={done ? 400 : 600}
-                  fill={done ? "#64748b" : "var(--foreground)"}
-                  opacity={done ? 0.7 : 1}
-                >
-                  {truncate(t.title)}
-                </text>
-                {sub.text && (
-                  <text x={s.x} y={subY} textAnchor="middle" fontSize={10} fill={sub.fill}>
-                    {sub.text}
-                  </text>
-                )}
-                {layout.cyclic.has(t.id) && (
-                  <text x={s.x} y={s.y + (above ? 20 : -14)} textAnchor="middle" fontSize={9} fill="#d97706">
-                    cycle
-                  </text>
-                )}
-              </g>
-            );
-          })}
-
-          {/* ── Legend ────────────────────────────────────────────────── */}
-          <g fontSize={10} fill="#64748b" transform={`translate(16, ${height - 16})`}>
-            <circle cx={4} cy={-3} r={5} fill="var(--primary)" />
-            <text x={14} y={0}>done</text>
-            <circle cx={58} cy={-3} r={5} fill="var(--surface)" stroke="var(--primary)" strokeWidth={2.5} />
-            <text x={68} y={0}>ready now</text>
-            <circle cx={132} cy={-3} r={5} fill="var(--surface)" stroke="#475569" strokeWidth={2} />
-            <text x={142} y={0}>waiting</text>
-            {structured && (
-              <text x={196} y={0} opacity={0.8}>— thick indigo line = critical path</text>
+            {/* ── Stations ───────────────────────────────────────────────── */}
+            {layout.lines.flatMap((line, lineIdx) =>
+              line.ids.map((id) => {
+                const s = pos.get(id)!;
+                const t = taskById.get(id)!;
+                const color = lineColor(lineIdx);
+                const done = t.status === "done";
+                const ready = layout.frontier.has(t.id);
+                const above = s.lane <= 0;
+                const sub = subFor(t);
+                const titleY = above ? s.y - 24 : s.y + 30;
+                const subY = above ? s.y - 40 : s.y + 46;
+                return (
+                  <g
+                    key={t.id}
+                    onClick={() => open(t)}
+                    className="cursor-pointer"
+                    role="button"
+                    aria-label={t.title}
+                  >
+                    <title>{t.title}</title>
+                    {ready && (
+                      <circle cx={s.x} cy={s.y} r={15} fill="none" stroke="var(--primary)" strokeOpacity={0.3} strokeWidth={5} />
+                    )}
+                    <circle
+                      cx={s.x}
+                      cy={s.y}
+                      r={9}
+                      fill={done ? color : "var(--surface)"}
+                      stroke={
+                        layout.cyclic.has(t.id)
+                          ? "#d97706"
+                          : done
+                          ? color
+                          : ready
+                          ? "var(--primary)"
+                          : "var(--subtle)"
+                      }
+                      strokeWidth={ready ? 3 : 2.5}
+                    />
+                    {done && (
+                      <text x={s.x} y={s.y + 3.5} textAnchor="middle" fontSize={10} fill="#fff">
+                        ✓
+                      </text>
+                    )}
+                    <text
+                      x={s.x}
+                      y={titleY}
+                      textAnchor="middle"
+                      fontSize={12}
+                      fontWeight={done ? 400 : 600}
+                      fill={done ? "var(--subtle)" : "var(--foreground)"}
+                      opacity={done ? 0.7 : 1}
+                    >
+                      {truncate(t.title)}
+                    </text>
+                    {sub.text && (
+                      <text x={s.x} y={subY} textAnchor="middle" fontSize={10} fill={sub.fill}>
+                        {sub.text}
+                      </text>
+                    )}
+                    {layout.cyclic.has(t.id) && (
+                      <text x={s.x} y={s.y + (above ? 20 : -14)} textAnchor="middle" fontSize={9} fill="#d97706">
+                        cycle
+                      </text>
+                    )}
+                  </g>
+                );
+              })
             )}
-          </g>
 
-        </svg>
-      </div>
+            {/* ── Legend ─────────────────────────────────────────────────── */}
+            <g fontSize={10} fill="var(--subtle)" transform={`translate(16, ${height - 16})`}>
+              <circle cx={4} cy={-3} r={5} fill="var(--primary)" />
+              <text x={14} y={0}>done</text>
+              <circle cx={58} cy={-3} r={5} fill="var(--surface)" stroke="var(--primary)" strokeWidth={2.5} />
+              <text x={68} y={0}>ready now</text>
+              <circle cx={132} cy={-3} r={5} fill="var(--surface)" stroke="var(--subtle)" strokeWidth={2} />
+              <text x={142} y={0}>waiting</text>
+              <path d="M 196 -3 H 226" stroke="var(--primary)" strokeWidth={5} strokeLinecap="round" />
+              <text x={234} y={0} opacity={0.8}>critical path</text>
+            </g>
+          </svg>
+        </div>
+      ) : (
+        <p className="text-xs text-subtle">
+          No dependencies recorded yet. Link tasks with "Blocked by" in the task
+          sheet and the map takes shape.
+        </p>
+      )}
+
+      {/* ── The pool: real tasks, just not sequenced ───────────────────────── */}
+      {layout.loose.length > 0 && (
+        <div className="rounded-xl border border-border bg-surface/30 p-3">
+          <div className="mb-2 text-xs font-medium text-subtle">
+            Not on a line yet · {layout.loose.length}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {layout.loose.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => open(t)}
+                className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-surface-2"
+                title={t.title}
+              >
+                {truncate(t.title, 44)}
+                {(t.due_date || t.priority <= 2) && (
+                  <span className="ml-1.5 text-[10px] text-subtle">
+                    {[
+                      t.priority <= 2 ? `P${t.priority}` : null,
+                      t.due_date ? dueLabel(t.due_date, today) : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

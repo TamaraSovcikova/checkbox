@@ -1,9 +1,9 @@
-// Flow layout: the pure layering behind the project Flow tab (shared/flow).
-// Layer by full graph, frontier by blocker status, critical path by estimate,
-// cycles parked instead of hanging.
+// Flow layout v2 (shared/flow): line-first decomposition behind the project
+// Flow tab. Layering over linked tasks, loose tasks split off the canvas,
+// trunk + longest-remaining chains, lane packing, frontier, cycles parked.
 
 import { describe, it, expect } from "vitest";
-import { flowLayout, dateRail, zoneLabel } from "../src/shared/flow";
+import { flowLayout, stepDues } from "../src/shared/flow";
 import type { Task, TaskRef } from "../src/shared/types";
 
 const ref = (t: Task): TaskRef => ({ id: t.id, title: t.title, status: t.status });
@@ -31,7 +31,7 @@ function chain(...ids: string[]): Map<string, Task> {
   return m;
 }
 
-describe("flowLayout layering", () => {
+describe("layering (linked tasks only)", () => {
   it("a linear chain gets one step per task, in order", () => {
     const m = chain("a", "b", "c");
     const l = flowLayout([...m.values()]);
@@ -39,7 +39,6 @@ describe("flowLayout layering", () => {
   });
 
   it("a diamond layers by longest path", () => {
-    // a -> b -> d, a -> c -> d
     const a = task({ id: "a" });
     const b = task({ id: "b", depends_on: [ref(a)] });
     const c = task({ id: "c", depends_on: [ref(a)] });
@@ -51,35 +50,44 @@ describe("flowLayout layering", () => {
     expect(l.stepOf.get("d")).toBe(2);
   });
 
-  it("no dependencies at all: one wide step, sorted by due then priority", () => {
-    const l = flowLayout([
-      task({ id: "later", due_date: "2026-08-01" }),
-      task({ id: "none", priority: 1 }),
-      task({ id: "soon", due_date: "2026-07-25" }),
-    ]);
-    expect(l.steps.length).toBe(1);
-    expect(l.steps[0].map((t) => t.id)).toEqual(["soon", "later", "none"]);
-    expect(l.edges).toEqual([]);
-  });
-
   it("done blockers do NOT move a task's column (paint, not position)", () => {
     const a = task({ id: "a", status: "done" });
     const b = task({ id: "b", depends_on: [ref(a)] });
     const l = flowLayout([a, b]);
     expect(l.stepOf.get("b")).toBe(1);
   });
+});
 
-  it("a dep pointing outside the set affects frontier but not layout", () => {
+describe("the loose pool", () => {
+  it("tasks with no edges stay OFF the map, sorted by due then priority", () => {
+    const l = flowLayout([
+      task({ id: "later", due_date: "2026-08-01" }),
+      task({ id: "none", priority: 1 }),
+      task({ id: "soon", due_date: "2026-07-25" }),
+    ]);
+    expect(l.steps).toEqual([]);
+    expect(l.lines).toEqual([]);
+    expect(l.loose.map((t) => t.id)).toEqual(["soon", "later", "none"]);
+    expect(l.frontier.size).toBe(0);
+  });
+
+  it("a dep pointing outside the set does not make a task linked", () => {
     const outside: TaskRef = { id: "elsewhere", title: "x", status: "todo" };
     const t = task({ id: "t", depends_on: [outside] });
     const l = flowLayout([t]);
-    expect(l.stepOf.get("t")).toBe(0);
-    expect(l.frontier.has("t")).toBe(false);
+    expect(l.loose.map((x) => x.id)).toEqual(["t"]);
     expect(l.edges).toEqual([]);
+  });
+
+  it("linked and loose split cleanly in a mixed project", () => {
+    const m = chain("a", "b");
+    const l = flowLayout([...m.values(), task({ id: "island" })]);
+    expect(l.loose.map((t) => t.id)).toEqual(["island"]);
+    expect(l.steps.flat().map((t) => t.id).sort()).toEqual(["a", "b"]);
   });
 });
 
-describe("flowLayout frontier", () => {
+describe("frontier", () => {
   it("open with all blockers done = frontier; any open blocker = not", () => {
     const a = task({ id: "a", status: "done" });
     const b = task({ id: "b", depends_on: [ref(a)] });
@@ -90,15 +98,16 @@ describe("flowLayout frontier", () => {
     expect(l.frontier.has("c")).toBe(false);
   });
 
-  it("no blockers and open = frontier", () => {
-    const l = flowLayout([task({ id: "solo" })]);
-    expect(l.frontier.has("solo")).toBe(true);
+  it("an open chain head with no blockers is frontier", () => {
+    const m = chain("a", "b");
+    const l = flowLayout([...m.values()]);
+    expect(l.frontier.has("a")).toBe(true);
+    expect(l.frontier.has("b")).toBe(false);
   });
 });
 
-describe("flowLayout critical path", () => {
+describe("critical path", () => {
   it("no estimates anywhere: longest chain by hops wins", () => {
-    // a -> b -> c (3 hops) vs x -> y (2 hops)
     const m = chain("a", "b", "c");
     const n = chain("x", "y");
     const l = flowLayout([...m.values(), ...n.values()]);
@@ -108,7 +117,7 @@ describe("flowLayout critical path", () => {
   });
 
   it("with estimates, a heavier short chain beats a longer light one", () => {
-    const m = chain("a", "b", "c"); // 30 + 30 + 30 default weights
+    const m = chain("a", "b", "c");
     const x = task({ id: "x", time_estimate_min: 120 });
     const y = task({ id: "y", time_estimate_min: 120, depends_on: [ref(x)] });
     const l = flowLayout([...m.values(), x, y]);
@@ -124,20 +133,81 @@ describe("flowLayout critical path", () => {
   });
 });
 
-describe("flowLayout cycles", () => {
-  it("a 3-cycle parks its members past the last honest step, badged", () => {
+describe("line decomposition and lane packing", () => {
+  it("trunk is the critical chain, in step order, on lane 0", () => {
+    const m = chain("a", "b", "c");
+    const l = flowLayout([...m.values()]);
+    expect(l.lines[0].ids).toEqual(["a", "b", "c"]);
+    expect(l.lines[0].lane).toBe(0);
+    expect(l.lines[0].color).toBe(-1);
+  });
+
+  it("the longest remaining chain becomes the next line on the nearest lane", () => {
+    const trunk = chain("a", "b", "c", "d");
+    const branch = chain("e", "f");
+    const l = flowLayout([...trunk.values(), ...branch.values()]);
+    expect(l.lines.length).toBe(2);
+    expect(l.lines[1].ids).toEqual(["e", "f"]);
+    expect(l.lines[1].lane).toBe(-1);
+    expect(l.lines[1].color).toBe(0);
+  });
+
+  it("a short line PACKS onto an occupied lane when their step ranges are disjoint", () => {
+    // Trunk a->b->c->d (steps 0-3). Branch e->f spans steps 0-1 on lane -1.
+    // Single g hangs off c (step 3): fits lane -1 beyond the branch's range.
+    const trunk = chain("a", "b", "c", "d");
+    const branch = chain("e", "f");
+    const g = task({ id: "g", depends_on: [ref(trunk.get("c")!)] });
+    const l = flowLayout([...trunk.values(), ...branch.values(), g]);
+    expect(l.laneOf.get("e")).toBe(-1);
+    expect(l.laneOf.get("g")).toBe(-1);
+    // ...and the two share a lane but are different lines with different colors.
+    const lineE = l.lines[l.lineOf.get("e")!];
+    const lineG = l.lines[l.lineOf.get("g")!];
+    expect(lineE).not.toBe(lineG);
+    expect(lineE.color).not.toBe(lineG.color);
+  });
+
+  it("overlapping ranges spill to the next lane instead of packing", () => {
+    const trunk = chain("a", "b", "c");
+    const b1 = chain("e", "f"); // steps 0-1
+    const b2 = chain("x", "y"); // steps 0-1 too
+    const l = flowLayout([...trunk.values(), ...b1.values(), ...b2.values()]);
+    const lanes = [l.laneOf.get("e"), l.laneOf.get("x")];
+    expect(lanes).toContain(-1);
+    expect(lanes).toContain(1);
+  });
+
+  it("every linked task lands on exactly one line", () => {
+    const trunk = chain("a", "b", "c");
+    const g = task({ id: "g", depends_on: [ref(trunk.get("a")!)] });
+    const h = task({ id: "h", depends_on: [ref(trunk.get("b")!)] });
+    const l = flowLayout([...trunk.values(), g, h]);
+    const onLines = l.lines.flatMap((ln) => ln.ids).sort();
+    expect(onLines).toEqual(["a", "b", "c", "g", "h"]);
+  });
+});
+
+describe("cycles", () => {
+  it("a 3-cycle parks past the last honest step and joins no line as a chain", () => {
     const a = task({ id: "a" });
     const b = task({ id: "b" });
     const c = task({ id: "c" });
     a.depends_on = [ref(c)];
     b.depends_on = [ref(a)];
     c.depends_on = [ref(b)];
-    const solo = task({ id: "solo" });
-    const l = flowLayout([a, b, c, solo]);
+    const m = chain("x", "y"); // honest steps 0-1
+    const l = flowLayout([a, b, c, ...m.values()]);
     expect(l.cyclic.size).toBe(3);
-    expect(l.stepOf.get("a")).toBe(1); // parked past solo's step 0
+    expect(l.stepOf.get("a")).toBe(2); // parked past y's step 1
     expect(l.frontier.has("a")).toBe(false);
     expect(l.critical.has("a")).toBe(false);
+    // Each cyclic node is its own 1-node line, none painted as trunk.
+    for (const id of ["a", "b", "c"]) {
+      const line = l.lines[l.lineOf.get(id)!];
+      expect(line.ids).toEqual([id]);
+      expect(line.color).not.toBe(-1);
+    }
   });
 
   it("a fully cyclic graph parks everyone at step 0 and does not hang", () => {
@@ -148,42 +218,17 @@ describe("flowLayout cycles", () => {
     const l = flowLayout([a, b]);
     expect(l.cyclic.size).toBe(2);
     expect(l.steps.length).toBe(1);
+    expect(l.lines.every((ln) => ln.color !== -1)).toBe(true);
   });
 });
 
-describe("dateRail", () => {
-  const TODAY = "2026-07-24"; // a Friday
-
-  it("labels weeks and months and merges adjacent equal zones", () => {
-    expect(zoneLabel("2026-07-26", TODAY)).toBe("this week"); // Sunday same ISO week
-    expect(zoneLabel("2026-07-27", TODAY)).toBe("next week"); // Monday
-    expect(zoneLabel("2026-08-09", TODAY)).toBe("August");
+describe("stepDues", () => {
+  it("per-step latest OPEN due date; done tasks and dateless steps yield null", () => {
     const steps = [
-      [task({ due_date: "2026-07-25" })],
-      [task({ due_date: "2026-07-26" })],
-      [task({ due_date: "2026-07-30" })],
+      [task({ due_date: "2026-07-25" }), task({ due_date: "2026-07-30" })],
+      [task({ status: "done", due_date: "2026-08-20" }), task()],
       [task({ due_date: "2026-08-08" })],
     ];
-    expect(dateRail(steps, TODAY)).toEqual([
-      { label: "this week", fromStep: 0, toStep: 1 },
-      { label: "next week", fromStep: 2, toStep: 2 },
-      { label: "August", fromStep: 3, toStep: 3 },
-    ]);
-  });
-
-  it("overdue counts as this week, done tasks and dateless steps carry no label", () => {
-    expect(zoneLabel("2026-07-10", TODAY)).toBe("this week");
-    const steps = [
-      [task({ due_date: "2026-07-25" })],
-      [task({ status: "done", due_date: "2026-08-20" }), task()],
-    ];
-    // Step 1 has no OPEN due date, so the first zone extends over it.
-    expect(dateRail(steps, TODAY)).toEqual([
-      { label: "this week", fromStep: 0, toStep: 1 },
-    ]);
-  });
-
-  it("no dates at all: empty rail", () => {
-    expect(dateRail([[task()], [task()]], TODAY)).toEqual([]);
+    expect(stepDues(steps)).toEqual(["2026-07-30", null, "2026-08-08"]);
   });
 });
