@@ -85,7 +85,16 @@ function Chips({ t, today, overdue }: { t: Task; today: string; overdue: boolean
 // measuring effect, and loops React into error #185.
 const NO_TASKS: Task[] = [];
 
-export function ProjectFlow({ project }: { project: Project }) {
+// `compact` is the Flow PAGE's rendering: canvas only, shelves collapsed to a
+// one-line count (the full shelves live on the project's own tab), and no
+// per-section legend (the page draws one legend for all sections).
+export function ProjectFlow({
+  project,
+  compact = false,
+}: {
+  project: Project;
+  compact?: boolean;
+}) {
   const { open } = useTaskUI();
   const today = todayStr();
   const openTasks = useTasks({ project_id: project.id }).data ?? NO_TASKS;
@@ -151,8 +160,20 @@ export function ProjectFlow({ project }: { project: Project }) {
 
   const tasksCount = openTasks.length + doneToday.length;
   if (tasksCount === 0) {
-    return <p className="mt-6 text-sm text-subtle">No tasks in this project yet.</p>;
+    return (
+      <p className={cn("text-sm text-subtle", compact ? "mt-1" : "mt-6")}>
+        No tasks in this project yet.
+      </p>
+    );
   }
+  const shelfSummary = [
+    layout.adhoc.length > 0 ? `${layout.adhoc.length} anytime` : null,
+    layout.names.length > 0
+      ? `${layout.names.length} just name${layout.names.length === 1 ? "" : "s"}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const hasFlow = layout.slots.length > 0;
   const focusTouches = (e: EdgeGeom) => focus != null && (e.from === focus || e.to === focus);
@@ -264,21 +285,23 @@ export function ProjectFlow({ project }: { project: Project }) {
                 </div>
               ))}
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-subtle">
-              <span>
-                <span
-                  className="mr-1.5 inline-block h-2.5 w-2.5 rounded-[3px] border"
-                  style={{ borderColor: "var(--success, #34d399)" }}
-                />
-                green = work on it now (overdue is a flag, not a place)
-              </span>
-              <span className="opacity-80">dimmed = waiting · says after what</span>
-              <span>
-                <span className="mr-1.5 inline-block h-[5px] w-6 rounded bg-primary align-middle" />
-                spine
-              </span>
-              <span>crossed out = completed today, gone tomorrow</span>
-            </div>
+            {!compact && (
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-subtle">
+                <span>
+                  <span
+                    className="mr-1.5 inline-block h-2.5 w-2.5 rounded-[3px] border"
+                    style={{ borderColor: "var(--success, #34d399)" }}
+                  />
+                  green = work on it now (overdue is a flag, not a place)
+                </span>
+                <span className="opacity-80">dimmed = waiting · says after what</span>
+                <span>
+                  <span className="mr-1.5 inline-block h-[5px] w-6 rounded bg-primary align-middle" />
+                  spine
+                </span>
+                <span>crossed out = completed today, gone tomorrow</span>
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -290,7 +313,13 @@ export function ProjectFlow({ project }: { project: Project }) {
         )
       )}
 
-      {layout.adhoc.length > 0 && (
+      {compact && shelfSummary && (
+        <p className="text-[10.5px] text-subtle">
+          + {shelfSummary} on the project's own Flow tab
+        </p>
+      )}
+
+      {!compact && layout.adhoc.length > 0 && (
         <div className="rounded-xl border border-border bg-surface/30 p-3">
           <div className="mb-2 text-[10px] font-bold tracking-[0.1em] text-subtle">
             AD-HOC · NOT LINKED TO THE FLOW · SORTED BY DUE, THEN PRIORITY
@@ -301,7 +330,7 @@ export function ProjectFlow({ project }: { project: Project }) {
         </div>
       )}
 
-      {layout.names.length > 0 && (
+      {!compact && layout.names.length > 0 && (
         <div className="rounded-xl border border-border bg-surface/30 p-3">
           <div className="mb-1 text-[10px] font-bold tracking-[0.1em] text-subtle">
             JUST NAMES · NO DATE, NO LINKS · OLDEST FIRST

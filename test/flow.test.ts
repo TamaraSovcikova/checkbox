@@ -4,7 +4,12 @@
 // done-today visibility rather than stored state.
 
 import { describe, it, expect } from "vitest";
-import { runwayLayout, isOverdue } from "../src/shared/flow";
+import {
+  runwayLayout,
+  isOverdue,
+  openUnlocks,
+  readyCountsByProject,
+} from "../src/shared/flow";
 import type { Task, TaskRef } from "../src/shared/types";
 
 const ref = (t: Task): TaskRef => ({ id: t.id, title: t.title, status: t.status });
@@ -192,5 +197,38 @@ describe("isOverdue", () => {
     expect(isOverdue(task({ due_date: "2026-07-25" }), TODAY)).toBe(false);
     expect(isOverdue(task({ due_date: "2026-07-01", status: "done" }), TODAY)).toBe(false);
     expect(isOverdue(task(), TODAY)).toBe(false);
+  });
+});
+
+describe("openUnlocks (the 'unlocks N' chip)", () => {
+  it("counts only still-open dependents", () => {
+    const t = task({
+      id: "t",
+      blocks: [
+        { id: "a", title: "next step", status: "todo" },
+        { id: "b", title: "already finished", status: "done" },
+        { id: "c", title: "in progress", status: "doing" },
+      ],
+    });
+    expect(openUnlocks(t).map((d) => d.id)).toEqual(["a", "c"]);
+    expect(openUnlocks(task())).toEqual([]);
+  });
+});
+
+describe("readyCountsByProject (the Flow page chips)", () => {
+  it("counts open all-blockers-done tasks per project, from one flat list", () => {
+    const doneRef: TaskRef = { id: "old", title: "old", status: "done" };
+    const openRef: TaskRef = { id: "live", title: "live", status: "todo" };
+    const counts = readyCountsByProject([
+      task({ id: "a", project_id: "p1" } as Partial<Task>),
+      task({ id: "b", project_id: "p1", depends_on: [doneRef] } as Partial<Task>),
+      task({ id: "c", project_id: "p1", depends_on: [openRef] } as Partial<Task>),
+      task({ id: "d", project_id: "p2" } as Partial<Task>),
+      task({ id: "e", project_id: "p2", status: "done" } as Partial<Task>),
+      task({ id: "f" } as Partial<Task>), // no project: not counted
+    ]);
+    expect(counts.get("p1")).toBe(2);
+    expect(counts.get("p2")).toBe(1);
+    expect(counts.has(null as unknown as string)).toBe(false);
   });
 });

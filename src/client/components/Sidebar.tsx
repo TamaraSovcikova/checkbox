@@ -31,6 +31,7 @@ import {
   BacklogIcon,
   LogbookIcon,
   CalendarIcon,
+  FlowIcon,
   MailIcon,
   PinsIcon,
   CadenceIcon,
@@ -81,6 +82,7 @@ const TASK_VIEWS: NavDef[] = [
 // by default so the daily nav stays short.
 const PLAN_VIEWS: NavDef[] = [
   { to: "/calendar", label: "Calendar", icon: CalendarIcon },
+  { to: "/flow", label: "Flow", icon: FlowIcon },
 ];
 const REVIEW_VIEWS: NavDef[] = [
   { to: "/review", label: "Weekly review", icon: ReviewIcon },

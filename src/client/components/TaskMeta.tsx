@@ -5,6 +5,7 @@ import { areaColorVar, shouldPill } from "../lib/colors";
 import { PriorityPill } from "./ui";
 import { cn, todayStr, monthAheadStr } from "@/lib/utils";
 import { inTodayView, subtasksDueBy, hasCheckpointDue } from "../lib/today";
+import { openUnlocks } from "../../shared/flow";
 import { dueLabel, isOverdue } from "../lib/due";
 import { useToggleToday } from "../lib/use-toggle-today";
 import { isBlocked, blockedLabel, waitingChip } from "../lib/blocked";
@@ -17,6 +18,7 @@ import {
   SnoozeIcon,
   SubtaskIcon,
   CheckpointIcon,
+  FlowIcon,
 } from "../lib/icons";
 
 // ── The one description of what a task looks like ────────────────────────────
@@ -192,6 +194,20 @@ export function TaskMeta({
         >
           <SubtaskIcon className="h-3 w-3" />
           {subLabel}
+        </span>
+      )}
+      {/* Finishing this task opens those: the flow, visible from any list.
+          Doing the warm-up today is also what unblocks tomorrow's invites,
+          and the row should say so without a trip to the Flow tab. */}
+      {!done && openUnlocks(task).length > 0 && (
+        <span
+          className="inline-flex items-center gap-0.5 text-muted"
+          title={`Unlocks: ${openUnlocks(task)
+            .map((d) => d.title)
+            .join(", ")}`}
+        >
+          <FlowIcon className="h-3 w-3" />
+          unlocks {openUnlocks(task).length}
         </span>
       )}
       {/* A checkpoint pulse is why this long-horizon task is in Today. Says so,

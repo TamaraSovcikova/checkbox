@@ -18,7 +18,7 @@
 // dependent's visible blockers vanish, its depth becomes 0, and it wakes up
 // in the ready line. Migration is a consequence of visibility, not a job.
 
-import type { Task } from "./types";
+import type { Task, TaskRef } from "./types";
 
 export interface FlowEdge {
   from: string; // blocker
@@ -53,6 +53,25 @@ const bySchedule = (a: Task, b: Task) =>
 
 export const isOverdue = (t: Task, today: string) =>
   t.status !== "done" && t.due_date != null && t.due_date < today;
+
+// The still-open tasks this one unlocks. Powers the "unlocks N" chip on task
+// rows: finishing this task opens those. Done dependents are not news.
+export const openUnlocks = (t: Task): TaskRef[] =>
+  (t.blocks ?? []).filter((d) => d.status !== "done");
+
+// Per-project ready counts from ONE flat open-task list, for the Flow page's
+// chip row. Ready here is the same rule the runway uses: open with every
+// blocker done (the refs carry each blocker's status, so no second fetch).
+export function readyCountsByProject(tasks: Task[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const t of tasks) {
+    if (t.project_id == null || t.status === "done") continue;
+    if ((t.depends_on ?? []).every((d) => d.status === "done")) {
+      counts.set(t.project_id, (counts.get(t.project_id) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
 
 export function runwayLayout(tasks: Task[]): RunwayLayout {
   const byId = new Map(tasks.map((t) => [t.id, t]));
