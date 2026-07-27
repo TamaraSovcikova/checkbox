@@ -258,17 +258,21 @@ export function MailInboxPage() {
             )}
           </section>
 
+          {/* Collapsed by default: covered is the done pile, and the page
+              exists to show what still needs a look. The count in the summary
+              keeps the pile visible without spending the scroll on it. */}
           {covered.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
+            <details className="group">
+              <summary className="mb-2 flex cursor-pointer list-none items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-subtle transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+                <span className="transition-transform group-open:rotate-90">›</span>
                 Covered {covered.length}
-              </h2>
+              </summary>
               <div className="space-y-1.5 opacity-80">
                 {covered.map((t) => (
                   <ThreadRow key={t.head.id} {...t} />
                 ))}
               </div>
-            </section>
+            </details>
           )}
         </div>
       )}

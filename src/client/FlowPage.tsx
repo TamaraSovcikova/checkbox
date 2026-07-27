@@ -1,58 +1,65 @@
-// The Flow page: every project's runway on one surface, for the "where does
-// each venture stand" review. A chip row (All / per-project, with green ready
-// counts) filters the stacked sections; each section reuses ProjectFlow in
-// compact mode (canvas only, shelves collapsed to a count line, no repeated
-// legend). All sections render expanded: collapsed-by-default hides the
-// content a page exists to show (the Pins page taught that one).
+// The Flow page: one project's runway at a time, with prev/next arrows and a
+// jump-to-project dropdown. It began as every runway stacked behind a chip
+// wall; with 20+ active projects that was a filter maze, and she asked for a
+// navigator instead. One at a time also means the FULL runway renders here
+// (shelves, names row, legend), identical to the project tab.
+//
+// The arrow keys page between projects. The selection persists per device
+// (viewDefaults["/flow"].flowProject), so the page reopens where you left it.
 
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo } from "react";
 import { Header } from "./components/PageHeader";
 import { ProjectFlow } from "./components/ProjectFlow";
 import { useAreas, useProjects, useTasks, useViewPrefs } from "./lib/queries";
 import { readyCountsByProject } from "../shared/flow";
-import { FlowIcon, ICON_SIZE } from "./lib/icons";
+import {
+  FlowIcon,
+  ICON_SIZE,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+} from "./lib/icons";
 import { areaColorVar } from "./lib/colors";
-import { cn } from "@/lib/utils";
 
 export default function FlowPage() {
   const { data: projects = [] } = useProjects();
   const { data: areas = [] } = useAreas();
-  const { hide } = useViewPrefs();
-  // One flat open-task query feeds every chip count; the sections' own
-  // per-project queries share the cache with the project tabs.
+  const { hide, viewDefault, setViewDefault } = useViewPrefs();
+  // One flat open-task query feeds the ready counts in the dropdown; the
+  // runway's own per-project queries share the cache with the project tabs.
   const allOpen = useTasks({}).data;
   const readyCounts = useMemo(
     () => readyCountsByProject(allOpen ?? []),
     [allOpen]
   );
-  const [sel, setSel] = useState<string>("all");
 
   const active = projects.filter((p) => p.status === "active");
-  const shown = sel === "all" ? active : active.filter((p) => p.id === sel);
-  // A chip pointing at a project that stopped existing falls back to All.
-  if (sel !== "all" && shown.length === 0) setSel("all");
+  const stored = viewDefault("/flow").flowProject;
+  const current =
+    active.find((p) => p.id === stored) ?? (active.length ? active[0] : null);
+  const idx = current ? active.findIndex((p) => p.id === current.id) : -1;
 
-  const chip = (id: string, label: string, count: number | null) => (
-    <button
-      key={id}
-      type="button"
-      onClick={() => setSel(id)}
-      className={cn(
-        "rounded-full border px-2.5 py-1 text-xs transition-colors",
-        sel === id
-          ? "border-border bg-surface-2 text-foreground"
-          : "border-border text-muted hover:bg-surface-2/60 hover:text-foreground"
-      )}
-    >
-      {label}
-      {count != null && count > 0 && (
-        <span className="ml-1.5 font-semibold" style={{ color: "var(--success, #34d399)" }}>
-          {count}
-        </span>
-      )}
-    </button>
-  );
+  const go = (delta: number) => {
+    if (active.length === 0) return;
+    const next = active[(idx + delta + active.length) % active.length];
+    setViewDefault("/flow", { flowProject: next.id });
+  };
+
+  // Arrow keys page between projects, unless focus is in a field or a select
+  // (typing and dropdown navigation must win).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const el = e.target as HTMLElement | null;
+      if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+      if (el?.isContentEditable) return;
+      e.preventDefault();
+      go(e.key === "ArrowLeft" ? -1 : 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  const area = current ? areas.find((a) => a.id === current.area_id) : null;
 
   return (
     <div>
@@ -61,70 +68,60 @@ export default function FlowPage() {
         icon={<FlowIcon className={ICON_SIZE} />}
         menu={[{ label: "Hide this view", onSelect: () => hide("/flow") }]}
         below={
-          <div className="flex flex-wrap items-center gap-1.5">
-            {chip(
-              "all",
-              "All",
-              [...readyCounts.values()].reduce((a, b) => a + b, 0) || null
-            )}
-            {active.map((p) => chip(p.id, p.name, readyCounts.get(p.id) ?? null))}
-          </div>
+          current && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Previous project"
+                title="Previous project (←)"
+                onClick={() => go(-1)}
+                className="grid h-7 w-7 place-items-center rounded-md border border-border text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+              >
+                <ChevronLeftIcon className="h-4 w-4" />
+              </button>
+              <div className="relative flex items-center">
+                <span
+                  className="pointer-events-none absolute left-2.5 h-2 w-2 rounded-full"
+                  style={{ background: areaColorVar(area?.color) }}
+                />
+                <select
+                  value={current.id}
+                  onChange={(e) => setViewDefault("/flow", { flowProject: e.target.value })}
+                  aria-label="Jump to project"
+                  className="h-8 min-w-56 rounded-md border border-input bg-surface pl-6 pr-7 text-sm font-medium text-foreground outline-none focus:border-primary"
+                >
+                  {active.map((p) => {
+                    const n = readyCounts.get(p.id) ?? 0;
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                        {n > 0 ? ` · ${n} ready` : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <button
+                type="button"
+                aria-label="Next project"
+                title="Next project (→)"
+                onClick={() => go(1)}
+                className="grid h-7 w-7 place-items-center rounded-md border border-border text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+              >
+                <ChevronRightIcon className="h-4 w-4" />
+              </button>
+              <span className="text-[11px] text-subtle">
+                {idx + 1} / {active.length}
+              </span>
+            </div>
+          )
         }
       />
 
-      {active.length === 0 && (
+      {current ? (
+        <ProjectFlow key={current.id} project={current} />
+      ) : (
         <p className="mt-6 text-sm text-subtle">No active projects yet.</p>
-      )}
-
-      <div className="space-y-8">
-        {shown.map((p) => {
-          const area = areas.find((a) => a.id === p.area_id);
-          const ready = readyCounts.get(p.id) ?? 0;
-          return (
-            <section key={p.id}>
-              <div className="mb-1 flex items-center gap-2">
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ background: areaColorVar(area?.color) }}
-                />
-                <Link
-                  to={`/project/${p.id}`}
-                  className="text-sm font-semibold text-foreground transition-colors hover:text-primary"
-                >
-                  {p.name}
-                </Link>
-                {ready > 0 && (
-                  <span
-                    className="text-[10.5px] font-semibold"
-                    style={{ color: "var(--success, #34d399)" }}
-                  >
-                    {ready} ready
-                  </span>
-                )}
-              </div>
-              <ProjectFlow project={p} compact />
-            </section>
-          );
-        })}
-      </div>
-
-      {/* One legend for the whole page; the sections skip theirs. */}
-      {shown.length > 0 && (
-        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-subtle">
-          <span>
-            <span
-              className="mr-1.5 inline-block h-2.5 w-2.5 rounded-[3px] border"
-              style={{ borderColor: "var(--success, #34d399)" }}
-            />
-            green = work on it now
-          </span>
-          <span className="opacity-80">dimmed = waiting · says after what</span>
-          <span>
-            <span className="mr-1.5 inline-block h-[5px] w-6 rounded bg-primary align-middle" />
-            spine
-          </span>
-          <span>crossed out = completed today, gone tomorrow</span>
-        </div>
       )}
     </div>
   );

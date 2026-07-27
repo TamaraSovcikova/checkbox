@@ -151,13 +151,21 @@ const sub = (over: Partial<Subtask> = {}): Subtask => ({
 describe("subtasks carry a task into Today", () => {
   const farOff = { due_date: "2026-09-01" }; // the task itself is not due
 
-  it("an open subtask due today or overdue puts the task in the view", () => {
+  it("an open subtask due EXACTLY today puts the task in the view", () => {
     expect(
       inTodayView(task({ ...farOff, subtasks: [sub({ due_date: TODAY })] }), TODAY)
     ).toBe(true);
+  });
+
+  it("an OVERDUE subtask does NOT: past steps are the Overdue view's job", () => {
+    // The EuroMeet lesson: with `<=` here, a step due last Friday resurrected
+    // the parent in Today every morning forever, surviving every Remove.
     expect(
       inTodayView(task({ ...farOff, subtasks: [sub({ due_date: "2026-07-01" })] }), TODAY)
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      hasSubtaskDueToday(task({ ...farOff, subtasks: [sub({ due_date: "2026-07-01" })] }), TODAY)
+    ).toBe(false);
   });
 
   it("a DONE subtask does not, however overdue", () => {
@@ -294,6 +302,14 @@ describe("leaveTodayBody — mixed reasons: clears what it can, snoozes past the
           checkpoint_next: "2026-07-20",
           subtasks: [sub({ due_date: "2026-07-20" })],
         }),
+        TODAY
+      )
+    ).toEqual({ planned_date: null });
+  });
+  it("an OVERDUE subtask does not trigger the snooze either: Remove is final", () => {
+    expect(
+      leaveTodayBody(
+        task({ planned_date: TODAY, subtasks: [sub({ due_date: "2026-07-01" })] }),
         TODAY
       )
     ).toEqual({ planned_date: null });

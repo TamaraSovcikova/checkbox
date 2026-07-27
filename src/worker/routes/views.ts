@@ -53,7 +53,12 @@ const NOT_SNOOZED = "AND (snoozed_until IS NULL OR snoozed_until <= ?)";
 // there (hasSubtaskDueToday on the client), because a task appearing in Today for
 // a reason you cannot see is precisely how a filter becomes a bug report.
 //
-// `<= ?` mirrors the parent rule, which treats overdue as today's problem.
+// STRICTLY `= ?`, unlike the parent's overdue rule: a subtask carries its parent
+// into Today ON ITS DUE DAY ONLY. It used to be `<=`, and a task with a step due
+// last Friday resurrected in Today every morning forever, surviving every
+// "Remove from Today" (each removal only snoozes to tomorrow, and tomorrow the
+// overdue step still matched). Her rule: once removed it stays out; a PAST step
+// is the OVERDUE view's job, and that view carries the parent below.
 // Subtasks carry no user_id; the EXISTS is scoped through the outer task, which
 // does, so this can never reach another user's rows.
 //
@@ -68,7 +73,7 @@ views.get("/today", async (c) => {
             OR (checkpoint_next IS NOT NULL AND checkpoint_next <= ?)
             OR EXISTS (SELECT 1 FROM subtasks s
                         WHERE s.task_id = tasks.id AND s.done = 0
-                          AND s.due_date IS NOT NULL AND s.due_date <= ?))
+                          AND s.due_date IS NOT NULL AND s.due_date = ?))
        ${NOT_SNOOZED}
      ORDER BY due_time IS NULL, due_time, priority`,
     [userId, today, today, today, today, today, today, today]
@@ -88,16 +93,22 @@ views.get("/upcoming", async (c) => {
   );
 });
 
+// Overdue carries a parent with an open PAST-DUE subtask too: when a step's day
+// passes unfinished, the parent moves here from Today (whose subtask clause is
+// strictly same-day). The task row's "N subtasks overdue" chip says why.
 views.get("/overdue", async (c) => {
   const userId = await getUserId(c);
   const today = todayStr();
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
-       AND due_date < ?
+       AND (due_date < ?
+            OR EXISTS (SELECT 1 FROM subtasks s
+                        WHERE s.task_id = tasks.id AND s.done = 0
+                          AND s.due_date IS NOT NULL AND s.due_date < ?))
        ${NOT_SNOOZED}
-     ORDER BY due_date, priority`,
-    [userId, today, today]
+     ORDER BY due_date IS NULL, due_date, priority`,
+    [userId, today, today, today]
   );
 });
 

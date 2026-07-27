@@ -30,8 +30,14 @@ export function subtasksDueBy(task: Task, today: string): Subtask[] {
   );
 }
 
+// Strictly DUE TODAY, unlike subtasksDueBy above: a subtask carries its parent
+// into the Today view on its due day only. Overdue steps used to count too, and
+// a task with a step due last Friday resurrected in Today every morning forever,
+// surviving every Remove (each removal only snoozes to tomorrow). A past step is
+// the Overdue view's job now; the chips above still name it wherever the task
+// shows. Mirrors the server's /views/today; keep the two in sync.
 export const hasSubtaskDueToday = (task: Task, today: string): boolean =>
-  subtasksDueBy(task, today).length > 0;
+  (task.subtasks ?? []).some((s) => !s.done && s.due_date === today);
 
 // A checkpoint pulse is due: the task is in Today to be marked on track. Like a
 // subtask due, this is not a reason leaveTodayBody can clear outright (the

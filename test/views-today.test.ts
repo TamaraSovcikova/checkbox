@@ -77,6 +77,16 @@ const today = async (): Promise<string[]> => {
   return ((await res.json()) as any[]).map((t) => t.id).sort();
 };
 
+const overdue = async (): Promise<string[]> => {
+  const res = await app.request(
+    "/overdue",
+    { headers: { Authorization: `Bearer ${TOKEN}` } },
+    { DB: d1 } as any
+  );
+  expect(res.status).toBe(200);
+  return ((await res.json()) as any[]).map((t) => t.id).sort();
+};
+
 describe("/views/today with subtasks", () => {
   it("pulls in a task whose SUBTASK is due today, though the task is not", () => {
     task("parent", { due: NEXT_MONTH });
@@ -84,10 +94,21 @@ describe("/views/today with subtasks", () => {
     return expect(today()).resolves.toEqual(["parent"]);
   });
 
-  it("pulls in a task with an OVERDUE subtask", () => {
+  it("does NOT pull in a task with an OVERDUE subtask: that is /overdue's job", async () => {
+    // The EuroMeet lesson: overdue steps resurrected the parent in Today every
+    // morning forever, surviving every Remove (which only snoozes a day).
     task("parent", { due: NEXT_MONTH });
     subtask("s1", "parent", LAST_WEEK);
-    return expect(today()).resolves.toEqual(["parent"]);
+    await expect(today()).resolves.toEqual([]);
+    await expect(overdue()).resolves.toEqual(["parent"]);
+  });
+
+  it("/overdue ignores DONE past subtasks and future ones", async () => {
+    task("a", { due: NEXT_MONTH });
+    subtask("s1", "a", LAST_WEEK, true);
+    task("b", { due: NEXT_MONTH });
+    subtask("s2", "b", TOMORROW);
+    await expect(overdue()).resolves.toEqual([]);
   });
 
   it("ignores a DONE subtask, however overdue", () => {
