@@ -1,5 +1,7 @@
 import { useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { api } from "./lib/api";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Project, Task, TriageSuggestion } from "../shared/types";
@@ -1109,6 +1111,7 @@ export function AreaPage() {
 export function ProjectPage() {
   const { id = "" } = useParams();
   const { open } = useTaskUI();
+  const qc = useQueryClient();
   const { data: projects = [] } = useProjects();
   const { data: areas = [] } = useAreas();
   const { viewDefault, setViewDefault } = useViewPrefs();
@@ -1144,7 +1147,20 @@ export function ProjectPage() {
         onTab={setView}
         sort={sortMenu}
         filter={filterMenu}
-        menu={[{ label: "Edit project", onSelect: () => setEdit(true) }]}
+        menu={[
+          { label: "Edit project", onSelect: () => setEdit(true) },
+          {
+            // A star is the manual "this is current" flag: the sidebar's
+            // Starred section and the future dashboard widget read it.
+            label: project.starred ? "Unstar project" : "Star project",
+            onSelect: async () => {
+              await api.updateProject(project.id, {
+                starred: project.starred ? 0 : 1,
+              });
+              qc.invalidateQueries({ queryKey: ["projects"] });
+            },
+          },
+        ]}
         below={
           <div className="space-y-2">
             {/* Projects are always reached through an area, so give the way back. */}

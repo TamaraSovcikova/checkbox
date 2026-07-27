@@ -89,3 +89,31 @@ describe("POST /projects/reorder", () => {
     expect(positions()).toEqual(["A:0"]);
   });
 });
+
+describe("PATCH /projects/:id starred", () => {
+  it("stars and unstars, scoped to the owner", async () => {
+    project("p1", 0);
+    const star = (starred: number, token = TOKEN) =>
+      app.request(
+        "/p1",
+        {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify({ starred }),
+        },
+        { DB: d1 } as any
+      );
+    let res = await star(1);
+    expect(res.status).toBe(200);
+    let row = raw.prepare("SELECT starred FROM projects WHERE id = 'p1'").get() as any;
+    expect(row.starred).toBe(1);
+    res = await star(0);
+    expect(res.status).toBe(200);
+    row = raw.prepare("SELECT starred FROM projects WHERE id = 'p1'").get() as any;
+    expect(row.starred).toBe(0);
+    // Another user cannot star someone else's project.
+    res = await star(1, OTHER_TOKEN);
+    row = raw.prepare("SELECT starred FROM projects WHERE id = 'p1'").get() as any;
+    expect(row.starred).toBe(0);
+  });
+});

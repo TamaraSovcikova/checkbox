@@ -101,6 +101,7 @@ projects.patch("/:id", async (c) => {
     "start_date",
     "due_date",
     "board_columns",
+    "starred",
     "position",
   ].filter((f) => f in body);
   if (allowed.length === 0) return c.json({ error: "no fields" }, 400);

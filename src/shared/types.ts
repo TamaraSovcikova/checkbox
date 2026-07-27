@@ -25,6 +25,7 @@ export interface Project {
   description: string | null;
   goal: string | null;
   status: ProjectStatus;
+  starred: number; // 0/1 (D1 boolean): surfaces in the sidebar's Starred section
   start_date: string | null;
   due_date: string | null;
   board_columns: string[];

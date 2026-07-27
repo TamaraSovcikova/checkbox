@@ -1710,7 +1710,7 @@ async function handleTool(
       if (Array.isArray(patch.board_columns)) patch.board_columns = JSON.stringify(patch.board_columns);
       const fields = [
         "name", "area_id", "description", "goal", "status",
-        "start_date", "due_date", "board_columns",
+        "start_date", "due_date", "board_columns", "starred",
       ].filter((f) => f in patch);
       if (!fields.length) return text("No fields to update.");
       const set = fields.map((f) => `${f} = ?`).join(", ");

@@ -175,6 +175,34 @@ function NavItem({
   );
 }
 
+// A starred project's sidebar row: straight to the project, area-tinted dot.
+function StarredLink({
+  project,
+  color,
+}: {
+  project: { id: string; name: string };
+  color: string;
+}) {
+  const closeNav = useSidebarNav();
+  return (
+    <NavLink
+      to={`/project/${project.id}`}
+      onClick={closeNav}
+      className={({ isActive }) =>
+        cn(
+          "flex items-center gap-2 truncate rounded-md px-2 py-1.5 text-sm transition-colors",
+          isActive
+            ? "bg-surface-2 text-foreground"
+            : "text-muted hover:bg-surface-2/60 hover:text-foreground"
+        )
+      }
+    >
+      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
+      <span className="truncate">{project.name}</span>
+    </NavLink>
+  );
+}
+
 function AreaNode({ area }: { area: Area }) {
   const { id, name } = area;
   const closeNav = useSidebarNav();
@@ -379,9 +407,12 @@ function ProfileCard() {
 // stretch to fill a flex-column parent (both provide h-full).
 function SidebarInner() {
   const { data: areas = [] } = useAreas();
+  const { data: allProjects = [] } = useProjects();
   const { data: labels = [] } = useLabels();
   const { data: savedFilters = [] } = useSavedFilters();
   const { data: overdue = [] } = useView("overdue");
+  // The hand-picked current shortlist; stars are set from a project's ... menu.
+  const starred = allProjects.filter((p) => !!p.starred && p.status === "active");
   const { online, pending } = useOnlineStatus();
   const { hide, show, isHidden } = useViewPrefs();
   // Collapsed "More" group, remembered per browser. Default closed: these are
@@ -527,6 +558,24 @@ function SidebarInner() {
               );
             })}
           </div>
+        )}
+
+        {/* Starred projects: the current shortlist, one click from anywhere.
+            Renders only when at least one star exists, so the sidebar spends
+            no height on an empty concept. */}
+        {starred.length > 0 && (
+          <>
+            <div className="mt-5" />
+            <SectionHeader title="Starred" />
+            <div className="space-y-0.5">
+              {starred.map((p) => {
+                const area = areas.find((a) => a.id === p.area_id);
+                return (
+                  <StarredLink key={p.id} project={p} color={areaColorVar(area?.color)} />
+                );
+              })}
+            </div>
+          </>
         )}
 
         {/* Areas */}
