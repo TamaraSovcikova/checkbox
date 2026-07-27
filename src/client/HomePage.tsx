@@ -14,7 +14,13 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { GridLayout, useContainerWidth, noCompactor, type Layout } from "react-grid-layout";
+import {
+  GridLayout,
+  useContainerWidth,
+  noCompactor,
+  type Compactor,
+  type Layout,
+} from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import { Header } from "./components/PageHeader";
 import { TodayTimeline } from "./components/TodayTimeline";
@@ -361,79 +367,136 @@ function renderWidget(key: string): ReactNode {
 }
 
 // ── The add-anything picker ──────────────────────────────────────────────────
+// Rendered as a floating menu: from the + button, or from a right-click
+// anywhere on the canvas (which also remembers WHERE you clicked, so the
+// widget lands under the cursor). The permanent config strip this replaces
+// was her words: "terrible".
 
-function AddPicker({ onAdd }: { onAdd: (key: string, w: number, h: number) => void }) {
+function PickerMenu({
+  at,
+  onAdd,
+  onClose,
+}: {
+  at: { x: number; y: number };
+  onAdd: (key: string, w: number, h: number) => void;
+  onClose: () => void;
+}) {
   const { data: projects = [] } = useProjects();
   const { data: areas = [] } = useAreas();
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
   const match = (s: string) => !needle || s.toLowerCase().includes(needle);
 
-  const section = (label: string, rows: ReactNode[]) =>
-    rows.length > 0 && (
-      <div>
-        <p className="mb-1 mt-2 text-[10px] font-bold uppercase tracking-wide text-subtle">{label}</p>
-        <div className="flex flex-wrap gap-1.5">{rows}</div>
-      </div>
-    );
-
-  const chip = (key: string, label: string, w: number, h: number, title?: string) => (
+  const row = (key: string, label: string, w: number, h: number, desc?: string) => (
     <button
       key={key}
       type="button"
-      title={title}
-      onClick={() => onAdd(key, w, h)}
-      className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+      title={desc}
+      onClick={() => {
+        onAdd(key, w, h);
+        onClose();
+      }}
+      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
     >
-      <AddIcon className="h-3 w-3" />
-      {label}
+      <AddIcon className="h-3 w-3 shrink-0" />
+      <span className="truncate">{label}</span>
     </button>
   );
 
+  const section = (label: string, rows: ReactNode[]) =>
+    rows.length > 0 && (
+      <div key={label}>
+        <p className="mb-0.5 mt-2 px-2 text-[10px] font-bold uppercase tracking-wide text-subtle">
+          {label}
+        </p>
+        {rows}
+      </div>
+    );
+
+  const left = Math.min(at.x, window.innerWidth - 300);
+  const top = Math.min(at.y, window.innerHeight - 380);
+
   return (
-    <div className="rounded-xl border border-dashed border-border p-3">
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Filter: a project, an area, a view..."
-        className="mb-1 h-8 w-full max-w-sm rounded-md border border-input bg-surface px-2.5 text-xs text-foreground outline-none focus:border-primary"
-      />
-      {section(
-        "Widgets",
-        SPECIALS.filter((s) => match(s.title)).map((s) => chip(s.key, s.title, s.w, s.h, s.desc))
-      )}
-      {section(
-        "Views",
-        PINNABLE_VIEWS.filter((v) => match(VIEW_TITLES[v])).map((v) =>
-          chip(`view:${v}`, VIEW_TITLES[v], 4, 4)
-        )
-      )}
-      {section(
-        "Projects",
-        projects
-          .filter((p) => p.status === "active" && match(p.name))
-          .map((p) => chip(`project:${p.id}`, p.name, 4, 4))
-      )}
-      {section(
-        "Areas",
-        areas.filter((a) => match(a.name)).map((a) => chip(`area:${a.id}`, a.name, 4, 4))
-      )}
-    </div>
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} />
+      <div
+        style={{ left, top }}
+        className="fixed z-50 w-72 rounded-xl border border-border bg-surface p-2 shadow-xl"
+      >
+        <input
+          autoFocus
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === "Escape" && onClose()}
+          placeholder="Add: widget, project, area, view..."
+          className="mb-1 h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs text-foreground outline-none focus:border-primary"
+        />
+        <div className="max-h-72 overflow-y-auto">
+          {section(
+            "Widgets",
+            SPECIALS.filter((sp) => match(sp.title)).map((sp) => row(sp.key, sp.title, sp.w, sp.h, sp.desc))
+          )}
+          {section(
+            "Views",
+            PINNABLE_VIEWS.filter((v) => match(VIEW_TITLES[v])).map((v) =>
+              row(`view:${v}`, VIEW_TITLES[v], 4, 4)
+            )
+          )}
+          {section(
+            "Projects",
+            projects
+              .filter((p) => p.status === "active" && match(p.name))
+              .map((p) => row(`project:${p.id}`, p.name, 4, 4))
+          )}
+          {section(
+            "Areas",
+            areas.filter((a) => match(a.name)).map((a) => row(`area:${a.id}`, a.name, 4, 4))
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
 // ── The page ─────────────────────────────────────────────────────────────────
 
 const ROW_H = 72;
+const GRID_MARGIN = 12;
+
+// Free placement, and dragging one card moves ONLY that card: a drop that
+// would land on another card snaps back instead of shoving the neighbourhood
+// around (noCompactor alone pushes colliding items, which read as "boxes fly
+// around randomly").
+const freeCompactor: Compactor = { ...noCompactor, preventCollision: true };
+
+const overlaps = (
+  a: { x: number; y: number; w: number; h: number },
+  b: { x?: number; y?: number; w?: number; h?: number }
+) =>
+  a.x < (b.x ?? 0) + (b.w ?? 1) &&
+  (b.x ?? 0) < a.x + a.w &&
+  a.y < (b.y ?? 0) + (b.h ?? 1) &&
+  (b.y ?? 0) < a.y + a.h;
 
 export default function HomePage() {
   const { hide, dashboard, setDashboard } = useViewPrefs();
-  const [editing, setEditing] = useState(false);
+  // Editing works on a DRAFT and persists once on Done. Saving every drag
+  // step fed the grid its own layout mid-gesture and made cards jump.
+  const [draft, setDraft] = useState<DashboardItem[] | null>(null);
+  const [picker, setPicker] = useState<{ x: number; y: number; cell?: { x: number; y: number } } | null>(null);
   const { width, containerRef, mounted } = useContainerWidth();
 
-  const items = useMemo(() => migrate(dashboard ?? DEFAULT_LAYOUT), [dashboard]);
+  const saved = useMemo(() => migrate(dashboard ?? DEFAULT_LAYOUT), [dashboard]);
+  const editing = draft !== null;
+  const items = draft ?? saved;
 
-  // Stable per-position ids: the same widget can be pinned twice.
+  const startEditing = () => setDraft(saved);
+  const cancelEditing = () => setDraft(null);
+  const doneEditing = () => {
+    if (draft) setDashboard(draft);
+    setDraft(null);
+  };
+
   const gridLayout: Layout = items.map((it, i) => ({
     i: `${i}:${it.widget}`,
     x: it.x!,
@@ -442,22 +505,49 @@ export default function HomePage() {
     h: it.h!,
   }));
 
-  // Persist only edits: RGL also calls onLayoutChange on mount and when the
-  // container width settles, and saving those would loop the prefs write.
   const onLayoutChange = (next: Layout) => {
     if (!editing) return;
     const byId = new Map(next.map((l) => [l.i, l]));
-    const merged = items.map((it, i) => {
-      const l = byId.get(`${i}:${it.widget}`);
-      return l ? { ...it, x: l.x, y: l.y, w: l.w, h: l.h } : it;
-    });
-    if (JSON.stringify(merged) !== JSON.stringify(items)) setDashboard(merged);
+    setDraft((cur) =>
+      (cur ?? []).map((it, i) => {
+        const l = byId.get(`${i}:${it.widget}`);
+        return l ? { ...it, x: l.x, y: l.y, w: l.w, h: l.h } : it;
+      })
+    );
   };
 
-  const remove = (i: number) => setDashboard(items.filter((_, k) => k !== i));
+  const apply = (next: DashboardItem[]) => {
+    if (editing) setDraft(next);
+    else setDashboard(next);
+  };
+
+  const remove = (i: number) => apply(items.filter((_, k) => k !== i));
+
+  // Right-click add lands the widget under the cursor; the + button appends
+  // below everything. Either way it never lands on top of an existing card:
+  // nudged down until the spot is free.
   const add = (key: string, w: number, h: number) => {
-    const bottom = items.reduce((m, it) => Math.max(m, (it.y ?? 0) + (it.h ?? 4)), 0);
-    setDashboard([...items, { widget: key, x: 0, y: bottom, w, h }]);
+    let x = 0;
+    let y = items.reduce((m, it) => Math.max(m, (it.y ?? 0) + (it.h ?? 4)), 0);
+    if (picker?.cell) {
+      x = Math.max(0, Math.min(picker.cell.x, 12 - w));
+      y = picker.cell.y;
+      while (items.some((it) => overlaps({ x, y, w, h }, it))) y += 1;
+    }
+    apply([...items, { widget: key, x, y, w, h }]);
+  };
+
+  const onCanvasContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    const wrap = containerRef.current;
+    if (!wrap) return;
+    e.preventDefault();
+    const r = wrap.getBoundingClientRect();
+    const colW = (r.width - GRID_MARGIN * 13) / 12;
+    const cell = {
+      x: Math.max(0, Math.min(11, Math.floor((e.clientX - r.left) / (colW + GRID_MARGIN)))),
+      y: Math.max(0, Math.floor((e.clientY - r.top) / (ROW_H + GRID_MARGIN))),
+    };
+    setPicker({ x: e.clientX, y: e.clientY, cell });
   };
 
   // Mobile reading order: top-left first.
@@ -471,56 +561,34 @@ export default function HomePage() {
         title="Home"
         icon={<HomeIcon className={ICON_SIZE} />}
         menu={[
-          {
-            label: editing ? "Done editing" : "Edit dashboard",
-            onSelect: () => setEditing((e) => !e),
-          },
+          editing
+            ? { label: "Done editing", onSelect: doneEditing }
+            : { label: "Edit dashboard", onSelect: startEditing },
           { label: "Hide this view", onSelect: () => hide("/home") },
         ]}
       />
 
-      {editing && (
-        <div className="mb-3 space-y-2">
-          <div className="flex items-center gap-2 text-xs text-muted">
-            <span className="font-medium text-foreground">Editing</span>
-            <span>drag a card anywhere · resize from its corner · ✕ removes</span>
-            <button
-              type="button"
-              onClick={() => setEditing(false)}
-              className="ml-auto rounded-md bg-surface-2 px-2.5 py-1 font-medium text-foreground"
-            >
-              Done
-            </button>
-          </div>
-          <AddPicker onAdd={add} />
-        </div>
-      )}
-
       {items.length === 0 ? (
         <div className="mt-8 text-center text-sm text-subtle">
-          <p className="mb-3">An empty dashboard. Open Edit and add your first widget.</p>
-          {!editing && (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-surface-2"
-            >
-              Edit dashboard
-            </button>
-          )}
+          <p className="mb-3">An empty dashboard. Right-click anywhere, or:</p>
+          <button
+            type="button"
+            onClick={(e) => setPicker({ x: e.clientX, y: e.clientY })}
+            className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-surface-2"
+          >
+            + Add a widget
+          </button>
         </div>
       ) : (
         <>
-          {/* Desktop: the free grid. */}
-          <div ref={containerRef} className="hidden md:block">
+          {/* Desktop: the free canvas. Right-click adds a widget at the spot. */}
+          <div ref={containerRef} onContextMenu={onCanvasContextMenu} className="hidden min-h-[60vh] md:block">
             {mounted && width > 0 && (
               <GridLayout
                 layout={gridLayout}
                 width={width}
-                gridConfig={{ cols: 12, rowHeight: ROW_H, margin: [12, 12] }}
-                // Free placement: no auto-compaction, so a card stays exactly
-                // where she drops it, gaps and all.
-                compactor={noCompactor}
+                gridConfig={{ cols: 12, rowHeight: ROW_H, margin: [GRID_MARGIN, GRID_MARGIN] }}
+                compactor={freeCompactor}
                 dragConfig={{ enabled: editing, cancel: "a,button,input,select,textarea" }}
                 resizeConfig={{ enabled: editing }}
                 onLayoutChange={onLayoutChange}
@@ -562,6 +630,38 @@ export default function HomePage() {
             ))}
           </div>
         </>
+      )}
+
+      {/* Floating edit controls: the whole editing surface is the canvas
+          itself plus this pill. No permanent config strip. */}
+      {editing && (
+        <div className="fixed bottom-5 right-5 z-40 flex items-center gap-1.5 rounded-full border border-border bg-surface px-2 py-1.5 shadow-lg">
+          <button
+            type="button"
+            onClick={(e) => setPicker({ x: e.clientX - 260, y: e.clientY - 380 })}
+            className="rounded-full px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-surface-2"
+          >
+            + Add
+          </button>
+          <button
+            type="button"
+            onClick={cancelEditing}
+            className="rounded-full px-2.5 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={doneEditing}
+            className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+          >
+            Done
+          </button>
+        </div>
+      )}
+
+      {picker && (
+        <PickerMenu at={picker} onAdd={add} onClose={() => setPicker(null)} />
       )}
     </div>
   );
