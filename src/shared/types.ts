@@ -255,12 +255,18 @@ export interface ViewDefault {
 }
 
 // Per-user view preferences (stored as JSON on the users row).
-// One widget on the Home dashboard: what it is, how wide it renders, and any
-// widget-specific settings (M2: which card, which projects).
+// One widget on the Home dashboard. `widget` is a key ("today", "cadences") or
+// a pinned thing ("view:backlog", "project:<id>", "area:<id>"). x/y/w/h are
+// free-grid coordinates on the 12-column canvas (drag + resize); items saved
+// before the free grid carry only `size`, which the client migrates on read.
 export interface DashboardItem {
   widget: string;
-  size: "S" | "M" | "L";
+  size?: "S" | "M" | "L"; // legacy width hint, superseded by w/h
   config?: Record<string, unknown>;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
 }
 
 export interface UserPrefs {

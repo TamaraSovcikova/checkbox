@@ -49,23 +49,29 @@ const get = async () => {
 };
 
 describe("prefs dashboard roundtrip", () => {
-  it("survives save and load, dropping malformed entries", async () => {
+  it("survives save and load, dropping what is malformed", async () => {
     const res = await put({
       hiddenViews: [],
       viewOrder: [],
       dashboard: [
-        { widget: "today", size: "M" },
+        { widget: "today", x: 0, y: 0, w: 6, h: 4 },
         { widget: "starred", size: "S", config: { limit: 3 } },
-        { widget: "bad-size", size: "XL" }, // dropped
+        // A bad size is stripped but the widget survives (size is optional
+        // since the free grid; unknown keys render a placeholder client-side).
+        { widget: "odd", size: "XL" },
         { size: "M" }, // dropped: no widget
         "garbage", // dropped
+        // Out-of-range coordinates are stripped field-by-field.
+        { widget: "view:backlog", x: -2, y: 3, w: 99, h: 4 },
       ],
     });
     expect(res.status).toBe(200);
     const loaded = await get();
     expect(loaded.dashboard).toEqual([
-      { widget: "today", size: "M" },
+      { widget: "today", x: 0, y: 0, w: 6, h: 4 },
       { widget: "starred", size: "S", config: { limit: 3 } },
+      { widget: "odd" },
+      { widget: "view:backlog", y: 3, h: 4 },
     ]);
   });
 

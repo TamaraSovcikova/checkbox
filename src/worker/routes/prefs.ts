@@ -30,18 +30,36 @@ const cleanStrings = (v: unknown): string[] =>
 // so "never customised" is distinguishable from "removed everything".
 function cleanDashboard(v: unknown): UserPrefs["dashboard"] {
   if (!Array.isArray(v)) return undefined;
+  // Grid coordinates: non-negative integers, spans at least 1 and at most the
+  // 12-column canvas, y capped so a corrupt value cannot make a mile-tall page.
+  const coord = (n: unknown, min: number, max: number): number | undefined =>
+    typeof n === "number" && Number.isInteger(n) && n >= min && n <= max
+      ? n
+      : undefined;
   const items = v.filter(
-    (x): x is { widget: string; size: "S" | "M" | "L"; config?: Record<string, unknown> } =>
-      !!x &&
-      typeof x === "object" &&
-      typeof (x as any).widget === "string" &&
-      ["S", "M", "L"].includes((x as any).size)
+    (x): x is Record<string, unknown> =>
+      !!x && typeof x === "object" && typeof (x as any).widget === "string"
   );
-  return items.map((x) => ({
-    widget: x.widget,
-    size: x.size,
-    ...(x.config && typeof x.config === "object" ? { config: x.config } : {}),
-  }));
+  return items.map((x) => {
+    const size = ["S", "M", "L"].includes(x.size as string)
+      ? (x.size as "S" | "M" | "L")
+      : undefined;
+    const out: NonNullable<UserPrefs["dashboard"]>[number] = {
+      widget: x.widget as string,
+    };
+    if (size) out.size = size;
+    if (x.config && typeof x.config === "object" && !Array.isArray(x.config))
+      out.config = x.config as Record<string, unknown>;
+    const gx = coord(x.x, 0, 11);
+    const gy = coord(x.y, 0, 500);
+    const gw = coord(x.w, 1, 12);
+    const gh = coord(x.h, 1, 40);
+    if (gx !== undefined) out.x = gx;
+    if (gy !== undefined) out.y = gy;
+    if (gw !== undefined) out.w = gw;
+    if (gh !== undefined) out.h = gh;
+    return out;
+  });
 }
 
 function parsePrefs(raw: unknown): UserPrefs {
