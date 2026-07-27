@@ -543,6 +543,12 @@ export function useViewPrefs() {
   };
   const isHidden = (viewKey: string) => prefs.hiddenViews.includes(viewKey);
 
+  // The Home dashboard's layout. Undefined = never customised (the page
+  // renders its default); [] = user removed everything, honoured as-is.
+  const dashboard = prefs.dashboard;
+  const setDashboard = (items: NonNullable<UserPrefs["dashboard"]>) =>
+    save.mutate({ ...prefs, dashboard: items });
+
   // Per-view display defaults (grid/sort/group). Merges into the same prefs blob
   // so a write never drops hiddenViews/viewOrder.
   const viewDefault = (viewKey: string): ViewDefault =>
@@ -602,6 +608,8 @@ export function useViewPrefs() {
     hide,
     show,
     isHidden,
+    dashboard,
+    setDashboard,
     viewDefault,
     setViewDefault,
     setTriageFallbackArea,

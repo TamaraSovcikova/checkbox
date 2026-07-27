@@ -71,6 +71,10 @@ export {
   Waypoints as FlowIcon,
 } from "lucide-react";
 
+// Home is also an AREA icon below; re-exported under its nav name for the
+// dashboard page without colliding with that import.
+export { Home as HomeIcon } from "lucide-react";
+
 // Curated icon set an area can be tagged with (the picker offers these by name;
 // the DB stores the name string). Kept small + generic so the grid stays scannable.
 import {

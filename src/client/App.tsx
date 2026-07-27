@@ -24,6 +24,7 @@ import { CadencesPage } from "./components/Cadences";
 // initial bundle (capture-first PWA).
 const CalendarPage = lazy(() => import("./CalendarPage"));
 const FlowPage = lazy(() => import("./FlowPage"));
+const HomePage = lazy(() => import("./HomePage"));
 
 // refetchOnWindowFocus is on so switching back to a browser tab (or reopening the
 // PWA) pulls anything added on another device without a manual reload, the whole
@@ -95,6 +96,7 @@ export default function App() {
               <Route path="snoozed" element={<ViewPage name="snoozed" />} />
               <Route path="review" element={<ReviewPage />} />
               <Route path="flow" element={<FlowPage />} />
+              <Route path="home" element={<HomePage />} />
               <Route path="mail" element={<MailInboxPage />} />
               <Route path="pins" element={<PinsPage />} />
               <Route path="cadences" element={<CadencesPage />} />

@@ -255,10 +255,21 @@ export interface ViewDefault {
 }
 
 // Per-user view preferences (stored as JSON on the users row).
+// One widget on the Home dashboard: what it is, how wide it renders, and any
+// widget-specific settings (M2: which card, which projects).
+export interface DashboardItem {
+  widget: string;
+  size: "S" | "M" | "L";
+  config?: Record<string, unknown>;
+}
+
 export interface UserPrefs {
   hiddenViews: string[]; // view keys the user has hidden from the sidebar
   viewOrder: string[]; // optional custom ordering of view keys
   viewDefaults?: Record<string, ViewDefault>; // per-view grid/sort/group memory
+  // The Home dashboard's composition, in render order. Undefined = the default
+  // starter layout (the client owns that default, not the server).
+  dashboard?: DashboardItem[];
   // Catch-all area for backlog tasks triage cannot confidently place.
   triageFallbackAreaId?: string | null;
   // Dim tasks due more than a month out so the far future doesn't pull the eye.

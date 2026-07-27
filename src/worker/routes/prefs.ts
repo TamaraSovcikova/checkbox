@@ -26,6 +26,24 @@ const cleanOnByDefault = (v: unknown): boolean => (v === false ? false : true);
 const cleanStrings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
+// Dashboard layout: keep only well-formed entries. Undefined stays undefined,
+// so "never customised" is distinguishable from "removed everything".
+function cleanDashboard(v: unknown): UserPrefs["dashboard"] {
+  if (!Array.isArray(v)) return undefined;
+  const items = v.filter(
+    (x): x is { widget: string; size: "S" | "M" | "L"; config?: Record<string, unknown> } =>
+      !!x &&
+      typeof x === "object" &&
+      typeof (x as any).widget === "string" &&
+      ["S", "M", "L"].includes((x as any).size)
+  );
+  return items.map((x) => ({
+    widget: x.widget,
+    size: x.size,
+    ...(x.config && typeof x.config === "object" ? { config: x.config } : {}),
+  }));
+}
+
 function parsePrefs(raw: unknown): UserPrefs {
   if (typeof raw !== "string") return { ...EMPTY };
   try {
@@ -41,6 +59,7 @@ function parsePrefs(raw: unknown): UserPrefs {
       hiddenAllDayTitles: cleanStrings(p.hiddenAllDayTitles),
       todayCalendar: cleanOnByDefault(p.todayCalendar),
       todayCadences: p.todayCadences === true,
+      dashboard: cleanDashboard(p.dashboard),
     };
   } catch {
     return { ...EMPTY };
@@ -69,6 +88,7 @@ prefs.put("/", async (c) => {
     hiddenAllDayTitles: cleanStrings(body.hiddenAllDayTitles),
     todayCalendar: cleanOnByDefault(body.todayCalendar),
     todayCadences: body.todayCadences === true,
+    dashboard: cleanDashboard(body.dashboard),
   };
   await c.env.DB.prepare("UPDATE users SET prefs = ? WHERE id = ?")
     .bind(JSON.stringify(clean), userId)

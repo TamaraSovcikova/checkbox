@@ -32,6 +32,7 @@ import {
   LogbookIcon,
   CalendarIcon,
   FlowIcon,
+  HomeIcon,
   MailIcon,
   PinsIcon,
   CadenceIcon,
@@ -69,6 +70,7 @@ const useSidebarNav = () => useContext(SidebarNavContext);
 // "Plan" (no longer a peer of "Overdue"). Settings is gone from the nav, it
 // lives once, in the profile menu at the bottom.
 const TASK_VIEWS: NavDef[] = [
+  { to: "/home", label: "Home", icon: HomeIcon },
   { to: "/today", label: "Today", icon: TodayIcon },
   { to: "/upcoming", label: "Upcoming", icon: UpcomingIcon },
   { to: "/overdue", label: "Overdue", icon: OverdueIcon },
