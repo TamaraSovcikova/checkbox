@@ -158,20 +158,18 @@ function TaskListBody({ tasks, emptyText }: { tasks: Task[]; emptyText: string }
   );
 }
 
-// A read-only kanban in miniature: the same To do / Doing / Done reading as
-// the full board, sized for a widget. Click a card to peek at the task.
-function MiniBoard({ tasks, done }: { tasks: Task[]; done?: Task[] }) {
+// A read-only kanban in miniature: whatever columns the caller prepares,
+// sized for a widget. Click a card to peek at the task.
+function MiniColumns({ cols }: { cols: { label: string; list: Task[]; faded?: boolean }[] }) {
   const today = todayStr();
-  const cols: { label: string; list: Task[]; faded?: boolean }[] = [
-    { label: "To do", list: tasks.filter((t) => t.status === "todo") },
-    { label: "Doing", list: tasks.filter((t) => t.status === "doing") },
-    { label: "Done", list: done ?? tasks.filter((t) => t.status === "done"), faded: true },
-  ];
   return (
-    <div className="grid h-full grid-cols-3 gap-2">
+    <div
+      className="grid h-full gap-2"
+      style={{ gridTemplateColumns: `repeat(${cols.length}, minmax(0, 1fr))` }}
+    >
       {cols.map((c) => (
         <div key={c.label} className="min-h-0 overflow-y-auto">
-          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-subtle">
+          <p className="mb-1 truncate text-[10px] font-bold uppercase tracking-wide text-subtle">
             {c.label} {c.list.length}
           </p>
           <div className={cn("space-y-1", c.faded && "opacity-60")}>
@@ -182,6 +180,19 @@ function MiniBoard({ tasks, done }: { tasks: Task[]; done?: Task[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// The status-shaped board (Today and pinned views).
+function MiniBoard({ tasks, done }: { tasks: Task[]; done?: Task[] }) {
+  return (
+    <MiniColumns
+      cols={[
+        { label: "To do", list: tasks.filter((t) => t.status === "todo") },
+        { label: "Doing", list: tasks.filter((t) => t.status === "doing") },
+        { label: "Done", list: done ?? tasks.filter((t) => t.status === "done"), faded: true },
+      ]}
+    />
   );
 }
 
@@ -373,13 +384,30 @@ function ViewWidget({ name, mode }: { name: string; mode?: string }) {
   );
 }
 
-function ProjectWidget({ id }: { id: string }) {
+function ProjectWidget({ id, mode }: { id: string; mode?: string }) {
   const { data: projects = [] } = useProjects();
   const { data: tasks = [] } = useTasks({ project_id: id });
   const p = projects.find((x) => x.id === id);
+  // The project's OWN columns, same assignment rule as the full ProjectBoard:
+  // a task with no (or a stale) column belongs to the first one; the last
+  // column is the board's done lane and fades like everywhere else.
+  const columns = p?.board_columns ?? [];
+  const board = mode === "board" && columns.length > 0;
+  const colOf = (t: Task) =>
+    t.board_column && columns.includes(t.board_column) ? t.board_column : columns[0];
   return (
     <Shell title={p?.name ?? "(deleted project)"} to={`/project/${id}`}>
-      <TaskListBody tasks={tasks} emptyText="No open tasks." />
+      {board ? (
+        <MiniColumns
+          cols={columns.map((c, i) => ({
+            label: c,
+            list: tasks.filter((t) => colOf(t) === c),
+            faded: i === columns.length - 1,
+          }))}
+        />
+      ) : (
+        <TaskListBody tasks={tasks} emptyText="No open tasks." />
+      )}
     </Shell>
   );
 }
@@ -397,12 +425,13 @@ function AreaWidget({ id }: { id: string }) {
 
 // Widgets whose content has more than one shape. "Especially the view pages":
 // today and any pinned view can render as a list or a mini board.
-export const hasModes = (key: string) => key === "today" || key.startsWith("view:");
+export const hasModes = (key: string) =>
+  key === "today" || key.startsWith("view:") || key.startsWith("project:");
 
 function renderWidget(key: string, config?: Record<string, unknown>): ReactNode {
   const mode = typeof config?.mode === "string" ? config.mode : undefined;
   if (key.startsWith("view:")) return <ViewWidget name={key.slice(5)} mode={mode} />;
-  if (key.startsWith("project:")) return <ProjectWidget id={key.slice(8)} />;
+  if (key.startsWith("project:")) return <ProjectWidget id={key.slice(8)} mode={mode} />;
   if (key.startsWith("area:")) return <AreaWidget id={key.slice(5)} />;
   switch (key) {
     case "today":
