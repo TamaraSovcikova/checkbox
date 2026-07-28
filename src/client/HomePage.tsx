@@ -158,7 +158,52 @@ function TaskListBody({ tasks, emptyText }: { tasks: Task[]; emptyText: string }
   );
 }
 
-function TodayGlance() {
+// A read-only kanban in miniature: the same To do / Doing / Done reading as
+// the full board, sized for a widget. Click a card to peek at the task.
+function MiniBoard({ tasks, done }: { tasks: Task[]; done?: Task[] }) {
+  const today = todayStr();
+  const cols: { label: string; list: Task[]; faded?: boolean }[] = [
+    { label: "To do", list: tasks.filter((t) => t.status === "todo") },
+    { label: "Doing", list: tasks.filter((t) => t.status === "doing") },
+    { label: "Done", list: done ?? tasks.filter((t) => t.status === "done"), faded: true },
+  ];
+  return (
+    <div className="grid h-full grid-cols-3 gap-2">
+      {cols.map((c) => (
+        <div key={c.label} className="min-h-0 overflow-y-auto">
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-subtle">
+            {c.label} {c.list.length}
+          </p>
+          <div className={cn("space-y-1", c.faded && "opacity-60")}>
+            {c.list.map((t) => (
+              <MiniCard key={t.id} t={t} today={today} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MiniCard({ t, today }: { t: Task; today: string }) {
+  const { open } = useTaskUI();
+  return (
+    <button
+      type="button"
+      onClick={() => open(t)}
+      className="block w-full rounded-md border border-border bg-surface px-1.5 py-1 text-left text-[11px] leading-snug text-foreground transition-colors hover:bg-surface-2"
+    >
+      <span className="line-clamp-2">{t.title}</span>
+      {t.due_date && (
+        <span className={cn("mt-0.5 block text-[9.5px]", t.due_date < today ? "text-danger" : "text-subtle")}>
+          {dueLabel(t.due_date, today)}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function TodayGlance({ mode }: { mode?: string }) {
   const { data: open = [] } = useView("today");
   const { data: done = [] } = useView("completed-today");
   const today = todayStr();
@@ -174,10 +219,18 @@ function TodayGlance() {
       <div className="mb-2 text-xs">
         <CapacityLine tasks={open} />
       </div>
-      {top.map((t) => (
-        <TaskLine key={t.id} t={t} today={today} />
-      ))}
-      {open.length === 0 && <p className="text-xs text-subtle">Nothing on the list. Enjoy it.</p>}
+      {mode === "board" ? (
+        <MiniBoard tasks={open} done={done} />
+      ) : (
+        <>
+          {top.map((t) => (
+            <TaskLine key={t.id} t={t} today={today} />
+          ))}
+          {open.length === 0 && (
+            <p className="text-xs text-subtle">Nothing on the list. Enjoy it.</p>
+          )}
+        </>
+      )}
     </Shell>
   );
 }
@@ -306,12 +359,16 @@ function MailWidget() {
   );
 }
 
-function ViewWidget({ name }: { name: string }) {
+function ViewWidget({ name, mode }: { name: string; mode?: string }) {
   const { data: tasks = [] } = useView(name);
   return (
     <Shell title={VIEW_TITLES[name] ?? name} to={`/${name}`}>
       <p className="mb-1.5 text-sm font-semibold text-foreground">{tasks.length}</p>
-      <TaskListBody tasks={tasks} emptyText="Empty." />
+      {mode === "board" ? (
+        <MiniBoard tasks={tasks} />
+      ) : (
+        <TaskListBody tasks={tasks} emptyText="Empty." />
+      )}
     </Shell>
   );
 }
@@ -338,13 +395,18 @@ function AreaWidget({ id }: { id: string }) {
   );
 }
 
-function renderWidget(key: string): ReactNode {
-  if (key.startsWith("view:")) return <ViewWidget name={key.slice(5)} />;
+// Widgets whose content has more than one shape. "Especially the view pages":
+// today and any pinned view can render as a list or a mini board.
+export const hasModes = (key: string) => key === "today" || key.startsWith("view:");
+
+function renderWidget(key: string, config?: Record<string, unknown>): ReactNode {
+  const mode = typeof config?.mode === "string" ? config.mode : undefined;
+  if (key.startsWith("view:")) return <ViewWidget name={key.slice(5)} mode={mode} />;
   if (key.startsWith("project:")) return <ProjectWidget id={key.slice(8)} />;
   if (key.startsWith("area:")) return <AreaWidget id={key.slice(5)} />;
   switch (key) {
     case "today":
-      return <TodayGlance />;
+      return <TodayGlance mode={mode} />;
     case "starred":
       return <Starred />;
     case "overdue":
@@ -522,6 +584,20 @@ export default function HomePage() {
   };
 
   const remove = (i: number) => apply(items.filter((_, k) => k !== i));
+  const cycleMode = (i: number) =>
+    apply(
+      items.map((it, k) =>
+        k === i
+          ? {
+              ...it,
+              config: {
+                ...(it.config ?? {}),
+                mode: (it.config?.mode as string) === "board" ? "list" : "board",
+              },
+            }
+          : it
+      )
+    );
 
   // Right-click add lands the widget under the cursor; the + button appends
   // below everything. Either way it never lands on top of an existing card:
@@ -590,22 +666,34 @@ export default function HomePage() {
                 gridConfig={{ cols: 12, rowHeight: ROW_H, margin: [GRID_MARGIN, GRID_MARGIN] }}
                 compactor={freeCompactor}
                 dragConfig={{ enabled: editing, cancel: "a,button,input,select,textarea" }}
-                resizeConfig={{ enabled: editing }}
+                resizeConfig={{ enabled: editing, handles: ["n", "e", "s", "w", "ne", "nw", "se", "sw"] }}
                 onLayoutChange={onLayoutChange}
               >
                 {items.map((it, i) => (
                   <div key={`${i}:${it.widget}`} className={cn("group/w relative", editing && "select-none")}>
                     {editing && (
-                      <button
-                        type="button"
-                        title="Remove widget"
-                        onClick={() => remove(i)}
-                        className="absolute -right-1.5 -top-1.5 z-20 grid h-5 w-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-sm hover:text-danger"
-                      >
-                        <CloseIcon className="h-3 w-3" />
-                      </button>
+                      <div className="absolute -top-1.5 right-2 z-20 flex items-center gap-1">
+                        {hasModes(it.widget) && (
+                          <button
+                            type="button"
+                            title="Switch list / board"
+                            onClick={() => cycleMode(i)}
+                            className="rounded-full border border-border bg-surface px-1.5 py-0.5 text-[10px] font-semibold text-muted shadow-sm hover:text-foreground"
+                          >
+                            {(it.config?.mode as string) === "board" ? "board" : "list"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          title="Remove widget"
+                          onClick={() => remove(i)}
+                          className="grid h-5 w-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-sm hover:text-danger"
+                        >
+                          <CloseIcon className="h-3 w-3" />
+                        </button>
+                      </div>
                     )}
-                    {renderWidget(it.widget)}
+                    {renderWidget(it.widget, it.config)}
                   </div>
                 ))}
               </GridLayout>
@@ -625,7 +713,7 @@ export default function HomePage() {
                     <CloseIcon className="h-3 w-3" />
                   </button>
                 )}
-                {renderWidget(it.widget)}
+                {renderWidget(it.widget, it.config)}
               </div>
             ))}
           </div>

@@ -2,7 +2,7 @@ import { useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { api } from "./lib/api";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Project, Task, TriageSuggestion } from "../shared/types";
 import {
@@ -31,7 +31,6 @@ import { StalePlanNudge } from "./components/StalePlanNudge";
 import { NotesInbox } from "./components/NotesInbox";
 import { InstallHint } from "./components/InstallHint";
 import { FilterIcon, SnoozeIcon, RepeatIcon } from "./lib/icons";
-import { TodayTimeline } from "./components/TodayTimeline";
 import { isRecurring, isDormant, splitDormantRecurring } from "./lib/recurring";
 import { areaColorVar } from "./lib/colors";
 import { areaIcon } from "./lib/icons";
@@ -40,7 +39,6 @@ import { QuickCapture } from "./components/QuickCapture";
 import { ProjectBoard } from "./components/ProjectBoard";
 import { ProjectFlow } from "./components/ProjectFlow";
 import { TodayBoard } from "./components/TodayBoard";
-import { CadenceStrip } from "./components/Cadences";
 import { TaskRow } from "./components/TaskRow";
 import {
   useTaskSelection,
@@ -60,7 +58,6 @@ import {
   LogbookIcon,
   ChevronRightIcon,
   BackIcon,
-  CadenceIcon,
   ICON_SIZE,
 } from "./lib/icons";
 import { useViewPrefs } from "./lib/queries";
@@ -388,16 +385,10 @@ const RAIL_MAX = 560;
 const clampRail = (n: number) => Math.max(RAIL_MIN, Math.min(RAIL_MAX, Math.round(n)));
 
 function SideRail({
-  showCalendar,
-  showCadences,
   scope,
-  tasks,
   viewKey,
 }: {
-  showCalendar: boolean;
-  showCadences: boolean;
   scope: string;
-  tasks: Task[];
   viewKey: string;
 }) {
   const { viewDefault, setViewDefault } = useViewPrefs();
@@ -433,21 +424,9 @@ function SideRail({
     window.addEventListener("pointerup", up);
   }
 
-  // The "day" pane holds the timeline and/or the cadence strip: cadences live
-  // under the calendar, but turning cadences on with the calendar off should
-  // still show them rather than silently do nothing.
-  const hasDayPane = showCalendar || showCadences;
-
-  if (!hasDayPane && !hasPins) return null;
-
-  // Both panes present: honour the remembered choice, defaulting to the day pane
-  // (the reason the rail is on at all today). Only one: show it, no tabs.
-  const tab: "calendar" | "pins" = !hasDayPane
-    ? "pins"
-    : !hasPins
-    ? "calendar"
-    : def.railTab ?? "calendar";
-  const bothAvailable = hasDayPane && hasPins;
+  // The day pane (timeline + cadences) moved to the Home dashboard, where both
+  // exist as widgets; the rail is now the cards pane alone.
+  if (!hasPins) return null;
 
   return (
     <>
@@ -476,68 +455,7 @@ function SideRail({
         style={{ ["--rail-w" as string]: `${width}px` }}
         className="mt-4 lg:mt-0 lg:w-[var(--rail-w)] lg:shrink-0 lg:self-start lg:sticky lg:top-0 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto"
       >
-      {bothAvailable && (
-        <div className="mb-2 flex overflow-hidden rounded-md border border-border">
-          {(["calendar", "pins"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setViewDefault(viewKey, { railTab: t })}
-              className={cn(
-                "flex-1 px-2 py-1 text-xs font-medium capitalize transition-colors",
-                tab === t
-                  ? "bg-surface-2 text-foreground"
-                  : "text-muted hover:bg-surface-2/60 hover:text-foreground"
-              )}
-            >
-              {t === "pins"
-                ? `Cards ${sidePins.length}`
-                : showCalendar
-                ? "Calendar"
-                : "Cadences"}
-            </button>
-          ))}
-        </div>
-      )}
-      {tab === "calendar" ? (
-        <>
-          {showCalendar && (
-            <TodayTimeline
-              tasks={tasks}
-              full={def.timelineFull === true}
-              onToggleFull={() =>
-                setViewDefault(viewKey, { timelineFull: !(def.timelineFull === true) })
-              }
-            />
-          )}
-          {/* Cadences under the day, when asked for: a glance at who/what is
-              falling behind, next to the schedule. Compact (top few by urgency);
-              the full board is one click away on the Cadences page. Toggled from
-              the view's ... menu. */}
-          {showCadences && (
-            <div
-              className={cn(
-                "rounded-xl border border-border bg-surface/40 p-3",
-                showCalendar && "mt-3"
-              )}
-            >
-              <div className="mb-2 flex items-center gap-1.5">
-                <CadenceIcon className="h-3.5 w-3.5 text-subtle" />
-                <span className="text-xs font-medium text-foreground">Cadences</span>
-                <Link
-                  to="/cadences"
-                  className="ml-auto text-[11px] text-subtle transition-colors hover:text-foreground"
-                >
-                  All
-                </Link>
-              </div>
-              <CadenceStrip limit={5} />
-            </div>
-          )}
-        </>
-      ) : (
-        <PinsSide scope={scope} inline />
-      )}
+      <PinsSide scope={scope} inline />
       </aside>
     </>
   );
@@ -549,8 +467,7 @@ export function ViewPage({ name }: { name: string }) {
   // can't fill, so pull today's completed tasks alongside. Cheap + cached.
   const { data: completedToday = [] } = useView("completed-today");
   const meta = VIEW_META[name];
-  const { hide, todayCalendar, setTodayCalendar, todayCadences, setTodayCadences } =
-    useViewPrefs();
+  const { hide } = useViewPrefs();
   const { view, setView, controls, body, sortMenu, groupMenu, filterMenu } =
     useTaskCollection(`/${name}`, tasks, meta.empty);
   const isToday = name === "today";
@@ -570,21 +487,7 @@ export function ViewPage({ name }: { name: string }) {
         sort={sortMenu}
         group={groupMenu}
         filter={filterMenu}
-        menu={[
-          ...(isToday
-            ? [
-                {
-                  label: todayCalendar ? "Hide calendar" : "Show calendar",
-                  onSelect: () => setTodayCalendar(!todayCalendar),
-                },
-                {
-                  label: todayCadences ? "Hide cadences" : "Show cadences",
-                  onSelect: () => setTodayCadences(!todayCadences),
-                },
-              ]
-            : []),
-          { label: "Hide this view", onSelect: () => hide(`/${name}`) },
-        ]}
+        menu={[{ label: "Hide this view", onSelect: () => hide(`/${name}`) }]}
         below={
           name !== "logbook" ? (
             // Full width, matching the list below it: a capture bar that stopped
@@ -621,13 +524,7 @@ export function ViewPage({ name }: { name: string }) {
             </>
           )}
         </div>
-        <SideRail
-          showCalendar={isToday && todayCalendar}
-          showCadences={isToday && todayCadences}
-          scope={pinScope}
-          tasks={tasks}
-          viewKey={`/${name}`}
-        />
+        <SideRail scope={pinScope} viewKey={`/${name}`} />
       </div>
     </div>
   );
