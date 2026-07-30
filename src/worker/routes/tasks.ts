@@ -269,61 +269,11 @@ tasks.post("/:id/complete", async (c) => {
   const id = c.req.param("id");
   const done = c.req.query("done") !== "0";
 
-  if (done) {
-    const t = await c.env.DB.prepare(
-      `SELECT recurrence, recurrence_mode, due_date, recurrence_until, recurrence_count
-         FROM tasks WHERE id = ? AND user_id = ?`
-    )
-      .bind(id, userId)
-      .first<{
-        recurrence: string | null;
-        recurrence_mode: string | null;
-        due_date: string | null;
-        recurrence_until: string | null;
-        recurrence_count: number | null;
-      }>();
-
-    if (t?.recurrence) {
-      const anchor =
-        t.recurrence_mode === "after_completion"
-          ? todayStr()
-          : t.due_date ?? todayStr();
-      const next = nextDueDate(t.recurrence, anchor);
-      const decision = rollDecision(next, t.recurrence_until, t.recurrence_count);
-      if (decision.kind === "roll") {
-        // Roll forward to the next occurrence AND let go of today: clear the
-        // "work on it today" intent and today's time block, so ticking a
-        // recurring task drops it out of Today rather than having the next
-        // instance cling there. It reappears in Today on its next due day.
-        await c.env.DB.prepare(
-          `UPDATE tasks SET due_date = ?, recurrence_count = ?, status = 'todo',
-             completed_at = NULL, planned_date = NULL, scheduled_start = NULL,
-             scheduled_end = NULL, updated_at = ? WHERE id = ? AND user_id = ?`
-        )
-          .bind(decision.due_date, decision.recurrence_count, now(), id, userId)
-          .run();
-        // reset checklist for the next cycle
-        await c.env.DB.prepare(
-          "UPDATE subtasks SET done = 0 WHERE task_id = ?"
-        )
-          .bind(id)
-          .run();
-        c.executionCtx?.waitUntil(
-          pushTaskToGcal(c.env, id, userId).catch(console.error)
-        );
-        return c.json({ ok: true, recurred: true, due_date: decision.due_date });
-      }
-      // The series ends here (count exhausted or past `until`): strip the
-      // recurrence so the task completes below like a plain task and never
-      // resurrects.
-      await c.env.DB.prepare(
-        `UPDATE tasks SET recurrence = NULL, recurrence_until = NULL,
-           recurrence_count = NULL, updated_at = ? WHERE id = ? AND user_id = ?`
-      )
-        .bind(now(), id, userId)
-        .run();
-    }
-  }
+  // Recurring tasks COMPLETE like any other now: crossed out in today's Done,
+  // counted by the stats, resting until the 06:00 sweep (lib/resurrect) wakes
+  // them as the next occurrence. The old immediate-roll made a finished daily
+  // task vanish and instantly resurface "due tomorrow". Skip-occurrence keeps
+  // the immediate roll: skipping is explicitly about moving the date now.
 
   // Grab the GCal linkage before the status flips: a completed task should not
   // keep occupying the calendar. Without this, every finished task left its event

@@ -203,13 +203,16 @@ export function useTaskSelection(
         case "c":
           e.preventDefault();
           if (cur) {
-            api.completeTask(cur.id, true).then((r) => {
+            api.completeTask(cur.id, true).then(() => {
               invalidate();
-              if (r?.recurred && r.due_date) toast(`Recurring: next ${r.due_date}`);
-              else
-                toast("Completed", () => {
+              toast(
+                cur.recurrence
+                  ? "Done for today · repeats tomorrow morning"
+                  : "Completed",
+                () => {
                   api.completeTask(cur.id, false).then(invalidate);
-                });
+                }
+              );
             });
           }
           break;

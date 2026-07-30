@@ -19,6 +19,7 @@ import {
 } from "../lib/queries";
 import { useTaskUI } from "../lib/ui-context";
 import { AREA_COLORS, areaColorVar } from "../lib/colors";
+import { Markdown } from "../lib/markdown";
 import {
   pinsForScope,
   scopeLabel,
@@ -187,22 +188,44 @@ function PinBody({
   onCommit: () => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Markdown at rest, textarea while editing. The single-element rule above
+  // guarded against a HEIGHT jump (the old preview collapsed to a 2-row
+  // scroller); both sides here auto-grow to their content, so the swap keeps
+  // the height and the caret lands on click-to-edit via autoFocus.
+  const [editing, setEditing] = useState(false);
 
-  // Measured before paint, so the box is never briefly the wrong size.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
+  }, [value, editing]);
+
+  if (!editing && value.trim()) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setEditing(true)}
+        onKeyDown={(e) => e.key === "Enter" && setEditing(true)}
+        className="cursor-text text-[13px] leading-snug text-foreground [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_strong]:font-semibold [&_p+p]:mt-1"
+      >
+        <Markdown text={value} />
+      </div>
+    );
+  }
 
   return (
     <textarea
       ref={ref}
+      autoFocus={editing}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      onBlur={onCommit}
-      placeholder="Your reminder, goal or quote…"
+      onBlur={() => {
+        onCommit();
+        setEditing(false);
+      }}
+      placeholder={'Text… ("- " bullets, **bold**)'}
       rows={1}
       className="w-full resize-none overflow-hidden bg-transparent text-[13px] leading-snug text-foreground outline-none placeholder:text-subtle"
     />
@@ -577,6 +600,50 @@ function PinCard({
         />
       </div>
 
+      {/* Where this pin shows, as one chip (scope + placement together). Only on the Pins
+          page (full card), UNDER the title where it is seen, not buried at the
+          bottom of a long card. The chip reads the current home
+          ("Loose", "Today · top strip") and opens the move menu. */}
+      {!compact && (
+        <div className="mb-1.5">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={cn(
+                  "inline-flex h-6 max-w-full items-center gap-1 truncate rounded-full border px-2 text-[11px] transition-colors",
+                  isLoose(pin)
+                    ? "border-dashed border-border text-subtle hover:text-foreground"
+                    : "border-border bg-surface-2 text-foreground hover:bg-surface"
+                )}
+              >
+                <span className="truncate">{spotLabel(pin, areas)}</span>
+                <ChevronDownIcon className="h-3 w-3 shrink-0 text-subtle" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+              {spotOptions(areas).map((grp, i) => (
+                <div key={grp.group || "nowhere"}>
+                  {i > 0 && <DropdownMenuSeparator />}
+                  {grp.group && <DropdownMenuLabel>{grp.group}</DropdownMenuLabel>}
+                  {grp.options.map((o) => (
+                    <DropdownMenuCheckboxItem
+                      key={o.value}
+                      checked={spotValueOf(pin) === o.value}
+                      onCheckedChange={() => {
+                        const { scope, placement } = decodeSpot(o.value);
+                        update.mutate({ id: pin.id, body: { scope, placement } });
+                      }}
+                    >
+                      {o.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </div>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+
       {/* min-h-0 so this can actually shrink inside the flex column: without it
           a fixed-height pin would be pushed taller by its own content. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -665,49 +732,6 @@ function PinCard({
       )}
       </div>
 
-      {/* Where this pin shows, as one chip (scope + placement together). Only on
-          the Pins page (full card): that is where you organise, and it would be
-          noise on the pin itself in situ. The chip reads the current home
-          ("Loose", "Today · top strip") and opens the move menu. */}
-      {!compact && (
-        <div className="mt-2 border-t border-border pt-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className={cn(
-                  "inline-flex h-6 max-w-full items-center gap-1 truncate rounded-full border px-2 text-[11px] transition-colors",
-                  isLoose(pin)
-                    ? "border-dashed border-border text-subtle hover:text-foreground"
-                    : "border-border bg-surface-2 text-foreground hover:bg-surface"
-                )}
-              >
-                <span className="truncate">{spotLabel(pin, areas)}</span>
-                <ChevronDownIcon className="h-3 w-3 shrink-0 text-subtle" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
-              {spotOptions(areas).map((grp, i) => (
-                <div key={grp.group || "nowhere"}>
-                  {i > 0 && <DropdownMenuSeparator />}
-                  {grp.group && <DropdownMenuLabel>{grp.group}</DropdownMenuLabel>}
-                  {grp.options.map((o) => (
-                    <DropdownMenuCheckboxItem
-                      key={o.value}
-                      checked={spotValueOf(pin) === o.value}
-                      onCheckedChange={() => {
-                        const { scope, placement } = decodeSpot(o.value);
-                        update.mutate({ id: pin.id, body: { scope, placement } });
-                      }}
-                    >
-                      {o.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </div>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      )}
 
       {/* Corner grip. Stays out of the way until you hover the pin. */}
       {resize !== "none" && (
@@ -741,14 +765,30 @@ function PinCard({
 //
 // `placement: "top"` so the new pin lands in the strip at the top of the page and
 // you can see the thing you just made. Side placement is a move away on the card.
+// A pin with nothing in it: no title, no text, no lines. Creating a new card
+// sweeps these first, so walking away from a blank card never leaves litter.
+const isEmptyPin = (p: Pin) =>
+  p.kind !== "tracker" && !p.title && !p.body && (p.items ?? []).length === 0;
+
+function useSweepEmpties() {
+  const { data: pins = [] } = usePins();
+  const del = useDeletePin();
+  return () => pins.filter(isEmptyPin).forEach((p) => del.mutate(p.id));
+}
+
 export function useAddPin(scope: string) {
   const create = useCreatePin();
+  const sweep = useSweepEmpties();
+  const fresh = (body: Partial<Pin>) => {
+    sweep();
+    create.mutate(body);
+  };
   return {
-    addList: () => create.mutate({ kind: "list", placement: "top", scope }),
-    addNote: () => create.mutate({ kind: "note", placement: "top", scope }),
+    addList: () => fresh({ kind: "list", placement: "top", scope }),
+    addNote: () => fresh({ kind: "note", placement: "top", scope }),
     // A cadence card. Placed on the side, where a gauge you glance at belongs,
     // rather than in the top strip competing with the work itself.
-    addTracker: () => create.mutate({ kind: "tracker", placement: "side", scope }),
+    addTracker: () => fresh({ kind: "tracker", placement: "side", scope }),
   };
 }
 
@@ -812,6 +852,7 @@ export function PinsPage() {
   const { data: pins = [] } = usePins();
   const { data: areas = [] } = useAreas();
   const create = useCreatePin();
+  const sweepEmpties = useSweepEmpties();
   const [q, setQ] = useState("");
   // Which chip is active: "all", "loose", or a page scope. Filtering, not
   // collapsible sections: sections hid every card behind bare header rows, so
@@ -881,23 +922,22 @@ export function PinsPage() {
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => create.mutate({ kind: "list", placement: "unpinned" })}
+          onClick={() => {
+            sweepEmpties();
+            create.mutate({ kind: "list", placement: "unpinned" });
+          }}
         >
           <AddIcon className="h-4 w-4" /> New list
         </Button>
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => create.mutate({ kind: "note", placement: "unpinned" })}
+          onClick={() => {
+            sweepEmpties();
+            create.mutate({ kind: "note", placement: "unpinned" });
+          }}
         >
-          <AddIcon className="h-4 w-4" /> New reminder
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => create.mutate({ kind: "tracker", placement: "unpinned" })}
-        >
-          <AddIcon className="h-4 w-4" /> New cadence card
+          <AddIcon className="h-4 w-4" /> New text card
         </Button>
 
         {pins.length > 0 && (

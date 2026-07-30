@@ -160,3 +160,31 @@ export function rollDecision(
   }
   return { kind: "roll", due_date: next, recurrence_count: null };
 }
+
+// The MORNING-BOUNDARY roll. Completing a recurring task used to roll it to
+// its next date immediately, so it never appeared done: it vanished from
+// Today's Done column, never counted in the stats, and resurfaced instantly
+// as "due tomorrow", which read as the app refusing to let it rest. Now
+// completion completes (the task stays crossed out for the rest of the day)
+// and the 06:00 cron calls this to wake it as the next occurrence.
+//
+// One completion consumes ONE occurrence, but the next lands no earlier than
+// today: a daily task completed after a missed week catches up to today
+// instead of grinding through seven stale dates.
+export function resurrectionDecision(
+  recurrence: string,
+  mode: "fixed" | "after_completion" | null,
+  due: string | null,
+  completedDate: string,
+  until: string | null,
+  count: number | null,
+  today: string
+): RollDecision {
+  const anchor = mode === "after_completion" ? completedDate : due ?? completedDate;
+  let next = nextDueDate(recurrence, anchor);
+  let guard = 0;
+  while (next != null && next < today && guard++ < 1000) {
+    next = nextDueDate(recurrence, next);
+  }
+  return rollDecision(next, until, count);
+}

@@ -27,6 +27,7 @@ import { TodayTimeline } from "./components/TodayTimeline";
 import { CapacityLine } from "./components/CapacityLine";
 import { CadenceStrip } from "./components/Cadences";
 import { QuickCapture } from "./components/QuickCapture";
+import { StatsWidget } from "./components/StatsWidget";
 import {
   useAreas,
   useMailCandidates,
@@ -61,6 +62,7 @@ const SPECIALS: { key: string; title: string; desc: string; w: number; h: number
   { key: "cadences", title: "Cadences", desc: "who and what is falling behind", w: 4, h: 4 },
   { key: "capture", title: "Quick capture", desc: "type a task from here, lands in Backlog", w: 6, h: 2 },
   { key: "mail", title: "Mail coverage", desc: "pending threads that need a look", w: 3, h: 3 },
+  { key: "stats", title: "Progress", desc: "done counts, streak, 12-week heatmap", w: 6, h: 3 },
 ];
 
 const PINNABLE_VIEWS = ["upcoming", "backlog", "snoozed", "logbook"] as const;
@@ -448,6 +450,9 @@ function renderWidget(key: string, config?: Record<string, unknown>): ReactNode 
       return <CaptureWidget />;
     case "mail":
       return <MailWidget />;
+    case "stats":
+      // Draws its own card frame, so no Shell around it.
+      return <StatsWidget />;
     default:
       return (
         <div className="h-full rounded-xl border border-dashed border-border p-4 text-xs text-subtle">

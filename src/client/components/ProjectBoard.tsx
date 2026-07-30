@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Project, Task } from "../../shared/types";
-import { useTasks } from "../lib/queries";
+import { useTasks, useToggleSubtask } from "../lib/queries";
 import { TaskRow } from "./TaskRow";
 import { areaTintBg } from "../lib/colors";
+import { SubtaskIcon, ChevronDownIcon, ChevronRightIcon } from "../lib/icons";
 import {
   TaskMeta,
   TodayToggle,
@@ -22,6 +24,13 @@ import { useTaskHover } from "./TaskHoverCard";
 // same task in a list. It used to render its own four-chip subset, which is why
 // `optional` and Today were invisible on any board.
 export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
+  // Subtasks unfold ON the card: a board where every step needs a trip through
+  // the sheet hides half the work. Full titles wrap; the toggle is dnd-safe
+  // (pointer-down stopped, same trick as the Today toggle).
+  const [showSubs, setShowSubs] = useState(false);
+  const toggleSub = useToggleSubtask();
+  const subs = task.subtasks ?? [];
+  const subsDone = subs.filter((s) => s.done).length;
   // Area resolved through the project, so a card is tinted whenever the same task
   // in a list would be. Far-future dimming shared with the row, so a board card
   // and a list row of the same task recede together.
@@ -69,6 +78,51 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
       </div>
       {/* The column heading already says Doing, so the chip would only repeat it. */}
       <TaskMeta task={task} hideDoing />
+      {subs.length > 0 && (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowSubs((v: boolean) => !v);
+          }}
+          className={cn(
+            "mt-1 inline-flex items-center gap-1 text-[11px] transition-colors hover:text-foreground",
+            subsDone === subs.length ? "text-primary" : "text-subtle"
+          )}
+        >
+          <SubtaskIcon className="h-3 w-3" />
+          {subsDone}/{subs.length}
+          {showSubs ? <ChevronDownIcon className="h-3 w-3" /> : <ChevronRightIcon className="h-3 w-3" />}
+        </button>
+      )}
+      {showSubs && subs.length > 0 && (
+        <ul
+          className="mt-1 space-y-1 border-t border-border pt-1.5"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {subs.map((s) => (
+            <li key={s.id} className="flex items-start gap-1.5 text-[12px] leading-snug">
+              <input
+                type="checkbox"
+                checked={s.done}
+                aria-label={s.title}
+                onChange={(e) =>
+                  toggleSub.mutate({ taskId: task.id, subId: s.id, done: e.target.checked })
+                }
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 [accent-color:var(--primary)]"
+              />
+              <span className={cn("min-w-0 flex-1", s.done && "text-subtle line-through")}>
+                {s.title}
+              </span>
+              {s.due_date && (
+                <span className="shrink-0 text-[10px] text-primary">{s.due_date.slice(5)}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

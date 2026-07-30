@@ -13,7 +13,7 @@ import { PriorityPill } from "./ui";
 import { cn, todayStr } from "@/lib/utils";
 import { isBlocked } from "../lib/blocked";
 import { dueLabel } from "../lib/due";
-import { hasSubtaskDueToday, hasCheckpointDue } from "../lib/today";
+import { hasSubtaskDueToday, hasCheckpointDue, inToday } from "../lib/today";
 import { advanceCheckpointBody } from "../../shared/checkpoint";
 import {
   TaskMeta,
@@ -62,6 +62,13 @@ export function TaskRow({
   const [expanded, setExpanded] = useState(
     () => task.status !== "done" && hasSubtaskDueToday(task, todayStr())
   );
+  // In Today ONLY because a step is due: the STEP is the work, so it carries
+  // the emphasis and the parent recedes to context. Her words: "show that it's
+  // the subtask that is due and not the main task".
+  const subtaskLed =
+    task.status !== "done" &&
+    hasSubtaskDueToday(task, todayStr()) &&
+    !inToday(task, todayStr());
   const [confirming, setConfirming] = useState(false);
   const done = task.status === "done";
   // Dim (but keep interactive) tasks due more than a month out, so the far future
@@ -103,13 +110,15 @@ export function TaskRow({
   }
 
   async function runComplete() {
-    const res = await complete.mutateAsync({ id: task.id, done: !done });
+    await complete.mutateAsync({ id: task.id, done: !done });
     if (done) return; // was un-completing
-    if (res?.recurred && res.due_date) {
-      toast(`Recurring: next on ${res.due_date}`);
-    } else {
-      toast("Completed", () => complete.mutate({ id: task.id, done: false }));
-    }
+    // A recurring task stays crossed out for the rest of the day and the
+    // morning sweep wakes it as the next occurrence: say so, so its calm is
+    // never mistaken for the repeat being broken.
+    toast(
+      task.recurrence ? "Done for today · repeats tomorrow morning" : "Completed",
+      () => complete.mutate({ id: task.id, done: false })
+    );
   }
 
   // Finishing a parent that still has open subtasks is nearly always a slip.
@@ -255,8 +264,8 @@ export function TaskRow({
               "text-sm leading-snug",
               done
                 ? "text-subtle line-through"
-                : blocked
-                ? "text-muted" // quietened, but not opacity-faded like distant
+                : blocked || subtaskLed
+                ? "text-muted" // quietened; subtask-led rows hand emphasis down
                 : "text-foreground",
               // A shade softer when optional. Loses to blocked/done above, which
               // are stronger statements about the same title.
@@ -319,13 +328,21 @@ export function TaskRow({
                 title="Open the task to edit this subtask"
                 className={cn(
                   "flex-1 text-left text-[13px] text-foreground hover:text-primary",
-                  s.done && "text-subtle line-through"
+                  s.done && "text-subtle line-through",
+                  // The step that put this task in Today reads at full weight
+                  // while the parent title above sits dimmed.
+                  subtaskLed && !s.done && s.due_date === todayIsToday && "font-medium"
                 )}
               >
                 {s.title}
               </button>
+              {subtaskLed && !s.done && s.due_date === todayIsToday && (
+                <span className="shrink-0 rounded border border-primary/40 px-1 text-[10px] font-semibold text-primary">
+                  due today
+                </span>
+              )}
               {shouldPill(s.priority) && <PriorityPill priority={s.priority} />}
-              {s.due_date && (
+              {s.due_date && s.due_date !== todayIsToday && (
                 <span className="shrink-0 text-[11px] text-primary" title={s.due_date}>
                   {dueLabel(s.due_date, todayIsToday)}
                 </span>

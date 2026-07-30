@@ -25,6 +25,7 @@ import { mcp } from "./routes/mcp";
 import { exportRoute } from "./routes/export";
 import { syncCalendar, renewWatchChannel } from "./lib/sync";
 import { sendMorningBrief } from "./lib/brief";
+import { resurrectRecurring } from "./lib/resurrect";
 import { generateDayPlansForAll } from "./lib/planner";
 import { emitTrackerTasks } from "./lib/trackers";
 import { sendDueReminders } from "./lib/reminders";
@@ -82,14 +83,19 @@ export default {
       // planner reads the task list, and a task that appears halfway through
       // would be a coin toss as to whether it was considered.
       ctx.waitUntil(
-        (async () => {
-          const { results } = await env.DB.prepare(
-            "SELECT id FROM users"
-          ).all<{ id: string }>();
-          for (const { id } of results ?? []) {
-            await emitTrackerTasks(env.DB, id).catch(console.error);
-          }
-        })()
+        // Recurring resurrection FIRST: yesterday's completed dailies wake as
+        // today's occurrences before the planner reads the list and the brief
+        // announces it.
+        resurrectRecurring(env)
+          .catch(console.error)
+          .then(async () => {
+            const { results } = await env.DB.prepare(
+              "SELECT id FROM users"
+            ).all<{ id: string }>();
+            for (const { id } of results ?? []) {
+              await emitTrackerTasks(env.DB, id).catch(console.error);
+            }
+          })
           .catch(console.error)
           .then(() => generateDayPlansForAll(env))
           .then(() => sendMorningBrief(env))

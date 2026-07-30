@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { freshDb, type TestD1, type Db } from "./d1-adapter";
 import { rollDecision } from "../src/shared/recurrence";
 import { tasks } from "../src/worker/routes/tasks";
+import { resurrectRecurring } from "../src/worker/lib/resurrect";
 
 const MIGRATIONS = join(__dirname, "..", "migrations");
 const USER = "user-a";
@@ -100,27 +101,49 @@ describe("complete + skip with end conditions", () => {
       )
       .get(id) as any;
 
-  it("Audible case: monthly x3 rolls twice then completes for real", async () => {
+  // Completion no longer rolls in place: it completes, and the next MORNING'S
+  // sweep (lib/resurrect) wakes the task or ends the series. The walk-through
+  // therefore alternates complete -> sweep, like real days do.
+  const sweepNextMorning = async (day: string) => {
+    // The sweep only wakes completions from BEFORE its day.
+    raw.exec(`UPDATE tasks SET completed_at = '${day}T01:00:00.000Z'
+              WHERE status = 'done' AND completed_at IS NOT NULL`);
+    await resurrectRecurring({ DB: d1 } as any, day.slice(0, 10) < "9999" ? nextDay(day) : day);
+  };
+  const nextDay = (d: string) => {
+    const dt = new Date(d + "T00:00:00Z");
+    dt.setUTCDate(dt.getUTCDate() + 1);
+    return dt.toISOString().slice(0, 10);
+  };
+
+  it("Audible case: monthly x3 completes, wakes, and ends after the third", async () => {
     seed("aud", { recurrence_count: 3 });
+
     let res = (await (await post("/api/tasks/aud/complete")).json()) as any;
-    expect(res.recurred).toBe(true);
+    expect(res.recurred).toBe(false);
+    expect(row("aud").status).toBe("done"); // rests crossed out today
+    await sweepNextMorning("2026-07-20");
+    expect(row("aud").status).toBe("todo"); // woken as occurrence 2
     expect(row("aud").recurrence_count).toBe(2);
 
-    res = (await (await post("/api/tasks/aud/complete")).json()) as any;
-    expect(res.recurred).toBe(true);
+    await post("/api/tasks/aud/complete");
+    await sweepNextMorning("2026-08-20");
+    expect(row("aud").status).toBe("todo"); // occurrence 3, the last
     expect(row("aud").recurrence_count).toBe(1);
 
-    res = (await (await post("/api/tasks/aud/complete")).json()) as any;
-    expect(res.recurred).toBe(false);
+    await post("/api/tasks/aud/complete");
+    await sweepNextMorning("2026-09-20");
     const r = row("aud");
-    expect(r.status).toBe("done");
+    expect(r.status).toBe("done"); // the series is over: stays done
     expect(r.recurrence).toBeNull();
   });
 
-  it("until: completion past the horizon finishes instead of rolling", async () => {
+  it("until: the sweep after a completion past the horizon ends the series", async () => {
     seed("u", { recurrence_until: "2026-08-01" }); // next monthly = 08-20 > until
     const res = (await (await post("/api/tasks/u/complete")).json()) as any;
     expect(res.recurred).toBe(false);
+    expect(row("u").status).toBe("done");
+    await sweepNextMorning("2026-07-20");
     expect(row("u").status).toBe("done");
     expect(row("u").recurrence).toBeNull();
   });

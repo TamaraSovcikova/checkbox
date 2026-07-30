@@ -50,6 +50,48 @@ import { DependencyEditor } from "./DependencyEditor";
 import { AttachmentList } from "./AttachmentList";
 import { useSnoozeTask } from "../lib/queries";
 
+// A subtask's title: full text always visible (wraps, never truncates) and
+// editable in place. Click, type, blur to save. It was a truncated read-only
+// span: long steps were unreadable and typos permanent.
+function SubtaskTitle({
+  value,
+  done,
+  onSave,
+}: {
+  value: string;
+  done: boolean;
+  onSave: (title: string) => void;
+}) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  return (
+    <textarea
+      value={text}
+      rows={1}
+      onChange={(e) => {
+        setText(e.target.value);
+        e.target.style.height = "auto";
+        e.target.style.height = `${e.target.scrollHeight}px`;
+      }}
+      ref={(el) => {
+        if (el) {
+          el.style.height = "auto";
+          el.style.height = `${el.scrollHeight}px`;
+        }
+      }}
+      onBlur={() => {
+        const t = text.trim();
+        if (t && t !== value) onSave(t);
+        else setText(value);
+      }}
+      className={cn(
+        "flex-1 resize-none overflow-hidden bg-transparent text-sm leading-snug outline-none",
+        done ? "text-subtle line-through" : "text-foreground"
+      )}
+    />
+  );
+}
+
 // Subtask priority cycles none → P1 → P2 → P3 → P4 → none on tap.
 const PRI_CYCLE: (Priority | null)[] = [null, 1, 2, 3, 4];
 function nextPriority(p: Priority | null): Priority | null {
@@ -391,6 +433,8 @@ export function TaskSheet({
   const [recCount, setRecCount] = useState<number | "">("");
   const [recUntil, setRecUntil] = useState("");
   const [newSub, setNewSub] = useState("");
+  // "Keep as text": disables capture-parsing for subtasks typed in this sheet.
+  const [rawSub, setRawSub] = useState(false);
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [optional, setOptional] = useState(false);
 
@@ -423,6 +467,13 @@ export function TaskSheet({
     update.mutate({ id: task.id, body });
   }
 
+  // What the capture parser WOULD do to the typed subtask, previewed as chips
+  // under the input. It used to fire invisibly: dates vanished from titles and
+  // subtasks got scheduled with no pills shown and no way to say no.
+  const subParse = parseCapture(newSub);
+  const subParsed =
+    newSub.trim() !== "" && (subParse.due_date != null || subParse.priority != null);
+
   async function addSub() {
     if (!task || !newSub.trim()) return;
     // Same quick-capture parsing the main add-task bar uses, so a subtask can be
@@ -432,10 +483,10 @@ export function TaskSheet({
     // adding a bare subtask and then editing it. `#category`/`@label` do not
     // apply to a subtask, so knownCategories is empty and any name typed stays in
     // the title. Falls back to the raw text when nothing is parsed out.
-    const p = parseCapture(newSub);
-    const title = p.title.trim() || newSub.trim();
-    const due_date = p.due_date;
-    const priority = p.priority;
+    const p = rawSub ? null : parseCapture(newSub);
+    const title = (p?.title ?? newSub).trim() || newSub.trim();
+    const due_date = p?.due_date ?? null;
+    const priority = p?.priority ?? null;
     // Use the server-assigned id so a follow-up edit (due date / priority) on the
     // fresh subtask targets the real row instead of a throwaway local id.
     const created = await api.addSubtask(task.id, title, { due_date, priority });
@@ -468,6 +519,7 @@ export function TaskSheet({
     if (!task) return;
     setSubtasks((s) => s.map((x) => (x.id === id ? { ...x, ...patch } : x)));
     await api.updateSubtask(task.id, id, {
+      ...(patch.title !== undefined ? { title: patch.title } : {}),
       ...(patch.due_date !== undefined ? { due_date: patch.due_date } : {}),
       ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
     });
@@ -779,11 +831,11 @@ export function TaskSheet({
                       onChange={(e) => toggleSub(s.id, e.target.checked)}
                       className="h-4 w-4 shrink-0 [accent-color:var(--primary)]"
                     />
-                    <span
-                      className={cn("flex-1 truncate", s.done && "text-subtle line-through")}
-                    >
-                      {s.title}
-                    </span>
+                    <SubtaskTitle
+                      value={s.title}
+                      done={s.done}
+                      onSave={(t) => t !== s.title && editSub(s.id, { title: t })}
+                    />
                     {/* Compact per-subtask priority (tap to cycle none→P1..P4) and
                         a slim due date, on the title line instead of a bulky row. */}
                     <button
@@ -834,6 +886,34 @@ export function TaskSheet({
                   <AddIcon className="h-4 w-4" /> Add
                 </Button>
               </div>
+              {/* What the parser will do, shown BEFORE it does it. Capture
+                  parsing used to fire invisibly on subtasks: no pills, no way
+                  to keep "fri" as a word. Chips preview the schedule; "keep as
+                  text" turns parsing off for this sheet. */}
+              {(subParsed || rawSub) && newSub.trim() !== "" && (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10.5px]">
+                  {!rawSub && subParse.due_date && (
+                    <span className="rounded border border-primary/40 px-1 text-primary/90">
+                      due {subParse.due_date}
+                    </span>
+                  )}
+                  {!rawSub && subParse.priority != null && (
+                    <span className="rounded border border-warning/40 px-1 text-warning">
+                      P{subParse.priority}
+                    </span>
+                  )}
+                  {rawSub && (
+                    <span className="text-subtle">adding exactly as typed</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setRawSub((r) => !r)}
+                    className="rounded border border-border px-1.5 py-0.5 text-subtle transition-colors hover:text-foreground"
+                  >
+                    {rawSub ? "parse dates again" : "keep as text"}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* From Gmail: thread handles, only for email-derived tasks. Open in

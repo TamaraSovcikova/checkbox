@@ -473,6 +473,9 @@ export function ViewPage({ name }: { name: string }) {
   const isToday = name === "today";
   const showBoard = isToday && view === "board";
   const pinScope = scopeForView(name);
+  // Make a card WHERE you are: no trip through the Cards page. Same pattern
+  // the area pages already had.
+  const addPin = useAddPin(pinScope);
 
   return (
     <div>
@@ -487,7 +490,11 @@ export function ViewPage({ name }: { name: string }) {
         sort={sortMenu}
         group={groupMenu}
         filter={filterMenu}
-        menu={[{ label: "Hide this view", onSelect: () => hide(`/${name}`) }]}
+        menu={[
+          { label: "New list card", onSelect: addPin.addList },
+          { label: "New text card", onSelect: addPin.addNote },
+          { label: "Hide this view", onSelect: () => hide(`/${name}`) },
+        ]}
         below={
           name !== "logbook" ? (
             // Full width, matching the list below it: a capture bar that stopped
@@ -928,7 +935,7 @@ export function AreaPage() {
           // Scoped to this area already: making a pin here should not mean a trip
           // to the Pins page to re-pick the area you are standing in.
           { label: "New list pin", onSelect: addPin.addList },
-          { label: "New reminder pin", onSelect: addPin.addNote },
+          { label: "New text pin", onSelect: addPin.addNote },
           { label: "New cadence pin", onSelect: addPin.addTracker },
         ]}
       />
