@@ -549,6 +549,12 @@ export function useViewPrefs() {
   const setDashboard = (items: NonNullable<UserPrefs["dashboard"]>) =>
     save.mutate({ ...prefs, dashboard: items });
 
+  // Cadence sections: the ORDER, plus any section created before it has
+  // members. Membership lives on trackers.section (shared/cadenceSections).
+  const cadenceSections = prefs.cadenceSections ?? [];
+  const setCadenceSections = (names: string[]) =>
+    save.mutate({ ...prefs, cadenceSections: names });
+
   // Per-view display defaults (grid/sort/group). Merges into the same prefs blob
   // so a write never drops hiddenViews/viewOrder.
   const viewDefault = (viewKey: string): ViewDefault =>
@@ -610,6 +616,8 @@ export function useViewPrefs() {
     isHidden,
     dashboard,
     setDashboard,
+    cadenceSections,
+    setCadenceSections,
     viewDefault,
     setViewDefault,
     setTriageFallbackArea,

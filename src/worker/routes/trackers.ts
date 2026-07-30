@@ -101,6 +101,7 @@ trackers.post("/", async (c) => {
 const WRITABLE = [
   "name",
   "kind",
+  "section",
   "target_days",
   "area_id",
   "notes",

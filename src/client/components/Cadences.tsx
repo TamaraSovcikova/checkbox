@@ -4,6 +4,7 @@ import {
   useTrackers,
   useCreateTracker,
   useUpdateTracker,
+  useViewPrefs,
   useDeleteTracker,
   useLogTracker,
   useUnlogTracker,
@@ -21,6 +22,7 @@ import {
 import { emittedTaskTitle } from "../../shared/tracker";
 import { areaColorVar } from "../lib/colors";
 import { todayStr } from "@/lib/utils";
+import { groupBySection, sectionNames } from "../../shared/cadenceSections";
 import { Button } from "./ui/button";
 import { PageIntro } from "./PageIntro";
 import { AddIcon, TrashIcon, CadenceIcon } from "../lib/icons";
@@ -29,6 +31,9 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
 } from "./ui/dropdown-menu";
 
 // Cadence trackers: things measured by "how long since", not "when is it due".
@@ -77,7 +82,17 @@ export function useLogWithUndo() {
   };
 }
 
-function CadenceRow({ tracker }: { tracker: Tracker }) {
+function CadenceRow({
+  tracker,
+  sections = [],
+  onNewSection = () => {},
+}: {
+  tracker: Tracker;
+  // Every section name in play, and a way to register a brand new one, so the
+  // row's move menu offers exactly what the page renders.
+  sections?: string[];
+  onNewSection?: (name: string) => void;
+}) {
   const today = todayStr();
   const update = useUpdateTracker();
   const del = useDeleteTracker();
@@ -194,6 +209,45 @@ function CadenceRow({ tracker }: { tracker: Tracker }) {
                 Task title...
               </DropdownMenuItem>
             )}
+            {/* Move between sections. The list is the page's own order, so the
+                menu and the headings always agree; "New section..." names one
+                and moves this tracker into it in the same step (a section with
+                no members is created from the page header instead). */}
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Section</DropdownMenuLabel>
+            {sections.map((name) => (
+              <DropdownMenuCheckboxItem
+                key={name}
+                checked={tracker.section === name}
+                onCheckedChange={() =>
+                  update.mutate({
+                    id: tracker.id,
+                    body: { section: tracker.section === name ? null : name },
+                  })
+                }
+              >
+                {name}
+              </DropdownMenuCheckboxItem>
+            ))}
+            {tracker.section && (
+              <DropdownMenuItem
+                onSelect={() => update.mutate({ id: tracker.id, body: { section: null } })}
+              >
+                Remove from section
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onSelect={() => {
+                const raw = window.prompt("New section name");
+                const name = raw?.trim();
+                if (!name) return;
+                onNewSection(name);
+                update.mutate({ id: tracker.id, body: { section: name } });
+              }}
+            >
+              New section...
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => update.mutate({ id: tracker.id, body: { archived: true } })}>
               Archive
             </DropdownMenuItem>
@@ -354,8 +408,45 @@ export function CadenceStrip({
 
 export function CadencesPage() {
   const { data: trackers = [], isLoading } = useTrackers();
+  const { cadenceSections, setCadenceSections } = useViewPrefs();
+  const update = useUpdateTracker();
   const today = todayStr();
   const ordered = sortByUrgency(trackers, today);
+  // Membership from the trackers, order from prefs, unioned so a section that
+  // exists only on the data still renders (see shared/cadenceSections).
+  const groups = groupBySection(ordered, cadenceSections);
+  const names = sectionNames(ordered, cadenceSections);
+  const registerSection = (name: string) => {
+    if (!cadenceSections.includes(name)) setCadenceSections([...cadenceSections, name]);
+  };
+  const renameSection = (from: string) => {
+    const raw = window.prompt(`Rename "${from}" to`, from);
+    const to = raw?.trim();
+    if (!to || to === from) return;
+    // Membership is a NAME on each row, so a rename is a rename of every row
+    // carrying it, plus the registry entry in place (keeping the order).
+    trackers
+      .filter((t) => t.section === from)
+      .forEach((t) => update.mutate({ id: t.id, body: { section: to } }));
+    setCadenceSections(
+      cadenceSections.includes(from)
+        ? cadenceSections.map((n) => (n === from ? to : n))
+        : [...cadenceSections, to]
+    );
+  };
+  const dissolveSection = (name: string, count: number) => {
+    if (
+      count > 0 &&
+      !window.confirm(
+        `Remove the "${name}" section? Its ${count} cadence${count === 1 ? "" : "s"} move back to ungrouped, nothing is deleted.`
+      )
+    )
+      return;
+    trackers
+      .filter((t) => t.section === name)
+      .forEach((t) => update.mutate({ id: t.id, body: { section: null } }));
+    setCadenceSections(cadenceSections.filter((n) => n !== name));
+  };
   const dueCount = ordered.filter(
     (t) => cadenceStatus(t, today) === "due" || cadenceStatus(t, today) === "never"
   ).length;
@@ -379,6 +470,20 @@ export function CadencesPage() {
 
       <AddCadence />
 
+      <div className="mb-3">
+        <button
+          type="button"
+          onClick={() => {
+            const raw = window.prompt("New section name");
+            const name = raw?.trim();
+            if (name) registerSection(name);
+          }}
+          className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-xs text-subtle transition-colors hover:text-foreground"
+        >
+          <AddIcon className="h-3.5 w-3.5" /> New section
+        </button>
+      </div>
+
       {isLoading ? (
         <p className="text-sm text-subtle">Loading...</p>
       ) : ordered.length === 0 ? (
@@ -388,9 +493,61 @@ export function CadencesPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {ordered.map((t) => (
-            <CadenceRow key={t.id} tracker={t} />
+        <div className="space-y-5">
+          {groups.map((g: { name: string | null; items: Tracker[] }) => (
+            <section key={g.name ?? "__ungrouped"}>
+              {/* Ungrouped needs a heading only when there is something to
+                  contrast it with; a flat list should look flat. */}
+              {(g.name != null || groups.length > 1) && (
+                <div className="mb-1.5 flex items-center gap-2">
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">
+                    {g.name ?? "Ungrouped"}
+                  </h2>
+                  <span className="text-[11px] tabular-nums text-subtle">
+                    {g.items.length}
+                  </span>
+                  {g.name != null && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`Section ${g.name} options`}
+                          className="grid h-5 w-5 place-items-center rounded text-subtle transition-colors hover:bg-surface-2 hover:text-foreground"
+                        >
+                          ···
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuItem onSelect={() => renameSection(g.name!)}>
+                          Rename section
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => dissolveSection(g.name!, g.items.length)}
+                        >
+                          Remove section
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              )}
+              {g.items.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-border px-3 py-2 text-[11px] text-subtle">
+                  Empty. Move a cadence here from its ··· menu.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {g.items.map((t: Tracker) => (
+                    <CadenceRow
+                      key={t.id}
+                      tracker={t}
+                      sections={names}
+                      onNewSection={registerSection}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
           ))}
         </div>
       )}

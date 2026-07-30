@@ -26,6 +26,19 @@ const cleanOnByDefault = (v: unknown): boolean => (v === false ? false : true);
 const cleanStrings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
+// Cadence section registry: trimmed non-empty names, deduped, order kept.
+// Undefined stays undefined so "never used sections" is distinguishable.
+function cleanSections(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: string[] = [];
+  for (const x of v) {
+    if (typeof x !== "string") continue;
+    const n = x.trim();
+    if (n && !out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
 // Dashboard layout: keep only well-formed entries. Undefined stays undefined,
 // so "never customised" is distinguishable from "removed everything".
 function cleanDashboard(v: unknown): UserPrefs["dashboard"] {
@@ -78,6 +91,7 @@ function parsePrefs(raw: unknown): UserPrefs {
       todayCalendar: cleanOnByDefault(p.todayCalendar),
       todayCadences: p.todayCadences === true,
       dashboard: cleanDashboard(p.dashboard),
+      cadenceSections: cleanSections(p.cadenceSections),
     };
   } catch {
     return { ...EMPTY };
@@ -107,6 +121,7 @@ prefs.put("/", async (c) => {
     todayCalendar: cleanOnByDefault(body.todayCalendar),
     todayCadences: body.todayCadences === true,
     dashboard: cleanDashboard(body.dashboard),
+    cadenceSections: cleanSections(body.cadenceSections),
   };
   await c.env.DB.prepare("UPDATE users SET prefs = ? WHERE id = ?")
     .bind(JSON.stringify(clean), userId)

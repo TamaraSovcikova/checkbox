@@ -55,6 +55,9 @@ export interface Tracker {
   id: string;
   name: string;
   kind: string; // contact | habit | maintenance | health (label only)
+  // The section heading this tracker sits under on the Cadences page, or null
+  // for ungrouped. A NAME, not a key: see migration 0033.
+  section: string | null;
   target_days: number | null; // null = count it, but do not judge it
   area_id: string | null;
   notes: string | null;
@@ -276,6 +279,9 @@ export interface UserPrefs {
   // The Home dashboard's composition, in render order. Undefined = the default
   // starter layout (the client owns that default, not the server).
   dashboard?: DashboardItem[];
+  // Cadence section ORDER, and any section created before it has members.
+  // Membership itself lives on trackers.section; see shared/cadenceSections.
+  cadenceSections?: string[];
   // Catch-all area for backlog tasks triage cannot confidently place.
   triageFallbackAreaId?: string | null;
   // Dim tasks due more than a month out so the far future doesn't pull the eye.
