@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
+import { UpdateGate } from "./components/UpdateGate";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -175,6 +176,10 @@ export function AppShell() {
               <Outlet />
             </div>
           </main>
+
+          {/* A deploy landed while this tab was open: get onto it (see
+              lib/update for why the precache makes this necessary). */}
+          <UpdateGate />
 
           {/* Capture FAB: thumb-reachable on mobile (capture-first PWA).
               Hidden on desktop where Cmd-K / the header input suffice. */}

@@ -37,6 +37,20 @@ app.get("/api/health", (c) =>
   c.json({ ok: true, app: "checkbox", phase: 8, ts: new Date().toISOString() })
 );
 
+// Which client build is deployed right now, read from the served index.html.
+// An open tab compares this with the bundle it is running to notice a deploy
+// (see client/lib/update). It lives under /api/ ON PURPOSE: the service worker
+// routes /api/* NetworkOnly, so this answer can never come from the precache,
+// which is exactly the stale thing being detected. Asking for "/" instead would
+// be served BY that precache and would compare a stale build against itself.
+app.get("/api/version", async (c) => {
+  const res = await c.env.ASSETS.fetch(
+    new Request(new URL("/index.html", c.req.url))
+  );
+  const html = await res.text();
+  return c.json({ bundle: html.match(/assets\/index-[A-Za-z0-9_-]+\.js/)?.[0] ?? null });
+});
+
 app.route("/api/auth", auth);
 app.route("/api/prefs", prefs);
 app.route("/api/areas", areas);

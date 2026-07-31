@@ -473,31 +473,69 @@ export const usePushStatus = () =>
 
 // ── Offline ───────────────────────────────────────────────────────────────────
 
+// navigator.onLine LIES. It reports the OS/adapter's opinion, and Chrome has
+// been observed flipping it to false while every request still succeeds (seen
+// while a service worker was updating), which painted a permanent "offline"
+// badge over a perfectly working app. So the browser's claim is only ever a
+// PROMPT to check: a real request to our own origin decides. The reverse is
+// cheap and safe, since a successful request proves connectivity outright.
+async function reachable(): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/health?_p=${Date.now()}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export function useOnlineStatus() {
-  const [online, setOnline] = useState(navigator.onLine);
+  const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
   const qc = useQueryClient();
 
   useEffect(() => {
-    getOfflineQueueLength().then(setPending);
+    let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
 
-    const onOnline = () => {
-      setOnline(true);
+    const drainQueue = () =>
       replayOfflineQueue(() => {
         qc.invalidateQueries({ queryKey: ["view"] });
         qc.invalidateQueries({ queryKey: ["tasks"] });
-      }).then(getOfflineQueueLength).then(setPending);
-    };
-    const onOffline = () => {
-      setOnline(false);
-      getOfflineQueueLength().then(setPending);
+      })
+        .then(getOfflineQueueLength)
+        .then((n) => !cancelled && setPending(n));
+
+    // Settle the badge against reality, and while genuinely offline keep
+    // re-probing so it heals itself without needing an `online` event that
+    // may never fire.
+    const settle = async () => {
+      const ok = await reachable();
+      if (cancelled) return;
+      setOnline(ok);
+      if (ok) {
+        drainQueue();
+      } else {
+        clearTimeout(retry);
+        retry = setTimeout(settle, 20_000);
+      }
     };
 
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
+    getOfflineQueueLength().then((n) => !cancelled && setPending(n));
+    settle();
+
+    const onVisible = () => document.visibilityState === "visible" && settle();
+    window.addEventListener("online", settle);
+    window.addEventListener("offline", settle);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
+      cancelled = true;
+      clearTimeout(retry);
+      window.removeEventListener("online", settle);
+      window.removeEventListener("offline", settle);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [qc]);
 
