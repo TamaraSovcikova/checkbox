@@ -100,6 +100,51 @@ function SubtaskTitle({
   );
 }
 
+// A step's due date. Set, it reads as the date; unset, it collapses to a small
+// calendar mark, so a three-step task stops showing three empty dd/mm/yyyy
+// fields. Clicking the mark opens the real input, which stays until it blurs.
+//
+// Quiet but always present, NOT hover-only like the delete button beside it:
+// the phone is where this app is mostly used and there is no hover there, so a
+// hover-only control would mean a step's date could not be set at all. What is
+// collapsed is the empty control's SIZE, never its reachability, and never a
+// value (a step's date is what carries its parent into Today).
+function SubtaskDate({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (v: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  if (editing || value)
+    return (
+      <input
+        type="date"
+        value={value ?? ""}
+        autoFocus={editing && !value}
+        onChange={(e) => onChange(e.target.value || null)}
+        onBlur={() => setEditing(false)}
+        aria-label="Subtask due date"
+        className={cn(
+          "h-6 w-[6.5rem] shrink-0 rounded border bg-surface px-1 text-[11px] outline-none focus:border-primary",
+          value ? "border-input text-foreground" : "border-border text-subtle"
+        )}
+      />
+    );
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      aria-label="Set a due date for this subtask"
+      title="Give this step a date"
+      className="shrink-0 text-subtle/60 transition-colors hover:text-foreground"
+    >
+      <CalendarIcon className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
 // Subtask priority cycles none → P1 → P2 → P3 → P4 → none on tap.
 const PRI_CYCLE: (Priority | null)[] = [null, 1, 2, 3, 4];
 function nextPriority(p: Priority | null): Priority | null {
@@ -981,8 +1026,12 @@ export function TaskSheet({
                       done={s.done}
                       onSave={(t) => t !== s.title && editSub(s.id, { title: t })}
                     />
-                    {/* Compact per-subtask priority (tap to cycle none→P1..P4) and
-                        a slim due date, on the title line instead of a bulky row. */}
+                    {/* Per-subtask priority and due date. Both are usually
+                        unset (16 of her 103 steps carry a date), and both used
+                        to render at full strength regardless, so a task with
+                        three steps showed three empty date fields. Unset now
+                        means a mark that appears on hover; set means the value,
+                        always visible. */}
                     <button
                       type="button"
                       title="Cycle priority"
@@ -992,22 +1041,16 @@ export function TaskSheet({
                       {shouldPill(s.priority) ? (
                         <PriorityPill priority={s.priority} />
                       ) : (
-                        <span className="grid h-5 min-w-[1.25rem] place-items-center rounded border border-border px-1 text-[10px] text-subtle transition-colors hover:text-foreground">
+                        // Unset: no border and no box, just a faint letter. Same
+                        // hit area, a fraction of the visual weight.
+                        <span className="grid h-5 min-w-[1.25rem] place-items-center text-[10px] text-subtle/60 transition-colors hover:text-foreground">
                           P
                         </span>
                       )}
                     </button>
-                    <input
-                      type="date"
-                      value={s.due_date ?? ""}
-                      onChange={(e) => editSub(s.id, { due_date: e.target.value || null })}
-                      aria-label="Subtask due date"
-                      className={cn(
-                        "h-6 w-[6.5rem] shrink-0 rounded border bg-surface px-1 text-[11px] outline-none focus:border-primary",
-                        s.due_date
-                          ? "border-input text-foreground"
-                          : "border-border text-subtle"
-                      )}
+                    <SubtaskDate
+                      value={s.due_date ?? null}
+                      onChange={(v) => editSub(s.id, { due_date: v })}
                     />
                     <button
                       onClick={() => deleteSub(s.id)}
