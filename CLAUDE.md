@@ -36,7 +36,7 @@ installable/auto-updating PWA. Deployed at https://checkbox.tamara-sovcik.worker
 ```
 Health: GET /api/health → { ok: true, phase: 8 }
 Version: GET /api/version → the deployed client bundle (deploy-freshness gate)
-MCP:    /mcp → 41 tools, bearer auth (per-user tokens in mcp_tokens)
+MCP:    /mcp → 43 tools, bearer auth (per-user tokens in mcp_tokens)
 D1:     migrations 0001-0033 applied local + remote
 ```
 

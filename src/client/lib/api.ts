@@ -160,6 +160,12 @@ export const api = {
     httpMutate("POST", `/api/tasks/${id}/dependencies`, { depends_on_id }),
   removeDependency: (id: string, depId: string) =>
     httpMutate("DELETE", `/api/tasks/${id}/dependencies/${depId}`),
+  // Related tasks. Symmetric: the server writes/removes both directions, so
+  // there is no "from" and "to" to keep straight here.
+  linkTask: (id: string, linked_id: string) =>
+    httpMutate("POST", `/api/tasks/${id}/links`, { linked_id }),
+  unlinkTask: (id: string, linkedId: string) =>
+    httpMutate("DELETE", `/api/tasks/${id}/links/${linkedId}`),
   addSubtask: (
     taskId: string,
     title: string,

@@ -781,6 +781,32 @@ const TOOLS = [
     },
   },
 
+  {
+    name: "link_tasks",
+    description:
+      "Link two tasks as related. Symmetric and non-blocking: neither task waits on the other and the Flow runway is unaffected. Use for tasks that belong together (same trip, same errand run); use set_task_dependency instead when one genuinely has to happen first.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string" },
+        linked_id: { type: "string" },
+      },
+      required: ["task_id", "linked_id"],
+    },
+  },
+  {
+    name: "unlink_tasks",
+    description: "Remove a related link between two tasks. Removes both directions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string" },
+        linked_id: { type: "string" },
+      },
+      required: ["task_id", "linked_id"],
+    },
+  },
+
   // ── Cadence trackers ────────────────────────────────────────────────────────
   // Things measured by "how long since", not "due when". Answering "when did I
   // last call mum?" and logging it afterwards are the two things worth doing
@@ -1803,6 +1829,33 @@ async function handleTool(
         "DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?"
       ).bind(taskId, args.depends_on_id).run();
       return text(`Removed dependency ${taskId} -> ${args.depends_on_id}.`);
+    }
+
+    // ── link_tasks ────────────────────────────────────────────────────────────
+    // Both rows in one batch, so the table never holds half a link.
+    case "link_tasks": {
+      const taskId = args.task_id as string;
+      const other = args.linked_id as string;
+      if (!other || other === taskId) return text("Invalid link (a task cannot link to itself).");
+      if (!(await ownsTask(db, userId, taskId)) || !(await ownsTask(db, userId, other)))
+        return text("Task not found.");
+      const ins = db.prepare(
+        "INSERT OR IGNORE INTO task_links (task_id, linked_id) VALUES (?, ?)"
+      );
+      await db.batch([ins.bind(taskId, other), ins.bind(other, taskId)]);
+      return text(`Linked ${taskId} and ${other} as related.`);
+    }
+
+    // ── unlink_tasks ──────────────────────────────────────────────────────────
+    case "unlink_tasks": {
+      const taskId = args.task_id as string;
+      const other = args.linked_id as string;
+      if (!(await ownsTask(db, userId, taskId))) return text(`Task ${taskId} not found.`);
+      const del = db.prepare(
+        "DELETE FROM task_links WHERE task_id = ? AND linked_id = ?"
+      );
+      await db.batch([del.bind(taskId, other), del.bind(other, taskId)]);
+      return text(`Unlinked ${taskId} and ${other}.`);
     }
 
     // ── Cadence trackers ─────────────────────────────────────────────────────

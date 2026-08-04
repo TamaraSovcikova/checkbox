@@ -12,9 +12,11 @@ import {
   optionalTitleTone,
   useTaskArea,
   useDistantTone,
+  dormantTone,
 } from "./TaskMeta";
-import { cn } from "@/lib/utils";
+import { cn, todayStr } from "@/lib/utils";
 import { useTaskHover } from "./TaskHoverCard";
+import { isSubtaskLed, subtasksDueToday } from "../lib/today";
 
 // Draggable board card. Drops resolve in the app-level DndContext (AppShell),
 // so a card can go to another column OR onto a sidebar area/project.
@@ -31,6 +33,12 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
   const toggleSub = useToggleSubtask();
   const subs = task.subtasks ?? [];
   const subsDone = subs.filter((s) => s.done).length;
+  // A card whose only claim on today is a step reads as that step, with the task
+  // above it as context. Same rule and same shape as the list row, so the Today
+  // board and the Today list say the same thing about the same task.
+  const stepLed = isSubtaskLed(task, todayStr());
+  const leadSteps = stepLed ? subtasksDueToday(task, todayStr()) : [];
+  const restSubs = subs.filter((s) => !leadSteps.some((l) => l.id === s.id));
   // Area resolved through the project, so a card is tinted whenever the same task
   // in a list would be. Far-future dimming shared with the row, so a board card
   // and a list row of the same task recede together.
@@ -57,6 +65,7 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
         "group touch-none rounded-md border border-border bg-surface p-2 transition-colors hover:border-primary/40",
         isDragging ? "cursor-grabbing opacity-50" : "cursor-grab",
         !isDragging && distant,
+        !isDragging && dormantTone(task, todayStr()),
         optionalCardBorder(task)
       )}
       {...attributes}
@@ -65,20 +74,54 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
     >
       {card}
       <div className="flex items-start gap-1.5">
-        <div
-          className={cn(
-            "min-w-0 flex-1 text-sm",
-            done ? "text-subtle line-through" : "text-foreground",
-            optionalTitleTone(task)
-          )}
-        >
-          {task.title}
-        </div>
+        {stepLed ? (
+          <div className="min-w-0 flex-1">
+            <div
+              className="flex items-center gap-1 text-[11px] leading-tight text-subtle"
+              title={`Part of: ${task.title}`}
+            >
+              <SubtaskIcon className="h-3 w-3 shrink-0" />
+              <span className="truncate">{task.title}</span>
+            </div>
+            <ul
+              className="mt-1 space-y-1"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {leadSteps.map((s) => (
+                <li key={s.id} className="flex items-start gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={false}
+                    aria-label={s.title}
+                    onChange={() =>
+                      toggleSub.mutate({ taskId: task.id, subId: s.id, done: true })
+                    }
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 [accent-color:var(--primary)]"
+                  />
+                  <span className="min-w-0 flex-1 text-sm leading-snug text-foreground">
+                    {s.title}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div
+            className={cn(
+              "min-w-0 flex-1 text-sm",
+              done ? "text-subtle line-through" : "text-foreground",
+              optionalTitleTone(task)
+            )}
+          >
+            {task.title}
+          </div>
+        )}
         {!done && <TodayToggle task={task} alwaysVisible />}
       </div>
       {/* The column heading already says Doing, so the chip would only repeat it. */}
-      <TaskMeta task={task} hideDoing />
-      {subs.length > 0 && (
+      <TaskMeta task={task} hideDoing hideDueSubs={stepLed} />
+      {restSubs.length > 0 && (
         <button
           type="button"
           onPointerDown={(e) => e.stopPropagation()}
@@ -96,13 +139,13 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
           {showSubs ? <ChevronDownIcon className="h-3 w-3" /> : <ChevronRightIcon className="h-3 w-3" />}
         </button>
       )}
-      {showSubs && subs.length > 0 && (
+      {showSubs && restSubs.length > 0 && (
         <ul
           className="mt-1 space-y-1 border-t border-border pt-1.5"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          {subs.map((s) => (
+          {restSubs.map((s) => (
             <li key={s.id} className="flex items-start gap-1.5 text-[12px] leading-snug">
               <input
                 type="checkbox"

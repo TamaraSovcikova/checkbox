@@ -28,14 +28,20 @@ const D1_BIND_LIMIT = 100;
 class Stmt {
   private args: unknown[] = [];
   constructor(private db: DatabaseSync, private sql: string) {}
+  // D1's bind() returns a NEW statement and leaves the original untouched, which
+  // is what makes `const s = db.prepare(sql); db.batch([s.bind(a), s.bind(b)])`
+  // write both rows. Binding in place handed batch the same statement twice and
+  // silently dropped the first row, so a symmetric write (task_links, 0034)
+  // looked half-broken in tests while production was fine. Reproduce D1.
   bind(...args: unknown[]) {
     if (args.length > D1_BIND_LIMIT) {
       throw new Error(
         `D1_ERROR: too many SQL variables (${args.length} > ${D1_BIND_LIMIT})`
       );
     }
-    this.args = clean(args);
-    return this;
+    const next = new Stmt(this.db, this.sql);
+    next.args = clean(args);
+    return next;
   }
   async first<T = Row>(): Promise<T | null> {
     const row = this.db.prepare(this.sql).get(...this.args);

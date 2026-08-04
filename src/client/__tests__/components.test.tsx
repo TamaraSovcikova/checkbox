@@ -100,6 +100,64 @@ describe("TaskRow", () => {
     expect(screen.getByText("Buy milk").className).not.toContain("text-foreground/70");
     expect(screen.queryByText("optional")).not.toBeInTheDocument();
   });
+
+  // A task whose only claim on today is a step renders as that step. Her ask:
+  // "when a subtask is due I don't want the main task card to show up on my
+  // today board but the subtask itself... it has to be clear that it's part of
+  // the main task, but primarily you should see the subtask".
+  describe("step-led", () => {
+    const step = {
+      id: "s1",
+      task_id: "t1",
+      title: "post the form",
+      done: false,
+      position: 0,
+      due_date: todayStr(),
+      priority: null,
+    };
+    // The task itself is due far out, so the step is the ONLY reason it is here.
+    const stepLed: Task = { ...sample, due_date: "2030-01-01", subtasks: [step] };
+
+    it("shows the step as the work and the task as its context", () => {
+      providers(<TaskRow task={stepLed} onOpen={() => {}} />);
+      expect(screen.getByText("post the form")).toBeInTheDocument();
+      // The parent is still named (it has to read as part of that task), quietly.
+      expect(screen.getByTitle("Part of: Buy milk")).toBeInTheDocument();
+    });
+
+    it("the tick completes the STEP, not the whole task", () => {
+      providers(<TaskRow task={stepLed} onOpen={() => {}} />);
+      expect(screen.getByLabelText("Complete post the form")).toBeInTheDocument();
+      // No circle that would complete the parent: on this row that is a trap.
+      expect(screen.queryByLabelText("Complete")).not.toBeInTheDocument();
+    });
+
+    it("does not print the leading step twice", () => {
+      providers(
+        <TaskRow
+          task={{
+            ...stepLed,
+            subtasks: [step, { ...step, id: "s2", title: "other", due_date: null }],
+          }}
+          onOpen={() => {}}
+        />
+      );
+      expect(screen.getAllByText("post the form")).toHaveLength(1);
+      // The rest of the checklist is still reachable, and the counter still
+      // reports the whole task's progress.
+      expect(screen.getByLabelText("Show subtasks")).toBeInTheDocument();
+      expect(screen.getByTitle("0 of 2 subtasks done")).toBeInTheDocument();
+    });
+
+    it("a task in Today on its own account keeps its own title and circle", () => {
+      providers(
+        <TaskRow task={{ ...sample, due_date: todayStr(), subtasks: [step] }} onOpen={() => {}} />
+      );
+      expect(screen.getByText("Buy milk")).toBeInTheDocument();
+      expect(screen.getByLabelText("Complete")).toBeInTheDocument();
+      expect(screen.queryByTitle("Part of: Buy milk")).not.toBeInTheDocument();
+    });
+  });
 });
 
 describe("TopBar", () => {

@@ -62,6 +62,16 @@ export async function hydrateTasks(
        WHERE d.depends_on_id IN (${ph})`
   );
 
+  // Related tasks. Symmetric, so one direction is the whole answer: the table
+  // holds both rows for every link (see migration 0034).
+  const linkRows = await chunkedIn(
+    db,
+    ids,
+    (ph) => `SELECT k.task_id, k.linked_id, t.title, t.status
+       FROM task_links k JOIN tasks t ON t.id = k.linked_id
+       WHERE k.task_id IN (${ph})`
+  );
+
   const labelsByTask = new Map<string, unknown[]>();
   for (const r of labelRows as Record<string, unknown>[]) {
     const arr = labelsByTask.get(r.task_id as string) ?? [];
@@ -88,11 +98,19 @@ export async function hydrateTasks(
     blocksByTask.set(r.blocker_id as string, arr);
   }
 
+  const linksByTask = new Map<string, unknown[]>();
+  for (const r of linkRows as Record<string, unknown>[]) {
+    const arr = linksByTask.get(r.task_id as string) ?? [];
+    arr.push({ id: r.linked_id, title: r.title, status: r.status });
+    linksByTask.set(r.task_id as string, arr);
+  }
+
   for (const t of tasks) {
     (t as Record<string, unknown>).labels = labelsByTask.get(t.id as string) ?? [];
     (t as Record<string, unknown>).subtasks = subsByTask.get(t.id as string) ?? [];
     (t as Record<string, unknown>).depends_on = depsByTask.get(t.id as string) ?? [];
     (t as Record<string, unknown>).blocks = blocksByTask.get(t.id as string) ?? [];
+    (t as Record<string, unknown>).related = linksByTask.get(t.id as string) ?? [];
   }
   return tasks;
 }

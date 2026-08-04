@@ -8,6 +8,8 @@ import {
   undoLeaveTodayBody,
   stalePlannedTasks,
   hasCheckpointDue,
+  isSubtaskLed,
+  subtasksDueToday,
 } from "../src/client/lib/today";
 import type { Subtask, Task } from "../src/shared/types";
 
@@ -210,6 +212,77 @@ describe("subtasks carry a task into Today", () => {
 
   it("a task already in Today on its own account stays in, subtasks or not", () => {
     expect(inTodayView(task({ due_date: TODAY }), TODAY)).toBe(true);
+  });
+});
+
+// The rule behind the step-led row: when the ONLY reason a task is in Today is a
+// step due today, the row is drawn as that step with the task above it as
+// context (TaskRow, BoardCard). Getting this wrong either buries the task's own
+// deadline behind a step or prints the step twice, so the boundary is pinned.
+describe("isSubtaskLed / subtasksDueToday", () => {
+  const farOff = { due_date: "2026-09-01" };
+
+  it("is led by its step when the step is the only reason it is here", () => {
+    expect(isSubtaskLed(task({ ...farOff, subtasks: [sub({ due_date: TODAY })] }), TODAY)).toBe(
+      true
+    );
+  });
+
+  it("is NOT led when the task is in Today on its own account too", () => {
+    // Planned for today AND carrying a step due today: the task is the work,
+    // and the step shows in the checklist under it as before.
+    expect(
+      isSubtaskLed(task({ planned_date: TODAY, subtasks: [sub({ due_date: TODAY })] }), TODAY)
+    ).toBe(false);
+    expect(
+      isSubtaskLed(task({ due_date: TODAY, subtasks: [sub({ due_date: TODAY })] }), TODAY)
+    ).toBe(false);
+  });
+
+  it("is NOT led by an overdue or future step", () => {
+    expect(
+      isSubtaskLed(task({ ...farOff, subtasks: [sub({ due_date: "2026-07-01" })] }), TODAY)
+    ).toBe(false);
+    expect(
+      isSubtaskLed(task({ ...farOff, subtasks: [sub({ due_date: "2026-07-20" })] }), TODAY)
+    ).toBe(false);
+  });
+
+  it("a done task is never step-led", () => {
+    expect(
+      isSubtaskLed(
+        task({ ...farOff, status: "done", subtasks: [sub({ due_date: TODAY })] }),
+        TODAY
+      )
+    ).toBe(false);
+  });
+
+  it("returns every open step due today, in list order", () => {
+    const t = task({
+      ...farOff,
+      subtasks: [
+        sub({ id: "a", title: "post the form", due_date: TODAY }),
+        sub({ id: "b", title: "book the room", due_date: TODAY }),
+        sub({ id: "c", title: "ticked", due_date: TODAY, done: true }),
+        sub({ id: "d", title: "later", due_date: "2026-08-01" }),
+      ],
+    });
+    expect(subtasksDueToday(t, TODAY).map((s) => s.title)).toEqual([
+      "post the form",
+      "book the room",
+    ]);
+  });
+
+  // subtasksDueBy includes overdue steps (it feeds the "2 subtasks overdue"
+  // chip); subtasksDueToday is strictly today, because only a step due TODAY
+  // carries the task into Today, so only that step can lead a row.
+  it("differs from subtasksDueBy on overdue steps", () => {
+    const t = task({
+      ...farOff,
+      subtasks: [sub({ id: "a", due_date: "2026-07-01" }), sub({ id: "b", due_date: TODAY })],
+    });
+    expect(subtasksDueBy(t, TODAY).map((s) => s.id)).toEqual(["a", "b"]);
+    expect(subtasksDueToday(t, TODAY).map((s) => s.id)).toEqual(["b"]);
   });
 });
 

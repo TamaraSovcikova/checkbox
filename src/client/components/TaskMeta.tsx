@@ -5,6 +5,7 @@ import { areaColorVar, shouldPill } from "../lib/colors";
 import { PriorityPill } from "./ui";
 import { cn, todayStr, monthAheadStr } from "@/lib/utils";
 import { inTodayView, subtasksDueBy, hasCheckpointDue } from "../lib/today";
+import { isDormant } from "../lib/recurring";
 import { openUnlocks } from "../../shared/flow";
 import { dueLabel, isOverdue } from "../lib/due";
 import { useToggleToday } from "../lib/use-toggle-today";
@@ -19,6 +20,7 @@ import {
   SubtaskIcon,
   CheckpointIcon,
   FlowIcon,
+  LinkIcon,
 } from "../lib/icons";
 
 // ── The one description of what a task looks like ────────────────────────────
@@ -63,6 +65,18 @@ export function useDistantTone(task: Task) {
     "opacity-45 transition-opacity hover:opacity-100"
   );
 }
+
+// A recurring task that is not asking for anything today recedes the same way.
+// Her ask: "for tasks that are repeating, unless they are due or overdue they
+// should be grayed out a bit until they are relevant". Backlog and project lists
+// are where this bites, because those are the lists a routine sits in all week;
+// the area page already parks dormant routines in its own tab.
+//
+// Unconditional, unlike the distant fade above: `dimDistantTasks` exists because
+// a far-future due date is still a commitment you might want at full strength,
+// while a routine between occurrences is asking for nothing by definition.
+export const dormantTone = (task: Task, today: string) =>
+  isDormant(task, today) && "opacity-50 transition-opacity hover:opacity-100";
 
 // The clickable Today marker. Lit (solid, primary) when the task is in Today for
 // ANY reason the view shows it - planned, due today/overdue, time-blocked today,
@@ -111,12 +125,16 @@ export function TodayToggle({
 
 // The chip strip under a task's title. `hideDoing` is for the board, where the
 // column heading already says "Doing" and the chip would just repeat it.
+// `hideDueSubs` is for the step-led row in Today, which prints those subtasks as
+// its own lines: the chip would be counting what is already on screen.
 export function TaskMeta({
   task,
   hideDoing = false,
+  hideDueSubs = false,
 }: {
   task: Task;
   hideDoing?: boolean;
+  hideDueSubs?: boolean;
 }) {
   const { area, project } = useTaskArea(task);
   const done = task.status === "done";
@@ -131,7 +149,7 @@ export function TaskMeta({
   // its own due date is weeks out. Say so on the row: an entry you cannot explain
   // reads as a bug (the all-day box taught us that the expensive way). The count
   // is of open subtasks due today or already late.
-  const dueSubs = done ? [] : subtasksDueBy(task, today);
+  const dueSubs = done || hideDueSubs ? [] : subtasksDueBy(task, today);
   const lateSubs = dueSubs.filter((s) => s.due_date! < today);
   // Phrased so it is never a lie: all late reads "overdue", none late reads
   // "today", and a mix reads plain "due" rather than claiming either.
@@ -208,6 +226,18 @@ export function TaskMeta({
         >
           <FlowIcon className="h-3 w-3" />
           unlocks {openUnlocks(task).length}
+        </span>
+      )}
+      {/* Related tasks. A count, not a list: the point of a link is that the
+          other task exists, and the titles are one hover (or one click into the
+          sheet) away. Quiet by design, since a link never asks for anything. */}
+      {(task.related ?? []).length > 0 && (
+        <span
+          className="inline-flex items-center gap-0.5 text-muted"
+          title={`Related: ${(task.related ?? []).map((r) => r.title).join(", ")}`}
+        >
+          <LinkIcon className="h-3 w-3" />
+          {(task.related ?? []).length} linked
         </span>
       )}
       {/* A checkpoint pulse is why this long-horizon task is in Today. Says so,

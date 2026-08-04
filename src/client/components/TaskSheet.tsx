@@ -47,6 +47,7 @@ import {
 } from "../lib/icons";
 import { TimeTracker } from "./TimeTracker";
 import { DependencyEditor } from "./DependencyEditor";
+import { RelatedEditor } from "./RelatedEditor";
 import { AttachmentList } from "./AttachmentList";
 import { useSnoozeTask } from "../lib/queries";
 
@@ -1194,6 +1195,7 @@ export function TaskSheet({
             {/* Links & files - used often, so always open (not folded away). */}
             <div className="space-y-3 border-t border-border pt-3">
               <DependencyEditor task={task} />
+              <RelatedEditor task={task} />
               <AttachmentList taskId={task.id} />
               {/* Vault-born tasks link back to their note. Vault name is fixed:
                   single-user app, her vault is "Workspace". */}

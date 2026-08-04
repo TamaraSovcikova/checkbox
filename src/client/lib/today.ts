@@ -39,6 +39,19 @@ export function subtasksDueBy(task: Task, today: string): Subtask[] {
 export const hasSubtaskDueToday = (task: Task, today: string): boolean =>
   (task.subtasks ?? []).some((s) => !s.done && s.due_date === today);
 
+// The steps themselves, in list order. A task carried into Today by its steps
+// RENDERS as those steps (see TaskRow's subtask-led layout), so the row needs
+// the list and not just the boolean above.
+export const subtasksDueToday = (task: Task, today: string): Subtask[] =>
+  (task.subtasks ?? []).filter((s) => !s.done && s.due_date === today);
+
+// In the Today view ONLY because a step is due: the step is the work and the
+// task is its context. This is the one condition that changes how a row is
+// drawn, so it lives here beside the rules it is made of rather than in the
+// component.
+export const isSubtaskLed = (task: Task, today: string): boolean =>
+  task.status !== "done" && hasSubtaskDueToday(task, today) && !inToday(task, today);
+
 // A checkpoint pulse is due: the task is in Today to be marked on track. Like a
 // subtask due, this is not a reason leaveTodayBody can clear outright (the
 // checkpoint schedule and the subtask's deadline are real data); Remove handles

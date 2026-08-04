@@ -615,6 +615,38 @@ tasks.delete("/:id/dependencies/:depId", async (c) => {
   return c.json({ ok: true });
 });
 
+// --- related tasks (symmetric links) ---
+// A link says "these two belong together", nothing more: no order, no blocking.
+// Written as both rows in one batch so the table can never hold half a link, and
+// so hydration reads one direction (see migration 0034).
+tasks.post("/:id/links", async (c) => {
+  const userId = await getUserId(c);
+  const id = c.req.param("id");
+  const b = await c.req.json<{ linked_id: string }>();
+  const other = b.linked_id;
+  if (!other || other === id) return c.json({ error: "invalid link" }, 400);
+  if (!(await ownsTask(c.env.DB, userId, id)) || !(await ownsTask(c.env.DB, userId, other)))
+    return c.json({ error: "not found" }, 404);
+  const ins = c.env.DB.prepare(
+    "INSERT OR IGNORE INTO task_links (task_id, linked_id) VALUES (?, ?)"
+  );
+  await c.env.DB.batch([ins.bind(id, other), ins.bind(other, id)]);
+  return c.json({ ok: true });
+});
+
+tasks.delete("/:id/links/:linkedId", async (c) => {
+  const userId = await getUserId(c);
+  const id = c.req.param("id");
+  const other = c.req.param("linkedId");
+  if (!(await ownsTask(c.env.DB, userId, id)))
+    return c.json({ error: "not found" }, 404);
+  const del = c.env.DB.prepare(
+    "DELETE FROM task_links WHERE task_id = ? AND linked_id = ?"
+  );
+  await c.env.DB.batch([del.bind(id, other), del.bind(other, id)]);
+  return c.json({ ok: true });
+});
+
 // --- subtasks ---
 //
 // Subtask progress promotes the parent out of `todo`:

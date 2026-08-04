@@ -148,6 +148,9 @@ export interface Task {
   subtasks?: Subtask[];
   depends_on?: TaskRef[]; // blockers (this task waits on these)
   blocks?: TaskRef[]; // tasks waiting on this one
+  // Related tasks: symmetric, non-blocking, no bearing on order or readiness.
+  // Both sides of a link carry the other, so this list is the whole answer.
+  related?: TaskRef[];
 }
 
 // Lightweight task reference for dependency lists.

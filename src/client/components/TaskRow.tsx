@@ -13,7 +13,12 @@ import { PriorityPill } from "./ui";
 import { cn, todayStr } from "@/lib/utils";
 import { isBlocked } from "../lib/blocked";
 import { dueLabel } from "../lib/due";
-import { hasSubtaskDueToday, hasCheckpointDue, inToday } from "../lib/today";
+import {
+  hasSubtaskDueToday,
+  hasCheckpointDue,
+  isSubtaskLed,
+  subtasksDueToday,
+} from "../lib/today";
 import { advanceCheckpointBody } from "../../shared/checkpoint";
 import {
   TaskMeta,
@@ -21,6 +26,7 @@ import {
   optionalTitleTone,
   useTaskArea,
   useDistantTone,
+  dormantTone,
 } from "./TaskMeta";
 import {
   CheckIcon,
@@ -56,19 +62,26 @@ export function TaskRow({
   // the project when the task carries no area of its own, so a row can never
   // render as area-less beside an identical tinted one.
   const { area } = useTaskArea(task);
-  // Open the checklist on sight when a step is already due: the row is in Today
-  // BECAUSE of that subtask, so making you click to find out which one would be a
-  // poor joke. Initial state only, so collapsing it stays collapsed.
+  // In Today ONLY because a step is due: the STEP is the work, so the row is
+  // drawn as that step with the parent above it as context. Her words: "when a
+  // subtask is due I don't want the main task card to show up on my today board
+  // but the subtask itself... it has to be clear that it's part of the main
+  // task, but primarily you should see the subtask".
+  const subtaskLed = isSubtaskLed(task, todayStr());
+  // The steps that put the task here. They are rendered as the row's main lines,
+  // so they come OUT of the collapsed checklist below (which would otherwise
+  // print each of them twice).
+  const leadSteps = subtaskLed ? subtasksDueToday(task, todayStr()) : [];
+  // Open the checklist on sight when a step is already due and the row is NOT
+  // step-led (a task in Today on its own account that also has a step due):
+  // making you click to find out which one would be a poor joke. Initial state
+  // only, so collapsing it stays collapsed.
   const [expanded, setExpanded] = useState(
-    () => task.status !== "done" && hasSubtaskDueToday(task, todayStr())
+    () =>
+      task.status !== "done" &&
+      hasSubtaskDueToday(task, todayStr()) &&
+      !isSubtaskLed(task, todayStr())
   );
-  // In Today ONLY because a step is due: the STEP is the work, so it carries
-  // the emphasis and the parent recedes to context. Her words: "show that it's
-  // the subtask that is due and not the main task".
-  const subtaskLed =
-    task.status !== "done" &&
-    hasSubtaskDueToday(task, todayStr()) &&
-    !inToday(task, todayStr());
   const [confirming, setConfirming] = useState(false);
   const done = task.status === "done";
   // Dim (but keep interactive) tasks due more than a month out, so the far future
@@ -76,6 +89,10 @@ export function TaskRow({
   // fades in step with the row rather than staying at full strength.
   const distant = useDistantTone(task);
   const todayIsToday = todayStr();
+  // A routine between occurrences recedes until it is due. Same mechanism as the
+  // far-future fade, and they compose harmlessly (a dormant routine is dim
+  // either way).
+  const dormant = dormantTone(task, todayIsToday);
   // Blocked = waiting on an open task OR a future blocked_until date. Shown as a
   // distinct, quiet signal (muted title + a blocked chip), deliberately NOT the
   // opacity fade used for distant tasks, so the two never read as the same thing.
@@ -84,6 +101,10 @@ export function TaskRow({
   const subtasks = task.subtasks ?? [];
   const subDone = subtasks.filter((s) => s.done).length;
   const subOpen = subtasks.length - subDone;
+  // What the disclosure holds: everything except the steps already printed as
+  // the row's main lines. The n/n counter still counts ALL of them, because it
+  // reports the task's progress and not the size of this list.
+  const checklist = subtasks.filter((s) => !leadSteps.some((l) => l.id === s.id));
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
     data: { type: "task", task },
@@ -155,7 +176,8 @@ export function TaskRow({
         isDragging && "opacity-40",
         // Dim the far future; hover restores full opacity so it never feels lost.
         // Suppressed mid-drag, where opacity-40 already applies.
-        !isDragging && distant
+        !isDragging && distant,
+        !isDragging && dormant
       )}
       style={{
         ...(tint ? { backgroundColor: tint } : {}),
@@ -182,7 +204,12 @@ export function TaskRow({
         )}
       >
         {/* Complete: leftmost and FIXED. It never shifts on hover, so ticking a
-            task off is a single move to a stable target. */}
+            task off is a single move to a stable target.
+
+            Absent on a step-led row: there the work is the step, and a circle
+            that completed the whole parent sitting beside a step's title is a
+            trap. The parent is still completable from its sheet. */}
+        {!subtaskLed && (
         <button
           aria-label="Complete"
           onPointerDown={(e) => e.stopPropagation()}
@@ -206,6 +233,7 @@ export function TaskRow({
         >
           {done && <CheckIcon className="h-2.5 w-2.5" />}
         </button>
+        )}
 
         {/* Multi-select: a square checkbox in a RESERVED slot just right of the
             complete circle. It fades in on hover (or stays while a selection is
@@ -255,6 +283,54 @@ export function TaskRow({
 
         {!done && <TodayToggle task={task} className="order-last mt-0.5" />}
 
+        {subtaskLed ? (
+          /* Step-led row: the parent is a breadcrumb over the step(s) that are
+             actually due. Same card, inverted emphasis. The parent line and each
+             step title open the task sheet (which is where a step is edited);
+             only the step's own circle ticks it off. */
+          <div className="min-w-0 flex-1">
+            <button
+              onClick={(e) => (selection ? selection.onRowClick(e) : onOpen(task))}
+              className="flex w-full items-center gap-1 text-left text-[11px] leading-tight text-subtle hover:text-muted"
+              title={`Part of: ${task.title}`}
+            >
+              <SubtaskIcon className="h-3 w-3 shrink-0" />
+              <span className="truncate">{task.title}</span>
+            </button>
+            <ul className="mt-0.5 space-y-1">
+              {leadSteps.map((s) => (
+                <li key={s.id} className="flex items-start gap-2">
+                  <button
+                    aria-label={`Complete ${s.title}`}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSub.mutate({ taskId: task.id, subId: s.id, done: true });
+                    }}
+                    className={cn(
+                      "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border transition-colors hover:border-primary",
+                      // Same generous hit area as the task circle it stands in for.
+                      "relative z-10 before:absolute before:content-[''] max-md:before:-inset-3 md:before:-inset-1.5"
+                    )}
+                    style={{
+                      borderColor: PRIORITY_VAR[s.priority ?? task.priority],
+                    }}
+                  />
+                  <button
+                    onClick={(e) => (selection ? selection.onRowClick(e) : onOpen(task))}
+                    className="min-w-0 flex-1 text-left text-sm leading-snug text-foreground"
+                  >
+                    {s.title}
+                  </button>
+                  {shouldPill(s.priority) && <PriorityPill priority={s.priority} />}
+                </li>
+              ))}
+            </ul>
+            {/* The parent's context (project, area, its own due date), minus the
+                "N subtasks today" chip: the row IS those subtasks now. */}
+            <TaskMeta task={task} hideDueSubs />
+          </div>
+        ) : (
         <button
           onClick={(e) => (selection ? selection.onRowClick(e) : onOpen(task))}
           className="flex-1 text-left"
@@ -264,8 +340,8 @@ export function TaskRow({
               "text-sm leading-snug",
               done
                 ? "text-subtle line-through"
-                : blocked || subtaskLed
-                ? "text-muted" // quietened; subtask-led rows hand emphasis down
+                : blocked
+                ? "text-muted"
                 : "text-foreground",
               // A shade softer when optional. Loses to blocked/done above, which
               // are stronger statements about the same title.
@@ -276,11 +352,13 @@ export function TaskRow({
           </div>
           <TaskMeta task={task} />
         </button>
+        )}
 
         {/* Subtask disclosure. Sits outside the row-open button (a button cannot
             nest a button) and expands the checklist in place, so ticking a subtask
-            never costs a trip through the task sheet. */}
-        {subtasks.length > 0 && (
+            never costs a trip through the task sheet. On a step-led row it holds
+            the OTHER steps, and disappears when there are none. */}
+        {checklist.length > 0 && (
           <button
             aria-label={expanded ? "Hide subtasks" : "Show subtasks"}
             aria-expanded={expanded}
@@ -306,9 +384,9 @@ export function TaskRow({
         )}
       </div>
 
-      {expanded && subtasks.length > 0 && (
+      {expanded && checklist.length > 0 && (
         <ul className="mb-1 ml-9 space-y-0.5 border-l border-border pl-3">
-          {subtasks.map((s) => (
+          {checklist.map((s) => (
             <li key={s.id} className="flex items-center gap-2 py-0.5">
               <input
                 type="checkbox"
@@ -329,14 +407,14 @@ export function TaskRow({
                 className={cn(
                   "flex-1 text-left text-[13px] text-foreground hover:text-primary",
                   s.done && "text-subtle line-through",
-                  // The step that put this task in Today reads at full weight
-                  // while the parent title above sits dimmed.
-                  subtaskLed && !s.done && s.due_date === todayIsToday && "font-medium"
+                  // A step due today that is NOT leading this row (the task is
+                  // in Today on its own account too) still reads at full weight.
+                  !s.done && s.due_date === todayIsToday && "font-medium"
                 )}
               >
                 {s.title}
               </button>
-              {subtaskLed && !s.done && s.due_date === todayIsToday && (
+              {!s.done && s.due_date === todayIsToday && (
                 <span className="shrink-0 rounded border border-primary/40 px-1 text-[10px] font-semibold text-primary">
                   due today
                 </span>
