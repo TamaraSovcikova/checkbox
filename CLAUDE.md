@@ -27,7 +27,7 @@ Personal task manager. This is the operational file that lives with the code. Na
 - MCP: JSON-RPC 2.0 over HTTP at `/mcp`. Bearer token auth. 35 tools (read + full
   write: task/area/project/subtask CRUD, dependencies, recurrence, batch create).
 
-## Current state (2026-07-31)
+## Current state (2026-08-04)
 
 **Phases 0-4 + Tier 1 + Tier 2 + the Tier 4 moat (ambient planner #30, note
 extraction #31) are all live**, plus full activation (push, email, R2) and an
@@ -37,7 +37,7 @@ installable/auto-updating PWA. Deployed at https://checkbox.tamara-sovcik.worker
 Health: GET /api/health → { ok: true, phase: 8 }
 Version: GET /api/version → the deployed client bundle (deploy-freshness gate)
 MCP:    /mcp → 43 tools, bearer auth (per-user tokens in mcp_tokens)
-D1:     migrations 0001-0033 applied local + remote
+D1:     migrations 0001-0034 applied local + remote
 ```
 
 Surfaces beyond the task views: `/home` (composable widget dashboard, layout in
@@ -47,12 +47,22 @@ registry), Calendar, Weekly review, Mail coverage.
 
 Migration index: 0001-0031 as before (init, calendar, push, auth, recurrence,
 tier2, day_plans, note_candidates, attachments, trackers, checkpoints, reminders,
-vault sync) · 0032 projects.starred · 0033 trackers.section.
+vault sync) · 0032 projects.starred · 0033 trackers.section · 0034 task_links
+(symmetric related-task links, both rows written per link).
 
-Two behaviours worth knowing before changing them: a recurring task COMPLETES and
+Four behaviours worth knowing before changing them: a recurring task COMPLETES and
 the 06:00 sweep (worker/lib/resurrect) wakes the next occurrence next morning; a
 subtask carries its parent into Today on its DUE DAY ONLY, a passed step moves the
-parent to Overdue.
+parent to Overdue; a task in Today ONLY because of a due step RENDERS as that step
+with the task as a breadcrumb (client/lib/today `isSubtaskLed`, used by TaskRow,
+BoardCard and the Home widgets); and every path that finishes a task routes through
+`lib/use-complete-guard`, which asks before completing one with open steps.
+
+The task sheet is split Task / More by MEASURED usage, not by category (see
+SESSION_LOG chat #58 for the rates). Rule when adding a field: above roughly
+1-in-10 tasks it goes on Task, below it goes on More, and anything on More that
+holds a value also shows as a chip on Task. Empty controls collapse to a dashed
+chip rather than rendering their editor.
 
 ## Wrangler secrets in production
 
