@@ -27,7 +27,7 @@ Personal task manager. This is the operational file that lives with the code. Na
 - MCP: JSON-RPC 2.0 over HTTP at `/mcp`. Bearer token auth. 35 tools (read + full
   write: task/area/project/subtask CRUD, dependencies, recurrence, batch create).
 
-## Current state (2026-07-08)
+## Current state (2026-07-31)
 
 **Phases 0-4 + Tier 1 + Tier 2 + the Tier 4 moat (ambient planner #30, note
 extraction #31) are all live**, plus full activation (push, email, R2) and an
@@ -35,13 +35,24 @@ installable/auto-updating PWA. Deployed at https://checkbox.tamara-sovcik.worker
 
 ```
 Health: GET /api/health → { ok: true, phase: 8 }
-MCP:    /mcp → 35 tools, bearer auth (per-user tokens in mcp_tokens)
-D1:     all migrations 0001-0009 applied local + remote
+Version: GET /api/version → the deployed client bundle (deploy-freshness gate)
+MCP:    /mcp → 41 tools, bearer auth (per-user tokens in mcp_tokens)
+D1:     migrations 0001-0033 applied local + remote
 ```
 
-Migrations: 0001 init · 0002 cal-unique · 0003 push-unique · 0004 auth-multiuser ·
-0005 recurrence · 0006 tier2 (snooze/time/deps/templates) · 0007 day_plans ·
-0008 note_candidates · 0009 attachment_size.
+Surfaces beyond the task views: `/home` (composable widget dashboard, layout in
+UserPrefs.dashboard), `/flow` + a per-project Flow tab (dependency runway, see
+shared/flow.ts), Cards, Cadences (sections via trackers.section + the prefs
+registry), Calendar, Weekly review, Mail coverage.
+
+Migration index: 0001-0031 as before (init, calendar, push, auth, recurrence,
+tier2, day_plans, note_candidates, attachments, trackers, checkpoints, reminders,
+vault sync) · 0032 projects.starred · 0033 trackers.section.
+
+Two behaviours worth knowing before changing them: a recurring task COMPLETES and
+the 06:00 sweep (worker/lib/resurrect) wakes the next occurrence next morning; a
+subtask carries its parent into Today on its DUE DAY ONLY, a passed step moves the
+parent to Overdue.
 
 ## Wrangler secrets in production
 
