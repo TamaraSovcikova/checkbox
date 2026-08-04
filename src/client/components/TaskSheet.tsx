@@ -679,7 +679,10 @@ export function TaskSheet({
                 value={sectionValue}
                 onChange={(e) => setSection(e.target.value)}
                 title="Move this task"
-                className="max-w-full cursor-pointer truncate rounded border border-transparent bg-transparent py-0.5 text-xs text-muted outline-none transition-colors hover:border-border hover:text-foreground focus:border-primary"
+                // w-fit, so the chevron sits against the name instead of at the
+                // far edge of the sheet, where it reads as a full-width control
+                // rather than a breadcrumb.
+                className="w-fit max-w-full cursor-pointer truncate rounded border border-transparent bg-transparent py-0.5 text-xs text-muted outline-none transition-colors hover:border-border hover:text-foreground focus:border-primary"
               >
                 <option value="">No section (Backlog)</option>
                 {areas.length > 0 && (
