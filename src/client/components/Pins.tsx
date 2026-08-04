@@ -18,6 +18,7 @@ import {
   useCompleteTask,
 } from "../lib/queries";
 import { useTaskUI } from "../lib/ui-context";
+import { useCompleteGuard } from "../lib/use-complete-guard";
 import { AREA_COLORS, areaColorVar } from "../lib/colors";
 import { Markdown } from "../lib/markdown";
 import {
@@ -346,6 +347,7 @@ function LinkedTaskLine({
   onUnlink: () => void;
 }) {
   const complete = useCompleteTask();
+  const { guard, dialog } = useCompleteGuard();
   const { open } = useTaskUI();
 
   // Linked task deleted from under us. Say so instead of rendering a ghost line,
@@ -375,7 +377,11 @@ function LinkedTaskLine({
       <input
         type="checkbox"
         checked={isDone}
-        onChange={() => complete.mutate({ id: task.id, done: !isDone })}
+        // Ticking a pinned task off is completing it, so it asks about open
+        // steps like everywhere else. Un-ticking never asks.
+        onChange={() =>
+          guard(task, () => complete.mutate({ id: task.id, done: !isDone }))
+        }
         className="h-3.5 w-3.5 shrink-0 [accent-color:var(--primary)]"
         aria-label={task.title}
       />
@@ -399,6 +405,7 @@ function LinkedTaskLine({
       >
         <TrashIcon className="h-3 w-3" />
       </button>
+      {dialog}
     </div>
   );
 }

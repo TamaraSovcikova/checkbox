@@ -10,11 +10,12 @@ import {
   useTaskInvalidate,
   useTasksByIds,
   useUpdateTask,
+  useAttachments,
 } from "../lib/queries";
-import { RECURRENCE_PRESETS } from "../../shared/recurrence";
+import { RECURRENCE_PRESETS, recurrenceLabel } from "../../shared/recurrence";
 import { Markdown } from "../lib/markdown";
 import { parseDatePhrase, parseCapture } from "../lib/nlp";
-import { PRIORITY_VAR, shouldPill } from "../lib/colors";
+import { PRIORITY_VAR, shouldPill, areaColorVar } from "../lib/colors";
 import { cn, todayStr } from "@/lib/utils";
 import {
   inTodayView,
@@ -44,6 +45,8 @@ import {
   MailIcon,
   ExternalLinkIcon,
   PlanIcon,
+  TimerIcon,
+  AttachIcon,
 } from "../lib/icons";
 import { TimeTracker } from "./TimeTracker";
 import { DependencyEditor } from "./DependencyEditor";
@@ -418,6 +421,9 @@ export function TaskSheet({
   const { toast } = useToast();
   const { data: areas = [] } = useAreas();
   const { data: projects = [] } = useProjects();
+  // Read here (not only inside AttachmentList) so the Task tab can say "2 files"
+  // when there are any: a value on the More tab must never be invisible.
+  const { data: attachments = [] } = useAttachments(task?.id ?? null);
 
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
@@ -438,9 +444,14 @@ export function TaskSheet({
   const [rawSub, setRawSub] = useState(false);
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [optional, setOptional] = useState(false);
+  // Which half of the sheet is showing. Always opens on Task: More is where you
+  // go deliberately, and a sheet that remembered the other tab would greet the
+  // next task with its repeat settings.
+  const [tab, setTab] = useState<"task" | "more">("task");
 
   useEffect(() => {
     if (!task) return;
+    setTab("task");
     setTitle(task.title);
     setNotes(task.notes ?? "");
     setEditingNotes(false);
@@ -534,6 +545,46 @@ export function TaskSheet({
     invalidate();
   }
 
+  // The area whose colour paints the breadcrumb dot. Resolved through the
+  // project when the task carries no area of its own, matching the rows.
+  const crumbArea = areas.find(
+    (a) =>
+      a.id ===
+      (task?.area_id ?? projects.find((p) => p.id === task?.project_id)?.area_id ?? null)
+  );
+
+  // Rare fields that are SET on this task, and so get a chip on the Task tab.
+  // The list is deliberately the same set that lives on More: a field is either
+  // rare-and-unset (More only) or rare-and-set (More, plus a chip that says so).
+  const promoted: { label: string; Icon: typeof RepeatIcon }[] = task
+    ? [
+        task.recurrence && {
+          label: recurrenceLabel(task.recurrence),
+          Icon: RepeatIcon,
+        },
+        task.snoozed_until && {
+          label: `snoozed to ${task.snoozed_until}`,
+          Icon: SnoozeIcon,
+        },
+        task.checkpoint_days && {
+          label: `check-in every ${task.checkpoint_days}d`,
+          Icon: CheckpointIcon,
+        },
+        task.scheduled_start && {
+          label: format(parseISO(task.scheduled_start), "d MMM HH:mm"),
+          Icon: CalendarIcon,
+        },
+        task.time_spent_min > 0 && {
+          label: `${task.time_spent_min}m tracked`,
+          Icon: TimerIcon,
+        },
+        attachments.length > 0 && {
+          label: `${attachments.length} file${attachments.length === 1 ? "" : "s"}`,
+          Icon: AttachIcon,
+        },
+      ].filter(Boolean as unknown as (v: unknown) => v is { label: string; Icon: typeof RepeatIcon })
+    : [];
+
   const subDone = subtasks.filter((s) => s.done).length;
   // "In Today" for any reason the VIEW holds it (planned, due, time-blocked, a
   // due subtask, a due checkpoint), so the toggle can actually remove it. Add
@@ -614,6 +665,44 @@ export function TaskSheet({
       <SheetContent side="right" className="w-[28rem] max-w-full overflow-y-auto">
         {task && (
           <div className="flex flex-col gap-4">
+            {/* ── Where it lives: a breadcrumb, not a labelled control ────
+                86% of tasks carry an area and 64% a project, so this is a fact
+                about nearly every task and it used to spend a full-height
+                labelled select saying so. It is now the line above the title,
+                and the select itself is invisible until you click it. */}
+            <label className="-mb-1 flex items-center gap-1.5 text-xs text-muted">
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ background: areaColorVar(crumbArea?.color) }}
+              />
+              <select
+                value={sectionValue}
+                onChange={(e) => setSection(e.target.value)}
+                title="Move this task"
+                className="max-w-full cursor-pointer truncate rounded border border-transparent bg-transparent py-0.5 text-xs text-muted outline-none transition-colors hover:border-border hover:text-foreground focus:border-primary"
+              >
+                <option value="">No section (Backlog)</option>
+                {areas.length > 0 && (
+                  <optgroup label="Areas">
+                    {areas.map((a) => (
+                      <option key={a.id} value={`area:${a.id}`}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {projects.length > 0 && (
+                  <optgroup label="Projects">
+                    {projects.map((p) => (
+                      <option key={p.id} value={`proj:${p.id}`}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </label>
+
             {/* ── Always open: identity + the work ──────────────────────── */}
             <input
               value={title}
@@ -622,6 +711,32 @@ export function TaskSheet({
               className="w-full bg-transparent pr-8 text-lg font-semibold text-foreground outline-none"
             />
 
+            {/* Task / More. The split is by how often a field is actually set
+                across her tasks, not by category: what she sets on more than
+                one task in ten lives on Task, the rest on More. A rare field
+                that IS set on THIS task is not hidden by that rule; it appears
+                as a chip below, so the sheet grows with the task instead of
+                with the app's feature list. */}
+            <div className="-mb-1 flex gap-1 border-b border-border">
+              {(["task", "more"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTab(t)}
+                  className={cn(
+                    "-mb-px border-b-2 px-2.5 pb-1.5 pt-1 text-sm transition-colors",
+                    tab === t
+                      ? "border-primary font-medium text-foreground"
+                      : "border-transparent text-muted hover:text-foreground"
+                  )}
+                >
+                  {t === "task" ? "Task" : "More"}
+                </button>
+              ))}
+            </div>
+
+            {/* ══ TASK ══ what she sets often, in the order she sets it ════ */}
+            <div className={cn("flex flex-col gap-4", tab !== "task" && "hidden")}>
             {/* Priority: quick to set, worth scanning, stays visible. */}
             <div className="flex items-center gap-1">
               {[1, 2, 3, 4].map((p) => {
@@ -711,59 +826,66 @@ export function TaskSheet({
                   {isInToday ? "Remove from Today" : "Add to Today"}
                 </button>
 
-                {/* Optional: a nice-to-have rather than a commitment. Dashed
-                    styling here mirrors the dashed tick + chip on the row. */}
-                <button
-                  type="button"
-                  title="Optional: a nice-to-have, not a commitment"
-                  onClick={() => {
-                    const v = !optional;
-                    setOptional(v);
-                    // D1 has no boolean type, so store 0/1.
-                    save({ optional: v ? 1 : 0 });
-                  }}
-                  className={cn(
-                    "inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-sm font-medium transition-colors",
-                    optional
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-input text-muted hover:border-primary/50 hover:bg-surface-2"
-                  )}
-                >
-                  Optional
-                </button>
+                {/* Optional is set on 2% of tasks, so the button to SET it lives
+                    on More. Once set it comes back here, because a task being a
+                    nice-to-have changes how you read everything else on the
+                    sheet. Clicking it here un-sets it. */}
+                {!!optional && (
+                  <button
+                    type="button"
+                    title="Optional: a nice-to-have, not a commitment. Click to make it a commitment again."
+                    onClick={() => {
+                      setOptional(false);
+                      // D1 has no boolean type, so store 0/1.
+                      save({ optional: 0 });
+                    }}
+                    className="inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed border-primary bg-primary/10 px-2.5 py-1.5 text-sm font-medium text-primary transition-colors"
+                  >
+                    Optional
+                  </button>
+                )}
+
+                {/* Estimate: 14% of tasks carry one, and it is one small field,
+                    so it rides here rather than costing a trip to More. The
+                    TIMER (never used) stayed behind. */}
+                <label className="flex items-center gap-1 text-xs text-subtle">
+                  <input
+                    type="number"
+                    value={estimate}
+                    onChange={(e) =>
+                      setEstimate(e.target.value === "" ? "" : Number(e.target.value))
+                    }
+                    onBlur={() =>
+                      save({ time_estimate_min: estimate === "" ? null : Number(estimate) })
+                    }
+                    placeholder="–"
+                    className="h-8 w-14 rounded-md border border-input bg-surface px-2 text-xs text-foreground outline-none focus:border-primary"
+                  />
+                  min est
+                </label>
               </div>
             )}
 
-            {/* Area / project - change where the task lives without leaving the
-                sheet. "No section" sends it to the Backlog. */}
-            <label className="flex items-center gap-2 text-xs text-muted">
-              <span className="shrink-0">In</span>
-              <select
-                value={sectionValue}
-                onChange={(e) => setSection(e.target.value)}
-                className="h-9 flex-1 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
-              >
-                <option value="">No section (Backlog)</option>
-                {areas.length > 0 && (
-                  <optgroup label="Areas">
-                    {areas.map((a) => (
-                      <option key={a.id} value={`area:${a.id}`}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {projects.length > 0 && (
-                  <optgroup label="Projects">
-                    {projects.map((p) => (
-                      <option key={p.id} value={`proj:${p.id}`}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-            </label>
+            {/* Rare fields that ARE set on this task. They live on More, but a
+                value must never be invisible: each one says what it is here and
+                takes you to its control. This row is empty on most tasks, which
+                is the point. */}
+            {promoted.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {promoted.map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => setTab("more")}
+                    title={`${p.label} — open More to change it`}
+                    className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-primary/50 hover:text-foreground"
+                  >
+                    <p.Icon className="h-3 w-3" />
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Notes: rendered markdown when idle, textarea on click/focus.
                 Blur commits and returns to the rendered preview. */}
@@ -973,12 +1095,27 @@ export function TaskSheet({
               </div>
             )}
 
-            {/* ── Scheduling: no longer folded away. Snooze and Repeat used to
-                live inside a collapsed "Schedule" section; they are set often
-                enough that hiding them behind a disclosure cost a click every
-                time. Due date moved to the top. What remains is a light,
-                always-visible group. ────────────────────────────────────── */}
+            {/* Connections. Blocked-by is set on 8% of tasks and waiting-on on
+                1%, which would put both on More, but she asked for them where
+                she can reach them: they sit under the work, and an unset one
+                costs a single "Add" line. Related links are new, so there is no
+                rate to argue from yet. */}
             <div className="space-y-3 border-t border-border pt-3">
+              <DependencyEditor task={task} />
+              <RelatedEditor task={task} />
+            </div>
+
+            </div>
+            {/* ══ MORE ══ everything set on fewer than one task in ten. Nothing
+                here is hidden while it holds a value: a set field also shows as
+                a chip on Task. ═════════════════════════════════════════════ */}
+            <div className={cn("flex flex-col gap-4", tab !== "more" && "hidden")}>
+
+            {/* ── Scheduling: repeat (2%), snooze (2%), check-in (0.2%) and the
+                time block (4%). All were on the main sheet, each costing a line
+                on every task, to serve a case that comes up on one task in
+                fifty. ──────────────────────────────────────────────────── */}
+            <div className="space-y-3">
               {/* Time block: set by dragging on the calendar; shown here so it is
                   visible and clearable from the task too. */}
               {task.scheduled_start && (
@@ -1171,31 +1308,36 @@ export function TaskSheet({
               </p>
             </div>
 
-            {/* Tracking - a discreet inline strip, not a whole section: the
-                start/stop timer with a small estimate field beside it. */}
+            {/* Timer: never once started in 442 tasks. Kept, not removed (the
+                estimate it pairs with IS used, and it moved to Task), but this
+                is exactly what More is for. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3">
               <TimeTracker task={task} />
-              <label className="flex items-center gap-1 text-xs text-subtle">
-                <input
-                  type="number"
-                  value={estimate}
-                  onChange={(e) =>
-                    setEstimate(e.target.value === "" ? "" : Number(e.target.value))
-                  }
-                  onBlur={() =>
-                    save({ time_estimate_min: estimate === "" ? null : Number(estimate) })
-                  }
-                  placeholder="–"
-                  className="h-7 w-14 rounded-md border border-input bg-surface px-2 text-xs text-foreground outline-none focus:border-primary"
-                />
-                min est
-              </label>
+              <span className="text-xs text-subtle">
+                {task.time_spent_min > 0 ? `${task.time_spent_min}m spent` : "no time logged"}
+              </span>
             </div>
 
-            {/* Links & files - used often, so always open (not folded away). */}
+            {/* Optional lives here when it is NOT set: making a task a
+                nice-to-have is a 2% action. Set, it shows on Task instead. */}
+            {!optional && (
+              <div className="border-t border-border pt-3">
+                <button
+                  type="button"
+                  title="Optional: a nice-to-have, not a commitment"
+                  onClick={() => {
+                    setOptional(true);
+                    save({ optional: 1 });
+                  }}
+                  className="inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed border-input px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:border-primary/50 hover:bg-surface-2"
+                >
+                  Mark optional
+                </button>
+              </div>
+            )}
+
+            {/* Files and the note this task came from. */}
             <div className="space-y-3 border-t border-border pt-3">
-              <DependencyEditor task={task} />
-              <RelatedEditor task={task} />
               <AttachmentList taskId={task.id} />
               {/* Vault-born tasks link back to their note. Vault name is fixed:
                   single-user app, her vault is "Workspace". */}
@@ -1223,6 +1365,7 @@ export function TaskSheet({
               >
                 Delete task
               </Button>
+            </div>
             </div>
           </div>
         )}

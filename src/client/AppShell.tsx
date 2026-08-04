@@ -17,6 +17,7 @@ import {
   computeProjectReorder,
   type DragData,
   type DropData,
+  type DropAction,
 } from "./lib/dnd";
 import { Sidebar, MobileSidebar } from "./components/Sidebar";
 import { TaskSheet } from "./components/TaskSheet";
@@ -26,6 +27,7 @@ import { TaskUIContext } from "./lib/ui-context";
 import { MenuIcon, AddIcon, LogoIcon } from "./lib/icons";
 import { todayStr } from "./lib/utils";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { useCompleteGuard } from "./lib/use-complete-guard";
 
 // Fire the global capture surface (CommandCapture listens). Touch clients have no
 // Cmd-K, so the mobile header button and the FAB both dispatch this.
@@ -62,6 +64,7 @@ export function AppShell() {
   const [task, setTask] = useState<Task | null>(null);
   const [drawer, setDrawer] = useState(false);
   const client = useQueryClient();
+  const { guard, dialog } = useCompleteGuard();
   // Mouse: a 6px move starts a drag, so a plain click still opens the task.
   // Touch: press-and-hold ~180ms starts a drag, so a normal swipe scrolls the
   // list instead of being hijacked. Without the TouchSensor, dragging was
@@ -74,12 +77,24 @@ export function AppShell() {
   );
 
   async function onDragEnd(e: DragEndEvent) {
-    const action = resolveDrop(
-      e.active.data.current as DragData,
-      e.over?.data.current as DropData,
-      todayStr()
-    );
+    const drag = e.active.data.current as DragData;
+    const action = resolveDrop(drag, e.over?.data.current as DropData, todayStr());
     if (!action) return;
+    // Dropping a card in the Done column is completing it, so it asks the same
+    // question a click on the circle asks: this was the one path where a task
+    // with open steps went to done in silence, which is exactly the case where
+    // one of those steps has been forgotten.
+    const dropped = drag?.type === "task" ? drag.task : null;
+    if (action.kind === "complete" && action.done && dropped) {
+      guard(dropped, () => runDrop(action));
+      return;
+    }
+    await runDrop(action);
+  }
+
+  // DropAction includes null (resolveDrop's no-op), which onDragEnd has already
+  // returned on, so this takes the real actions only.
+  async function runDrop(action: NonNullable<DropAction>) {
     try {
       if (action.kind === "move-project") {
         await api.updateProject(action.id, { area_id: action.areaId });
@@ -129,6 +144,7 @@ export function AppShell() {
   return (
     <TaskUIContext.Provider value={{ open: setTask }}>
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+        {dialog}
         <div className="flex h-dvh">
           {/* Desktop rail (hidden < md); the drawer takes over on mobile. */}
           <Sidebar />

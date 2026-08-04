@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Task } from "../../shared/types";
 import { api } from "../lib/api";
 import { useTaskInvalidate } from "../lib/queries";
 import { useToast } from "../lib/toast";
+import { useCompleteGuard } from "../lib/use-complete-guard";
 import { CheckIcon, TrashIcon, RescheduleIcon, BacklogIcon, CloseIcon, SnoozeIcon } from "../lib/icons";
 import { Button } from "./ui";
 
@@ -33,6 +34,9 @@ export interface RowSelection {
 export interface TaskControls {
   selectedIds: Set<string>;
   count: number;
+  // The unfinished-subtasks question for the keyboard shortcut. The list body
+  // renders it; a keystroke has no row to hang a dialog on.
+  dialog: ReactNode;
   rowFor: (task: Task, index: number) => RowSelection;
   clear: () => void;
   // bulk operations
@@ -53,6 +57,7 @@ export function useTaskSelection(
 ): TaskControls {
   const invalidate = useTaskInvalidate();
   const { toast } = useToast();
+  const { guard, dialog } = useCompleteGuard();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // -1 = no keyboard cursor yet, so nothing looks "selected" on load. The first
   // j/k/arrow moves it onto a row; a plain mouse click never sets it.
@@ -202,19 +207,22 @@ export function useTaskSelection(
           break;
         case "c":
           e.preventDefault();
-          if (cur) {
-            api.completeTask(cur.id, true).then(() => {
-              invalidate();
-              toast(
-                cur.recurrence
-                  ? "Done for today · repeats tomorrow morning"
-                  : "Completed",
-                () => {
-                  api.completeTask(cur.id, false).then(invalidate);
-                }
-              );
-            });
-          }
+          // Same question a click on the circle asks: one keystroke should not
+          // be the way to silently finish a task with steps still open.
+          if (cur)
+            guard(cur, () =>
+              api.completeTask(cur.id, true).then(() => {
+                invalidate();
+                toast(
+                  cur.recurrence
+                    ? "Done for today · repeats tomorrow morning"
+                    : "Completed",
+                  () => {
+                    api.completeTask(cur.id, false).then(invalidate);
+                  }
+                );
+              })
+            );
           break;
         case "e":
         case "Enter":
@@ -231,7 +239,18 @@ export function useTaskSelection(
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [enabled, tasks, cursor, toggle, onOpen, selectedIds, clear, invalidate, toast]);
+  }, [
+    enabled,
+    tasks,
+    cursor,
+    toggle,
+    onOpen,
+    selectedIds,
+    clear,
+    invalidate,
+    toast,
+    guard,
+  ]);
 
   const rowFor = useCallback(
     (task: Task, index: number): RowSelection => ({
@@ -271,6 +290,9 @@ export function useTaskSelection(
   return {
     selectedIds,
     count: selectedIds.size,
+    // Rendered by the list body: the unfinished-subtasks question for the
+    // keyboard shortcut, which has no row of its own to hang a dialog on.
+    dialog,
     rowFor,
     clear,
     completeSelected,

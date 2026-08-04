@@ -298,7 +298,9 @@ function useTaskCollection(
   }
 
   let running = 0;
-  const body =
+  // The keyboard's complete shortcut lives in the controls hook, so its
+  // unfinished-subtasks question renders here with the list it belongs to.
+  const inner =
     group === "none" ? (
       renderBody(groups[0].tasks, 0)
     ) : (
@@ -317,6 +319,13 @@ function useTaskCollection(
         })}
       </div>
     );
+
+  const body = (
+    <>
+      {inner}
+      {controls.dialog}
+    </>
+  );
 
   return {
     view,

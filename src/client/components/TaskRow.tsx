@@ -1,12 +1,8 @@
 import { useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { Task } from "../../shared/types";
-import {
-  useCompleteAllSubtasks,
-  useCompleteTask,
-  useToggleSubtask,
-  useUpdateTask,
-} from "../lib/queries";
+import { useCompleteTask, useToggleSubtask, useUpdateTask } from "../lib/queries";
+import { useCompleteGuard } from "../lib/use-complete-guard";
 import { useToast } from "../lib/toast";
 import { PRIORITY_VAR, areaColorVar, areaTintBg, shouldPill } from "../lib/colors";
 import { PriorityPill } from "./ui";
@@ -35,7 +31,6 @@ import {
   ChevronRightIcon,
   ChevronDownIcon,
 } from "../lib/icons";
-import { ConfirmSubtasksDialog } from "./ConfirmSubtasksDialog";
 import { useTaskHover } from "./TaskHoverCard";
 import type { RowSelection } from "./TaskListControls";
 
@@ -55,7 +50,7 @@ export function TaskRow({
 }) {
   const complete = useCompleteTask();
   const toggleSub = useToggleSubtask();
-  const completeAll = useCompleteAllSubtasks();
+  const { guard, dialog } = useCompleteGuard();
   const update = useUpdateTask();
   const { toast } = useToast();
   // Where the task lives, for the wrapper's tint + accent bar. Resolved through
@@ -82,7 +77,6 @@ export function TaskRow({
       hasSubtaskDueToday(task, todayStr()) &&
       !isSubtaskLed(task, todayStr())
   );
-  const [confirming, setConfirming] = useState(false);
   const done = task.status === "done";
   // Dim (but keep interactive) tasks due more than a month out, so the far future
   // recedes. Toggle in Settings › Appearance. Shared, so a grid or board card
@@ -143,19 +137,10 @@ export function TaskRow({
   }
 
   // Finishing a parent that still has open subtasks is nearly always a slip.
-  // Ask, and let her tick them all off in the same gesture if that was the intent.
-  async function onComplete() {
-    if (!done && subOpen > 0) {
-      setConfirming(true);
-      return;
-    }
-    await runComplete();
-  }
-
-  async function onConfirmComplete(alsoCompleteSubtasks: boolean) {
-    setConfirming(false);
-    if (alsoCompleteSubtasks) await completeAll.mutateAsync(task.id);
-    await runComplete();
+  // The question, and the tick-them-all shortcut, live in useCompleteGuard so
+  // every other way of finishing a task asks it too.
+  function onComplete() {
+    guard(task, runComplete);
   }
 
   // Area signal on the OUTER wrapper: a coloured left bar (the clear "belongs to
@@ -430,11 +415,7 @@ export function TaskRow({
         </ul>
       )}
 
-      <ConfirmSubtasksDialog
-        task={confirming ? task : null}
-        onCancel={() => setConfirming(false)}
-        onConfirm={onConfirmComplete}
-      />
+      {dialog}
     </div>
   );
 }

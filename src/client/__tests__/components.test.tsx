@@ -149,6 +149,50 @@ describe("TaskRow", () => {
       expect(screen.getByTitle("0 of 2 subtasks done")).toBeInTheDocument();
     });
 
+    it("asks before finishing a task whose steps are still open", () => {
+      providers(
+        <TaskRow
+          task={{ ...sample, subtasks: [{ ...step, due_date: null }] }}
+          onOpen={() => {}}
+        />
+      );
+      fireEvent.click(screen.getByLabelText("Complete"));
+      // The guard, not the completion: it names the count and offers both
+      // honest answers plus the bail-out.
+      expect(screen.getByText("1 unfinished subtask")).toBeInTheDocument();
+      expect(screen.getByText("Complete all 1 and finish")).toBeInTheDocument();
+      expect(
+        screen.getByText("Finish anyway, leave subtasks open")
+      ).toBeInTheDocument();
+      expect(screen.getByText("Cancel")).toBeInTheDocument();
+    });
+
+    // These two DO go through to the completion call. Stub fetch so the test
+    // asserts on the absence of the dialog rather than on a network error.
+    it("does not ask when every step is ticked", () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+      providers(
+        <TaskRow
+          task={{ ...sample, subtasks: [{ ...step, due_date: null, done: true }] }}
+          onOpen={() => {}}
+        />
+      );
+      fireEvent.click(screen.getByLabelText("Complete"));
+      expect(screen.queryByText(/unfinished subtask/)).not.toBeInTheDocument();
+    });
+
+    it("does not ask when UN-completing: putting a task back claims nothing", () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+      providers(
+        <TaskRow
+          task={{ ...sample, status: "done", subtasks: [{ ...step, due_date: null }] }}
+          onOpen={() => {}}
+        />
+      );
+      fireEvent.click(screen.getByLabelText("Complete"));
+      expect(screen.queryByText(/unfinished subtask/)).not.toBeInTheDocument();
+    });
+
     it("a task in Today on its own account keeps its own title and circle", () => {
       providers(
         <TaskRow task={{ ...sample, due_date: todayStr(), subtasks: [step] }} onOpen={() => {}} />
