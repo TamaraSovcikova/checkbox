@@ -48,7 +48,10 @@ import {
   AddIcon,
   CloseIcon,
   ChevronRightIcon,
+  SubtaskIcon,
 } from "./lib/icons";
+import { isSubtaskLed, subtasksDueToday } from "./lib/today";
+import { dormantTone } from "./components/TaskMeta";
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
 // Specials are fixed keys; anything else pins by reference: view:<name>,
@@ -118,25 +121,52 @@ function Shell({ title, to, children }: { title: string; to: string; children: R
 
 function TaskLine({ t, today }: { t: Task; today: string }) {
   const { open } = useTaskUI();
+  // Same rule as the list row and the board card: when the only reason this task
+  // is live today is a step, the step is what the line says, with the task named
+  // quietly above it. A widget is the shortest surface in the app, so this is
+  // where showing the wrong one of the two costs the most.
+  const steps = isSubtaskLed(t, today) ? subtasksDueToday(t, today) : [];
   return (
     <button
       type="button"
       onClick={() => open(t)}
-      className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[12.5px] text-foreground transition-colors hover:bg-surface-2"
-    >
-      {t.priority <= 2 && (
-        <span className={cn("text-[10px] font-bold", priorityTone(t.priority))}>P{t.priority}</span>
+      className={cn(
+        "flex w-full gap-2 rounded-md px-1.5 py-1 text-left text-[12.5px] text-foreground transition-colors hover:bg-surface-2",
+        steps.length > 0 ? "flex-col gap-0" : "items-center",
+        dormantTone(t, today)
       )}
-      <span className="min-w-0 flex-1 truncate">{t.title}</span>
-      {t.due_date && (
-        <span
-          className={cn(
-            "shrink-0 text-[10.5px]",
-            t.due_date < today ? "text-danger" : "text-subtle"
+    >
+      {steps.length > 0 ? (
+        <>
+          <span className="flex w-full items-center gap-1 text-[9.5px] leading-tight text-subtle">
+            <SubtaskIcon className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate">{t.title}</span>
+          </span>
+          {steps.map((s) => (
+            <span key={s.id} className="w-full truncate leading-snug">
+              {s.title}
+            </span>
+          ))}
+        </>
+      ) : (
+        <>
+          {t.priority <= 2 && (
+            <span className={cn("text-[10px] font-bold", priorityTone(t.priority))}>
+              P{t.priority}
+            </span>
           )}
-        >
-          {dueLabel(t.due_date, today)}
-        </span>
+          <span className="min-w-0 flex-1 truncate">{t.title}</span>
+          {t.due_date && (
+            <span
+              className={cn(
+                "shrink-0 text-[10.5px]",
+                t.due_date < today ? "text-danger" : "text-subtle"
+              )}
+            >
+              {dueLabel(t.due_date, today)}
+            </span>
+          )}
+        </>
       )}
     </button>
   );
@@ -200,17 +230,42 @@ function MiniBoard({ tasks, done }: { tasks: Task[]; done?: Task[] }) {
 
 function MiniCard({ t, today }: { t: Task; today: string }) {
   const { open } = useTaskUI();
+  const steps = isSubtaskLed(t, today) ? subtasksDueToday(t, today) : [];
   return (
     <button
       type="button"
       onClick={() => open(t)}
-      className="block w-full rounded-md border border-border bg-surface px-1.5 py-1 text-left text-[11px] leading-snug text-foreground transition-colors hover:bg-surface-2"
+      className={cn(
+        "block w-full rounded-md border border-border bg-surface px-1.5 py-1 text-left text-[11px] leading-snug text-foreground transition-colors hover:bg-surface-2",
+        dormantTone(t, today)
+      )}
     >
-      <span className="line-clamp-2">{t.title}</span>
-      {t.due_date && (
-        <span className={cn("mt-0.5 block text-[9.5px]", t.due_date < today ? "text-danger" : "text-subtle")}>
-          {dueLabel(t.due_date, today)}
-        </span>
+      {steps.length > 0 ? (
+        <>
+          <span className="flex items-center gap-1 text-[9.5px] leading-tight text-subtle">
+            <SubtaskIcon className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate">{t.title}</span>
+          </span>
+          {steps.map((s) => (
+            <span key={s.id} className="mt-0.5 block line-clamp-2">
+              {s.title}
+            </span>
+          ))}
+        </>
+      ) : (
+        <>
+          <span className="line-clamp-2">{t.title}</span>
+          {t.due_date && (
+            <span
+              className={cn(
+                "mt-0.5 block text-[9.5px]",
+                t.due_date < today ? "text-danger" : "text-subtle"
+              )}
+            >
+              {dueLabel(t.due_date, today)}
+            </span>
+          )}
+        </>
       )}
     </button>
   );
