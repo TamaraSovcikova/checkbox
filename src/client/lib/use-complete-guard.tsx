@@ -25,38 +25,52 @@ import { useCompleteAllSubtasks } from "./queries";
 export function useCompleteGuard() {
   const completeAll = useCompleteAllSubtasks();
   const [pending, setPending] = useState<{
-    task: Task;
+    tasks: Task[];
     proceed: (alsoCompleteSubtasks: boolean) => void | Promise<void>;
   } | null>(null);
+
+  // Un-completing never asks: putting a task back is not a claim about steps.
+  const needsAsking = (t: Task) =>
+    t.status !== "done" && (t.subtasks ?? []).some((s) => !s.done);
 
   function guard(
     task: Task,
     proceed: (alsoCompleteSubtasks: boolean) => void | Promise<void>
   ) {
-    const open = (task.subtasks ?? []).filter((s) => !s.done).length;
-    // Un-completing never asks: putting a task back is not a claim about steps.
-    if (open === 0 || task.status === "done") {
+    guardMany([task], proceed);
+  }
+
+  // The multi-select version: ONE question for the whole selection, naming the
+  // tasks that are leaving steps behind. Asking twenty times would train you to
+  // click through it, which is the opposite of a guard.
+  function guardMany(
+    tasks: Task[],
+    proceed: (alsoCompleteSubtasks: boolean) => void | Promise<void>
+  ) {
+    const asking = tasks.filter(needsAsking);
+    if (asking.length === 0) {
       proceed(false);
       return;
     }
-    setPending({ task, proceed });
+    setPending({ tasks: asking, proceed });
   }
 
   async function onConfirm(alsoCompleteSubtasks: boolean) {
     const p = pending;
     setPending(null);
     if (!p) return;
-    if (alsoCompleteSubtasks) await completeAll.mutateAsync(p.task.id);
+    if (alsoCompleteSubtasks)
+      await Promise.all(p.tasks.map((t) => completeAll.mutateAsync(t.id)));
     await p.proceed(alsoCompleteSubtasks);
   }
 
   const dialog: ReactNode = (
     <ConfirmSubtasksDialog
-      task={pending?.task ?? null}
+      tasks={pending?.tasks ?? null}
       onCancel={() => setPending(null)}
       onConfirm={onConfirm}
     />
   );
 
-  return { guard, dialog };
+  return { guard, guardMany, dialog };
 }

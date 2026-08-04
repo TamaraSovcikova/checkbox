@@ -6,36 +6,51 @@ import { useTaskInvalidate } from "../lib/queries";
 import { BlockedIcon, AddIcon, CloseIcon, CheckIcon } from "../lib/icons";
 import { cn } from "@/lib/utils";
 
-// Edit a task's blockers. Two kinds: blocked BY another task (search + pick), and
-// blocked UNTIL a date (blocked_until). The row/view badge derives from both.
-export function DependencyEditor({ task }: { task: Task }) {
+// The three ways a task can be waiting, each its own control: blocked BY another
+// task, blocked UNTIL a date, waiting on the WORLD. The row/view badge derives
+// from all three.
+//
+// Each is empty on the overwhelming majority of tasks (8%, 1%, 1%), and each
+// used to render its full editor regardless: a heading, a list, an add button, a
+// date input with two presets, two text fields. That is most of a screen spent
+// saying "no" on a task that has nothing to say. Empty now means ONE dashed
+// chip; clicking it opens the real control in place. Set means the control, in
+// full, because a value you cannot see is worse than a field you did not want.
+
+// The shared shell: chip when there is nothing to show, editor once there is.
+function Collapsible({
+  label,
+  filled,
+  children,
+}: {
+  label: string;
+  filled: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!filled && !open)
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1 rounded-full border border-dashed border-input px-2.5 py-1 text-[11.5px] text-subtle transition-colors hover:border-primary/50 hover:text-foreground"
+      >
+        <AddIcon className="h-3 w-3" />
+        {label}
+      </button>
+    );
+  return <div className="w-full">{children}</div>;
+}
+
+// Blocked BY another task: search and pick. The one with a real rate (8%).
+export function BlockersEditor({ task }: { task: Task }) {
   const invalidate = useTaskInvalidate();
   const [deps, setDeps] = useState<TaskRef[]>(task.depends_on ?? []);
   const [adding, setAdding] = useState(false);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Task[]>([]);
-  const [blockedUntil, setBlockedUntil] = useState(task.blocked_until ?? "");
-  const [waitingOn, setWaitingOn] = useState(task.waiting_on ?? "");
-  const [waitingExpected, setWaitingExpected] = useState(task.waiting_expected ?? "");
 
   useEffect(() => setDeps(task.depends_on ?? []), [task]);
-  useEffect(() => setBlockedUntil(task.blocked_until ?? ""), [task]);
-  useEffect(() => setWaitingOn(task.waiting_on ?? ""), [task]);
-  useEffect(() => setWaitingExpected(task.waiting_expected ?? ""), [task]);
-
-  async function setBlock(date: string | null) {
-    setBlockedUntil(date ?? "");
-    await api.updateTask(task.id, { blocked_until: date });
-    invalidate();
-  }
-
-  async function saveWaiting(on: string, expected: string) {
-    await api.updateTask(task.id, {
-      waiting_on: on.trim() || null,
-      waiting_expected: on.trim() ? expected || null : null,
-    });
-    invalidate();
-  }
 
   useEffect(() => {
     if (!adding || q.trim().length < 2) {
@@ -72,7 +87,7 @@ export function DependencyEditor({ task }: { task: Task }) {
   const openBlockers = deps.filter((d) => d.status !== "done").length;
 
   return (
-    <div>
+    <Collapsible label="Blocker" filled={deps.length > 0}>
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-xs text-muted">
           <BlockedIcon className="h-3.5 w-3.5" /> Blocked by
@@ -151,87 +166,120 @@ export function DependencyEditor({ task }: { task: Task }) {
           <AddIcon className="h-3.5 w-3.5" /> Add blocker
         </button>
       )}
+    </Collapsible>
+  );
+}
 
-      {/* Blocked until a DATE, e.g. "wait until next Saturday". Independent of
-          task blockers; either one keeps the task blocked. */}
-      <div className="mt-3">
-        <span className="flex items-center gap-1.5 text-xs text-muted">
-          <BlockedIcon className="h-3.5 w-3.5" /> Blocked until
-          {blockedUntil && <span className="text-warning">{blockedUntil}</span>}
-        </span>
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          <input
-            type="date"
-            value={blockedUntil}
-            onChange={(e) => setBlock(e.target.value || null)}
-            className="h-8 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
-          />
+// Blocked until a DATE ("wait until next Saturday"). Independent of blockers;
+// either one keeps the task blocked.
+export function BlockedUntilEditor({ task }: { task: Task }) {
+  const invalidate = useTaskInvalidate();
+  const [blockedUntil, setBlockedUntil] = useState(task.blocked_until ?? "");
+  useEffect(() => setBlockedUntil(task.blocked_until ?? ""), [task]);
+
+  async function setBlock(date: string | null) {
+    setBlockedUntil(date ?? "");
+    await api.updateTask(task.id, { blocked_until: date });
+    invalidate();
+  }
+
+  return (
+    <Collapsible label="Blocked until" filled={!!blockedUntil}>
+      <span className="flex items-center gap-1.5 text-xs text-muted">
+        <BlockedIcon className="h-3.5 w-3.5" /> Blocked until
+        {blockedUntil && <span className="text-warning">{blockedUntil}</span>}
+      </span>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <input
+          type="date"
+          value={blockedUntil}
+          onChange={(e) => setBlock(e.target.value || null)}
+          className="h-8 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
+        />
+        <button
+          onClick={() => setBlock(format(nextSaturday(new Date()), "yyyy-MM-dd"))}
+          className="rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+        >
+          Next Saturday
+        </button>
+        <button
+          onClick={() => setBlock(format(addDays(new Date(), 7), "yyyy-MM-dd"))}
+          className="rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+        >
+          In a week
+        </button>
+        {blockedUntil && (
           <button
-            onClick={() => setBlock(format(nextSaturday(new Date()), "yyyy-MM-dd"))}
-            className="rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+            onClick={() => setBlock(null)}
+            className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
           >
-            Next Saturday
+            Clear
           </button>
-          <button
-            onClick={() => setBlock(format(addDays(new Date(), 7), "yyyy-MM-dd"))}
-            className="rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
-          >
-            In a week
-          </button>
-          {blockedUntil && (
-            <button
-              onClick={() => setBlock(null)}
-              className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
-            >
-              Clear
-            </button>
-          )}
-        </div>
+        )}
       </div>
+    </Collapsible>
+  );
+}
 
-      {/* Waiting on an EXTERNAL event ("Revolut card arrives"): not a block,
-          the task stays visible with a chip; once the expected date passes the
-          chip flips to "chase". Blockers wait on tasks, this waits on the
-          world. */}
-      <div className="mt-3">
-        <span className="flex items-center gap-1.5 text-xs text-muted">
-          <BlockedIcon className="h-3.5 w-3.5" /> Waiting on
-          {task.waiting_expected && task.waiting_on && (
-            <span className="text-warning">by {task.waiting_expected}</span>
-          )}
-        </span>
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          <input
-            value={waitingOn}
-            onChange={(e) => setWaitingOn(e.target.value)}
-            onBlur={() => saveWaiting(waitingOn, waitingExpected)}
-            placeholder="e.g. Revolut card arrives"
-            className="h-8 min-w-0 flex-1 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none placeholder:text-subtle focus:border-primary"
-          />
-          <input
-            type="date"
-            value={waitingExpected}
-            onChange={(e) => {
-              setWaitingExpected(e.target.value);
-              if (waitingOn.trim()) saveWaiting(waitingOn, e.target.value);
+// Waiting on an EXTERNAL event ("Revolut card arrives"): not a block, the task
+// stays visible with a chip; once the expected date passes the chip flips to
+// "chase". Blockers wait on tasks, this waits on the world.
+export function WaitingOnEditor({ task }: { task: Task }) {
+  const invalidate = useTaskInvalidate();
+  const [waitingOn, setWaitingOn] = useState(task.waiting_on ?? "");
+  const [waitingExpected, setWaitingExpected] = useState(task.waiting_expected ?? "");
+
+  useEffect(() => setWaitingOn(task.waiting_on ?? ""), [task]);
+  useEffect(() => setWaitingExpected(task.waiting_expected ?? ""), [task]);
+
+  async function saveWaiting(on: string, expected: string) {
+    await api.updateTask(task.id, {
+      waiting_on: on.trim() || null,
+      waiting_expected: on.trim() ? expected || null : null,
+    });
+    invalidate();
+  }
+
+  return (
+    <Collapsible label="Waiting on" filled={!!task.waiting_on}>
+      <span className="flex items-center gap-1.5 text-xs text-muted">
+        <BlockedIcon className="h-3.5 w-3.5" /> Waiting on
+        {task.waiting_expected && task.waiting_on && (
+          <span className="text-warning">by {task.waiting_expected}</span>
+        )}
+      </span>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <input
+          value={waitingOn}
+          onChange={(e) => setWaitingOn(e.target.value)}
+          onBlur={() => saveWaiting(waitingOn, waitingExpected)}
+          placeholder="e.g. Revolut card arrives"
+          autoFocus={!task.waiting_on}
+          className="h-8 min-w-0 flex-1 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none placeholder:text-subtle focus:border-primary"
+        />
+        <input
+          type="date"
+          value={waitingExpected}
+          onChange={(e) => {
+            setWaitingExpected(e.target.value);
+            if (waitingOn.trim()) saveWaiting(waitingOn, e.target.value);
+          }}
+          title="Expected by"
+          className="h-8 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
+        />
+        {(waitingOn || waitingExpected) && (
+          <button
+            onClick={() => {
+              setWaitingOn("");
+              setWaitingExpected("");
+              saveWaiting("", "");
             }}
-            title="Expected by"
-            className="h-8 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
-          />
-          {(waitingOn || waitingExpected) && (
-            <button
-              onClick={() => {
-                setWaitingOn("");
-                setWaitingExpected("");
-                saveWaiting("", "");
-              }}
-              className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
-            >
-              Clear
-            </button>
-          )}
-        </div>
+            className="rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+          >
+            Clear
+          </button>
+        )}
       </div>
-    </div>
+    </Collapsible>
   );
 }

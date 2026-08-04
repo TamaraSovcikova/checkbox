@@ -57,7 +57,7 @@ export function useTaskSelection(
 ): TaskControls {
   const invalidate = useTaskInvalidate();
   const { toast } = useToast();
-  const { guard, dialog } = useCompleteGuard();
+  const { guard, guardMany, dialog } = useCompleteGuard();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // -1 = no keyboard cursor yet, so nothing looks "selected" on load. The first
   // j/k/arrow moves it onto a row; a plain mouse click never sets it.
@@ -108,13 +108,17 @@ export function useTaskSelection(
   const completeSelected = useCallback(() => {
     const items = selectedTasks();
     if (!items.length) return;
-    Promise.all(items.map((t) => api.completeTask(t.id, true)))
-      .then(invalidate);
-    clear();
-    toast(`${items.length} completed`, () => {
-      Promise.all(items.map((t) => api.completeTask(t.id, false))).then(invalidate);
+    // One question for the whole selection, naming the tasks that would leave
+    // steps behind. A selection is deliberate, but "which of these twenty had
+    // something unfinished" is exactly what you cannot see from the bar.
+    guardMany(items, () => {
+      Promise.all(items.map((t) => api.completeTask(t.id, true))).then(invalidate);
+      clear();
+      toast(`${items.length} completed`, () => {
+        Promise.all(items.map((t) => api.completeTask(t.id, false))).then(invalidate);
+      });
     });
-  }, [selectedTasks, invalidate, clear, toast]);
+  }, [selectedTasks, invalidate, clear, toast, guardMany]);
 
   const deleteSelected = useCallback(() => {
     const items = selectedTasks();

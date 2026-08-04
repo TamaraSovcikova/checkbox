@@ -62,8 +62,23 @@ export function RelatedEditor({ task }: { task: Task }) {
     open(await api.getTask(id));
   }
 
+  // Nothing linked and nothing being typed: one dashed chip, like the blocker
+  // and waiting-on controls it sits beside. A heading over an empty list is the
+  // sheet telling you about a feature rather than about this task.
+  if (links.length === 0 && !adding)
+    return (
+      <button
+        type="button"
+        onClick={() => setAdding(true)}
+        className="inline-flex items-center gap-1 rounded-full border border-dashed border-input px-2.5 py-1 text-[11.5px] text-subtle transition-colors hover:border-primary/50 hover:text-foreground"
+      >
+        <AddIcon className="h-3 w-3" />
+        Link
+      </button>
+    );
+
   return (
-    <div>
+    <div className="w-full">
       <span className="flex items-center gap-1.5 text-xs text-muted">
         <LinkIcon className="h-3.5 w-3.5" /> Related
       </span>

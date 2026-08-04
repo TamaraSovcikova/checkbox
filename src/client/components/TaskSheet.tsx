@@ -49,7 +49,11 @@ import {
   AttachIcon,
 } from "../lib/icons";
 import { TimeTracker } from "./TimeTracker";
-import { DependencyEditor } from "./DependencyEditor";
+import {
+  BlockersEditor,
+  BlockedUntilEditor,
+  WaitingOnEditor,
+} from "./DependencyEditor";
 import { RelatedEditor } from "./RelatedEditor";
 import { AttachmentList } from "./AttachmentList";
 import { useSnoozeTask } from "../lib/queries";
@@ -440,6 +444,8 @@ export function TaskSheet({
   const [recCount, setRecCount] = useState<number | "">("");
   const [recUntil, setRecUntil] = useState("");
   const [newSub, setNewSub] = useState("");
+  // Revealed by the "+ Step" chip on a task that has none yet.
+  const [addingSub, setAddingSub] = useState(false);
   // "Keep as text": disables capture-parsing for subtasks typed in this sheet.
   const [rawSub, setRawSub] = useState(false);
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
@@ -465,6 +471,7 @@ export function TaskSheet({
     setRecCount(task.recurrence_count ?? "");
     setRecUntil(task.recurrence_until ?? "");
     setSubtasks(task.subtasks ?? []);
+    setAddingSub(false);
     setOptional(!!task.optional);
     // Keyed on the task's ID, not the task object: `task` is now a live cache
     // read, so it gets a new identity on every refetch, and depending on the
@@ -925,7 +932,19 @@ export function TaskSheet({
               </button>
             )}
 
-            {/* Subtasks: part of the work, always open. */}
+            {/* Steps. 11% of tasks have any, and the rest were paying a heading,
+                a progress bar, a text input and an Add button to say so. No
+                steps means one dashed chip, which opens the input. */}
+            {subtasks.length === 0 && !addingSub ? (
+              <button
+                type="button"
+                onClick={() => setAddingSub(true)}
+                className="inline-flex w-fit items-center gap-1 rounded-full border border-dashed border-input px-2.5 py-1 text-[11.5px] text-subtle transition-colors hover:border-primary/50 hover:text-foreground"
+              >
+                <AddIcon className="h-3 w-3" />
+                Step
+              </button>
+            ) : (
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted">Subtasks</span>
@@ -1005,6 +1024,7 @@ export function TaskSheet({
                   value={newSub}
                   onChange={(e) => setNewSub(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addSub()}
+                  autoFocus={addingSub && subtasks.length === 0}
                   placeholder="Add subtask — try 'post the form fri p1'"
                   className="h-9 flex-1 rounded-md border border-input bg-surface px-3 text-sm text-foreground outline-none focus:border-primary"
                 />
@@ -1041,6 +1061,7 @@ export function TaskSheet({
                 </div>
               )}
             </div>
+            )}
 
             {/* From Gmail: thread handles, only for email-derived tasks. Open in
                 Gmail is a plain link; Draft reply and Mark Awaiting hand off to a
@@ -1100,11 +1121,15 @@ export function TaskSheet({
 
             {/* Connections. Blocked-by is set on 8% of tasks and waiting-on on
                 1%, which would put both on More, but she asked for them where
-                she can reach them: they sit under the work, and an unset one
-                costs a single "Add" line. Related links are new, so there is no
-                rate to argue from yet. */}
-            <div className="space-y-3 border-t border-border pt-3">
-              <DependencyEditor task={task} />
+                she can reach them. So they sit under the work, and each renders
+                as ONE dashed chip until it holds something: on a task with no
+                connections this whole block is a single line of three chips
+                that wrap in beside the "+ Step" one. Related links are new, so
+                there is no rate to argue from yet. */}
+            <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+              <BlockersEditor task={task} />
+              <BlockedUntilEditor task={task} />
+              <WaitingOnEditor task={task} />
               <RelatedEditor task={task} />
             </div>
 
