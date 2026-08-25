@@ -27,7 +27,7 @@ Personal task manager. This is the operational file that lives with the code. Na
 - MCP: JSON-RPC 2.0 over HTTP at `/mcp`. Bearer token auth. 35 tools (read + full
   write: task/area/project/subtask CRUD, dependencies, recurrence, batch create).
 
-## Current state (2026-08-04)
+## Current state (2026-08-25)
 
 **Phases 0-4 + Tier 1 + Tier 2 + the Tier 4 moat (ambient planner #30, note
 extraction #31) are all live**, plus full activation (push, email, R2) and an
@@ -50,6 +50,13 @@ tier2, day_plans, note_candidates, attachments, trackers, checkpoints, reminders
 vault sync) · 0032 projects.starred · 0033 trackers.section · 0034 task_links
 (symmetric related-task links, both rows written per link).
 
+A task carries TWO dates. `due_date` is when it is owed; `planned_date` is the day
+you mean to work on it, it shifts freely, and it is what "Add to Today" writes
+(planned_date = today). Today matches `planned_date <= today` so an unfinished
+plan carries forward; Upcoming lists a FUTURE planned date only when the task has
+no due date, so a task with both is listed once, on its deadline. Rows print a
+`plan <day>` chip when the planned day is not today.
+
 Four behaviours worth knowing before changing them: a recurring task COMPLETES and
 the 06:00 sweep (worker/lib/resurrect) wakes the next occurrence next morning; a
 subtask carries its parent into Today on its DUE DAY ONLY, a passed step moves the
@@ -62,7 +69,15 @@ The task sheet is split Task / More by MEASURED usage, not by category (see
 SESSION_LOG chat #58 for the rates). Rule when adding a field: above roughly
 1-in-10 tasks it goes on Task, below it goes on More, and anything on More that
 holds a value also shows as a chip on Task. Empty controls collapse to a dashed
-chip rather than rendering their editor.
+chip rather than rendering their editor. Two fields sit against that rule on her
+explicit instruction (#59): `optional` is a 2% field but lives on Task both ways,
+because it is decided while looking at the task; the estimate is a 14% field but
+lives on More, because it is a planning number, not a reading one.
+
+The sheet's breadcrumb line also carries Complete (through `use-complete-guard`,
+like every other completion path) and Navigate, which opens the task where it
+lives and flashes it there (`lib/use-focus-task`, found by `data-task-id`, never
+by a React ref: the row may not exist yet when the route first renders).
 
 ## Wrangler secrets in production
 
