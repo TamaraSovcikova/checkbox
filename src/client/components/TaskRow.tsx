@@ -109,7 +109,7 @@ export function TaskRow({
   const { hoverProps, card } = useTaskHover(task, isDragging);
   // Arriving here from the sheet's Navigate button: scroll this row into view
   // and flash it, so landing on a long list actually shows you the task.
-  const { focusRef, lit } = useFocusTask(task.id);
+  const { lit } = useFocusTask(task.id);
 
   // Mark on track: advance the checkpoint to its next pulse, so the task drops
   // out of Today until then. Undoable to the exact prior pulse date.
@@ -157,7 +157,8 @@ export function TaskRow({
   const accent = tintArea && area ? areaColorVar(area.color) : undefined;
   return (
     <div
-      ref={focusRef}
+      // How the focus scroll finds this row. See lib/use-focus-task.
+      data-task-id={task.id}
       {...hoverProps}
       className={cn(
         // A hairline border so each row reads as its own card against the page,

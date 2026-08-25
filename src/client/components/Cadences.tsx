@@ -292,7 +292,7 @@ function CadenceRow({
             )}
           >
             <span className="truncate">
-              {tracker.auto_task ? `→ ${emittedTaskTitle(tracker)}` : "no task"}
+              {tracker.auto_task ? `→ ${emittedTaskTitle(tracker)}` : "+ task when due"}
             </span>
           </button>
         )}

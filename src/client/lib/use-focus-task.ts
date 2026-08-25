@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { Task } from "../../shared/types";
 import { inTodayView } from "./today";
@@ -11,40 +11,57 @@ import { inTodayView } from "./today";
 // twenty cards, so arriving at the top and leaving you to hunt for the task you
 // just asked for would be a worse answer than the side panel you came from.
 //
-// So the row or card whose id matches scrolls itself into view and lights up for
-// a couple of seconds. The param is consumed as soon as it has been honoured
-// (replace, not push), so a reload or a Back does not re-flash a task you have
-// already found, and the URL you might copy is the plain page.
+// So the row or card whose id matches lights up, and the page scrolls to it.
 //
-// Returns a ref to put on whatever element should scroll and glow, plus `lit`
-// for the ring class. Every renderer that can appear on a project or area page
-// calls this, so Navigate behaves the same whichever view mode is showing.
+// The scroll finds its target through the DOM (`[data-task-id]`), not through a
+// React ref, and retries until it appears. Two live failures taught that: the
+// row does not exist yet when the route first renders (its tasks are still in
+// flight), and you arrive by closing a MODAL sheet, which leaves the body
+// scroll-locked for a beat afterwards, so an early scroll is silently dropped.
+// A ref also assumes the component that READ the param is the one holding the
+// element, which stops being true the moment a task can render in two places.
+//
+// `lit` is derived from the URL rather than held in state, so the ring cannot
+// drift out of step with it: the param is cleared when the flash is over, and
+// that single act ends the highlight everywhere.
 export function useFocusTask(taskId: string) {
   const [params, setParams] = useSearchParams();
   const focused = params.get("focus") === taskId;
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [lit, setLit] = useState(false);
+  // Once per arrival. Without this the effect would re-run on every unrelated
+  // search-param change and re-scroll a page you had since scrolled away from.
+  const done = useRef(false);
 
   useEffect(() => {
-    if (!focused) return;
-    // block: "center" rather than the default: the task should land where the
-    // eye already is, not flush against the top edge under a sticky header.
-    ref.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-    setLit(true);
-    const next = new URLSearchParams(params);
-    next.delete("focus");
-    setParams(next, { replace: true });
-    const t = setTimeout(() => setLit(false), 2200);
-    return () => clearTimeout(t);
-    // Only on the transition into focus: params is a new object every render.
+    if (!focused || done.current) return;
+    done.current = true;
+
+    let tries = 0;
+    const find = () => {
+      const el = document.querySelector(`[data-task-id="${CSS.escape(taskId)}"]`);
+      // block: "center" rather than the default: the task should land where the
+      // eye already is, not flush against the top edge under a sticky header.
+      if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+      else if (tries++ < 20) setTimeout(find, 100);
+    };
+    const first = setTimeout(find, 60);
+
+    // Clear the flash, and with it the param: replace, not push, so a Back does
+    // not walk into a re-flash, and the URL you might copy is the plain page.
+    const off = setTimeout(() => {
+      const next = new URLSearchParams(window.location.search);
+      next.delete("focus");
+      setParams(next, { replace: true });
+    }, 2200);
+
+    return () => {
+      clearTimeout(first);
+      clearTimeout(off);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focused]);
+  }, [focused, taskId]);
 
-  return { focusRef: ref, lit };
+  return { lit: focused };
 }
-
-// The glow itself, in one place so a row and a card flash identically.
-export const FOCUS_RING = "ring-2 ring-primary ring-offset-2 ring-offset-background";
 
 // Where a task's own page is. A project is the most specific home it can have,
 // then its area; an unfiled task lives in the Backlog, except that the Backlog
@@ -70,3 +87,6 @@ export function taskHomeLabel(
   if (task.area_id) return areaName ?? "its area";
   return "its list";
 }
+
+// The glow itself, in one place so a row and a card flash identically.
+export const FOCUS_RING = "ring-2 ring-primary ring-offset-2 ring-offset-background";

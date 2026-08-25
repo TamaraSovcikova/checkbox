@@ -54,16 +54,12 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
   const { hoverProps, card } = useTaskHover(task, isDragging);
   // Same jump-and-flash as the list row, so Navigate behaves identically
   // whichever view mode the destination page happens to be showing.
-  const { focusRef, lit } = useFocusTask(task.id);
+  const { lit } = useFocusTask(task.id);
   return (
     <div
-      // Two owners for one node: dnd-kit needs it to drag, the focus hook needs
-      // it to scroll. A callback ref feeds both rather than wrapping the card in
-      // an extra div that would break the board's layout.
-      ref={(el) => {
-        setNodeRef(el);
-        focusRef.current = el;
-      }}
+      ref={setNodeRef}
+      // How the focus scroll finds this card. See lib/use-focus-task.
+      data-task-id={task.id}
       style={{
         ...(transform
           ? { transform: `translate(${transform.x}px, ${transform.y}px)` }

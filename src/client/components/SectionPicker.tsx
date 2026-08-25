@@ -33,6 +33,19 @@ import { ChevronDownIcon, CheckIcon } from "../lib/icons";
 // projects are left out unless the task is already in one, since offering to
 // file new work into a finished project is noise, and hiding where a task
 // actually is would be a lie.
+// Does this row match what was typed? Every whitespace-separated term has to
+// appear in the row's text, so "career path" finds Career > Founder Path and
+// "career" does not find "TeChnicAl fluency (R-035/036/037)".
+//
+// Replaces cmdk's default, which scores a fuzzy SUBSEQUENCE: it matched half the
+// list on her real projects, which is worse than no search at all, because a
+// list you cannot trust to have filtered is a list you have to read anyway.
+export function matches(value: string, search: string): number {
+  const hay = value.toLowerCase();
+  const terms = search.toLowerCase().split(/\s+/).filter(Boolean);
+  return terms.every((t) => hay.includes(t)) ? 1 : 0;
+}
+
 export function SectionPicker({
   areas,
   projects,
@@ -84,6 +97,10 @@ export function SectionPicker({
     indent,
     selected,
     Icon,
+    // The row's OWN area, so a project stays findable by the area it is in:
+    // typing "career" surfaces everything under Career. Not the sheet's current
+    // breadcrumb, which is a different task's answer entirely.
+    areaName,
   }: {
     value: string;
     name: string;
@@ -91,12 +108,13 @@ export function SectionPicker({
     indent?: boolean;
     selected: boolean;
     Icon?: ReturnType<typeof areaIcon>;
+    areaName?: string;
   }) {
     return (
       <CommandItem
-        // cmdk filters on this string, so a project stays findable by its AREA's
-        // name too: typing "founder" surfaces everything under Founder Path.
-        value={`${name} ${indent ? label : ""} ${value}`}
+        // What the filter matches against: the name, its area, and the id (so
+        // two projects sharing a name still get distinct cmdk values).
+        value={`${name} ${areaName ?? ""} ${value}`}
         onSelect={() => pick(value)}
         className={cn(indent && "pl-6")}
       >
@@ -130,7 +148,7 @@ export function SectionPicker({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-0">
-        <Command>
+        <Command filter={matches}>
           <CommandInput placeholder="Search areas and projects…" />
           <CommandList>
             <CommandEmpty className="px-3 py-4 text-xs text-subtle">
@@ -153,6 +171,7 @@ export function SectionPicker({
                       value={`proj:${p.id}`}
                       name={p.name}
                       color={a.color}
+                      areaName={a.name}
                       indent
                       selected={projectId === p.id}
                     />
