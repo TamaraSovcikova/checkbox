@@ -21,7 +21,7 @@ import {
 } from "../lib/cadence";
 import { emittedTaskTitle } from "../../shared/tracker";
 import { areaColorVar } from "../lib/colors";
-import { todayStr } from "@/lib/utils";
+import { cn, todayStr } from "@/lib/utils";
 import { groupBySection, sectionNames } from "../../shared/cadenceSections";
 import { Button } from "./ui/button";
 import { PageIntro } from "./PageIntro";
@@ -174,22 +174,6 @@ function CadenceRow({
             >
               Set cadence
             </DropdownMenuItem>
-            {/* Only offered where it can mean something: without a target
-                nothing is ever past due, so there is nothing to emit on. */}
-            {tracker.target_days != null && (
-              <DropdownMenuItem
-                onSelect={() =>
-                  update.mutate({
-                    id: tracker.id,
-                    body: { auto_task: !tracker.auto_task },
-                  })
-                }
-              >
-                {tracker.auto_task
-                  ? "Stop making a task when due"
-                  : "Make a task when due"}
-              </DropdownMenuItem>
-            )}
             {/* Only once it is actually emitting: a task title on a tracker that
                 makes no tasks is a setting with nothing to act on. */}
             {tracker.auto_task && (
@@ -275,17 +259,42 @@ function CadenceRow({
             ? `every ${tracker.target_days}d`
             : `${since}/${tracker.target_days}d`}
         </span>
-        {/* A tracker that quietly creates tasks should say so on its face, not
-            only inside a menu you have to open to find out. The tooltip shows the
-            RESOLVED title, so you can see what it will actually create rather
-            than having to picture the template expanding. */}
-        {tracker.auto_task && (
-          <span
-            className="shrink-0 text-[11px] text-subtle"
-            title={`Makes a task called "${emittedTaskTitle(tracker)}" when it goes past its cadence`}
+        {/* Whether going past the cadence puts a TASK CARD on Today, as a
+            switch you click, on the tracker's face. Her ask, and the setting it
+            drives is the one that already existed: it was a line inside the
+            three-dot menu, so the answer to "does this one make me a task or
+            not" cost a menu open per tracker, and turning it on or off cost the
+            same again.
+
+            Only offered where it can mean something: with no target nothing is
+            ever past due, so there is nothing to emit on. On, it names the task
+            it will create (the RESOLVED title, so you see what you actually
+            get); off, it is a dashed outline of the same thing. */}
+        {tracker.target_days != null && (
+          <button
+            type="button"
+            onClick={() =>
+              update.mutate({
+                id: tracker.id,
+                body: { auto_task: !tracker.auto_task },
+              })
+            }
+            title={
+              tracker.auto_task
+                ? `Makes a task called "${emittedTaskTitle(tracker)}" on your Today page when this goes past its cadence. Click to stop.`
+                : "Click to make a task on your Today page when this goes past its cadence."
+            }
+            className={cn(
+              "inline-flex max-w-[10rem] shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+              tracker.auto_task
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-dashed border-input text-subtle hover:border-primary/50 hover:text-foreground"
+            )}
           >
-            → {emittedTaskTitle(tracker)}
-          </span>
+            <span className="truncate">
+              {tracker.auto_task ? `→ ${emittedTaskTitle(tracker)}` : "no task"}
+            </span>
+          </button>
         )}
       </div>
     </div>

@@ -201,6 +201,25 @@ export function TaskMeta({
           {task.due_time ? ` ${task.due_time}` : ""}
         </span>
       )}
+      {/* The PLANNED day, when it is not today. Due and planned are two separate
+          dates now (the deadline, and the day I mean to work on it), and a
+          second date that is only visible inside the task sheet is not really
+          visible. Today's plan is left to the Today marker on the row, which
+          already says it and says it better; what this chip is for is "planned
+          for Thursday" on a list you are scanning on Monday, and the carried
+          plan you keep not getting to. Muted, never danger-toned: a plan you
+          missed is a plan to move, not a broken promise. */}
+      {!done && task.planned_date && task.planned_date !== today && (
+        <span
+          className="inline-flex items-center gap-0.5 text-muted"
+          title={`Planned for ${task.planned_date}${
+            task.planned_date < today ? " (carried forward)" : ""
+          }`}
+        >
+          <TodayIcon className="h-3 w-3" />
+          plan {dueLabel(task.planned_date, today)}
+        </span>
+      )}
       {dueSubs.length > 0 && (
         <span
           className={cn(

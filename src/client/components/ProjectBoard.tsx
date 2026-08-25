@@ -16,6 +16,7 @@ import {
 } from "./TaskMeta";
 import { cn, todayStr } from "@/lib/utils";
 import { useTaskHover } from "./TaskHoverCard";
+import { useFocusTask, FOCUS_RING } from "../lib/use-focus-task";
 import { isSubtaskLed, subtasksDueToday } from "../lib/today";
 
 // Draggable board card. Drops resolve in the app-level DndContext (AppShell),
@@ -51,9 +52,18 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
   // Same hover preview as the list rows, so a card and a row of the same task
   // answer the same question at rest.
   const { hoverProps, card } = useTaskHover(task, isDragging);
+  // Same jump-and-flash as the list row, so Navigate behaves identically
+  // whichever view mode the destination page happens to be showing.
+  const { focusRef, lit } = useFocusTask(task.id);
   return (
     <div
-      ref={setNodeRef}
+      // Two owners for one node: dnd-kit needs it to drag, the focus hook needs
+      // it to scroll. A callback ref feeds both rather than wrapping the card in
+      // an extra div that would break the board's layout.
+      ref={(el) => {
+        setNodeRef(el);
+        focusRef.current = el;
+      }}
       style={{
         ...(transform
           ? { transform: `translate(${transform.x}px, ${transform.y}px)` }
@@ -66,6 +76,7 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
         isDragging ? "cursor-grabbing opacity-50" : "cursor-grab",
         !isDragging && distant,
         !isDragging && dormantTone(task, todayStr()),
+        lit && FOCUS_RING,
         optionalCardBorder(task)
       )}
       {...attributes}

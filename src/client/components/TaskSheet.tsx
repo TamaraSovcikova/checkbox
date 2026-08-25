@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { format, parseISO, addDays } from "date-fns";
 import type { Task, Subtask, Priority } from "../../shared/types";
 import { api } from "../lib/api";
@@ -11,11 +12,14 @@ import {
   useTasksByIds,
   useUpdateTask,
   useAttachments,
+  useCompleteTask,
 } from "../lib/queries";
 import { RECURRENCE_PRESETS, recurrenceLabel } from "../../shared/recurrence";
 import { Markdown } from "../lib/markdown";
 import { parseDatePhrase, parseCapture } from "../lib/nlp";
-import { PRIORITY_VAR, shouldPill, areaColorVar } from "../lib/colors";
+import { PRIORITY_VAR, shouldPill } from "../lib/colors";
+import { useCompleteGuard } from "../lib/use-complete-guard";
+import { taskHomePath, taskHomeLabel } from "../lib/use-focus-task";
 import { cn, todayStr } from "@/lib/utils";
 import {
   inTodayView,
@@ -47,6 +51,8 @@ import {
   PlanIcon,
   TimerIcon,
   AttachIcon,
+  CheckIcon,
+  NavigateIcon,
 } from "../lib/icons";
 import { TimeTracker } from "./TimeTracker";
 import {
@@ -55,6 +61,7 @@ import {
   WaitingOnEditor,
 } from "./DependencyEditor";
 import { RelatedEditor } from "./RelatedEditor";
+import { SectionPicker } from "./SectionPicker";
 import { AttachmentList } from "./AttachmentList";
 import { useSnoozeTask } from "../lib/queries";
 
@@ -160,6 +167,7 @@ function DueDatePicker({
   value,
   onChange,
   onDateTime,
+  placeholder,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -168,6 +176,10 @@ function DueDatePicker({
   // natural-language date entry for a task, kept here rather than as a separate
   // field so the picker is one place: presets, calendar, or type it.
   onDateTime?: (date: string, time: string | null) => void;
+  // Due and Planned now sit side by side, so each gets half a 28rem sheet. The
+  // year is dropped when it is this one ("5 Sep" rather than "5 Sep 2026"),
+  // which is what makes two dates plus a time popover fit on one line.
+  placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [phrase, setPhrase] = useState("");
@@ -192,9 +204,16 @@ function DueDatePicker({
         >
           <CalendarIcon className="h-4 w-4 text-muted" />
           {value ? (
-            format(parseISO(value), "d MMM yyyy")
+            <span className="truncate">
+              {format(
+                parseISO(value),
+                parseISO(value).getFullYear() === new Date().getFullYear()
+                  ? "d MMM"
+                  : "d MMM yy"
+              )}
+            </span>
           ) : (
-            <span className="text-subtle">Pick a date</span>
+            <span className="truncate text-subtle">{placeholder ?? "Pick a date"}</span>
           )}
         </button>
       </PopoverTrigger>
@@ -351,7 +370,13 @@ function CheckpointControl({
 
   return (
     <div>
-      <span className="flex items-center gap-1.5 text-xs text-muted">
+      <span
+        className="flex w-fit cursor-help items-center gap-1.5 text-xs text-muted underline decoration-dotted decoration-from-font underline-offset-2"
+        title={
+          "Checkpoints: nudge you to check progress on THIS task every N days on its way to its due date. Marking it on track moves it to the next pulse; the due date never changes.\n\n" +
+          "Not a repeat (which finishes and starts again), and not a cadence (sidebar: things with no deadline that reset whenever you do them)."
+        }
+      >
         <CheckpointIcon className="h-3.5 w-3.5" /> Checkpoints
         {days && (
           <span className="text-subtle">
@@ -464,6 +489,11 @@ export function TaskSheet({
   const task = live.data?.[0] ?? opened;
 
   const update = useUpdateTask();
+  const complete = useCompleteTask();
+  // Same question every other completion path asks: finishing a task with open
+  // steps is nearly always a slip.
+  const { guard, dialog: guardDialog } = useCompleteGuard();
+  const navigate = useNavigate();
   const del = useDeleteTask();
   const snooze = useSnoozeTask();
   const invalidate = useTaskInvalidate();
@@ -479,6 +509,12 @@ export function TaskSheet({
   const [editingNotes, setEditingNotes] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
+  // The second date. due_date is when the task is OWED; planned_date is the day
+  // I mean to work on it, and it moves around freely. The column has existed
+  // since migration 0010 (it is what "Add to Today" writes), but the only way to
+  // set it was that button, so the one date that shifts most could only ever be
+  // set to today. Now it is a picker beside the deadline.
+  const [plannedDate, setPlannedDate] = useState("");
   const [priority, setPriority] = useState<Task["priority"]>(4);
   const [estimate, setEstimate] = useState<number | "">("");
   const [recurrence, setRecurrence] = useState("");
@@ -508,6 +544,7 @@ export function TaskSheet({
     setEditingNotes(false);
     setDueDate(task.due_date ?? "");
     setDueTime(task.due_time ?? "");
+    setPlannedDate(task.planned_date ?? "");
     setPriority(task.priority);
     setEstimate(task.time_estimate_min ?? "");
     setRecurrence(task.recurrence ?? "");
@@ -626,6 +663,10 @@ export function TaskSheet({
           label: format(parseISO(task.scheduled_start), "d MMM HH:mm"),
           Icon: CalendarIcon,
         },
+        task.time_estimate_min && {
+          label: `${task.time_estimate_min}m estimate`,
+          Icon: TimerIcon,
+        },
         task.time_spent_min > 0 && {
           label: `${task.time_spent_min}m tracked`,
           Icon: TimerIcon,
@@ -644,12 +685,8 @@ export function TaskSheet({
   const isInToday = task ? inTodayView(task, todayStr()) : false;
 
   // Where the task lives. A project carries its area; an area clears any project;
-  // "none" drops both, sending the task to the Backlog.
-  const sectionValue = task?.project_id
-    ? `proj:${task.project_id}`
-    : task?.area_id
-    ? `area:${task.area_id}`
-    : "";
+  // "" drops both, sending the task to the Backlog. SectionPicker reads the
+  // current value off the task itself and hands back one of those three shapes.
   function setSection(value: string) {
     if (!task) return;
     if (value.startsWith("proj:")) {
@@ -663,11 +700,44 @@ export function TaskSheet({
     }
   }
 
+  // Finish (or un-finish) the task from the panel itself. Every other surface
+  // in the app has a complete circle; the sheet, which is where you land when
+  // you actually want to read a task before deciding, did not, so the only way
+  // to tick something off from here was to close the sheet and find the row
+  // again. Routed through the guard like every other completion path.
+  function onComplete() {
+    if (!task) return;
+    const wasDone = task.status === "done";
+    guard(task, async () => {
+      await complete.mutateAsync({ id: task.id, done: !wasDone });
+      if (wasDone) return;
+      toast(
+        task.recurrence ? "Done for today · repeats tomorrow morning" : "Completed",
+        () => complete.mutate({ id: task.id, done: false })
+      );
+    });
+  }
+
+  // Open the task where it actually lives: its project page, its area page, or
+  // the list it falls into. Her ask, and the gap it closes is real - the sheet
+  // can tell you a task is in "Revisia", but seeing it in context (what is
+  // beside it, which board column it sits in, what the project looks like) meant
+  // navigating there by hand and then finding the task again. The destination
+  // page scrolls to it and flashes it (lib/use-focus-task).
+  function onNavigate() {
+    if (!task) return;
+    navigate(taskHomePath(task, todayStr()));
+    onClose();
+  }
+
   function onToggleToday() {
     if (!task) return;
     if (isInToday) {
       const body = leaveTodayBody(task, todayStr());
       save(body);
+      // The planned picker sits right beside this button now, so it has to move
+      // when the button clears the plan. Local state only resets on a new task.
+      if ("planned_date" in body) setPlannedDate("");
       const prev = undoLeaveTodayBody(task, body);
       // Mirrors useToggleToday: name the deferral so tomorrow's return
       // (subtask or checkpoint still due) is announced up front.
@@ -679,6 +749,7 @@ export function TaskSheet({
       );
     } else {
       save({ planned_date: todayStr() });
+      setPlannedDate(todayStr());
       toast("Added to Today");
     }
   }
@@ -722,41 +793,47 @@ export function TaskSheet({
                 about nearly every task and it used to spend a full-height
                 labelled select saying so. It is now the line above the title,
                 and the select itself is invisible until you click it. */}
-            <label className="-mb-1 flex items-center gap-1.5 text-xs text-muted">
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ background: areaColorVar(crumbArea?.color) }}
-              />
-              <select
-                value={sectionValue}
-                onChange={(e) => setSection(e.target.value)}
-                title="Move this task"
-                // w-fit, so the chevron sits against the name instead of at the
-                // far edge of the sheet, where it reads as a full-width control
-                // rather than a breadcrumb.
-                className="w-fit max-w-full cursor-pointer truncate rounded border border-transparent bg-transparent py-0.5 text-xs text-muted outline-none transition-colors hover:border-border hover:text-foreground focus:border-primary"
+            <div className="-mb-1 flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <SectionPicker
+                  areas={areas}
+                  projects={projects}
+                  areaId={task.area_id}
+                  projectId={task.project_id}
+                  onPick={setSection}
+                />
+              </div>
+              {/* Open it where it lives, and finish it from here. Both are
+                  things every other surface could already do and the panel
+                  could not. They sit on the breadcrumb line rather than beside
+                  the title, so the title stays a single editable field. */}
+              <button
+                type="button"
+                onClick={onNavigate}
+                title={`Open in ${taskHomeLabel(
+                  task,
+                  projects.find((p) => p.id === task.project_id)?.name,
+                  crumbArea?.name
+                )}`}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-border text-muted transition-colors hover:border-primary/60 hover:text-foreground"
               >
-                <option value="">No section (Backlog)</option>
-                {areas.length > 0 && (
-                  <optgroup label="Areas">
-                    {areas.map((a) => (
-                      <option key={a.id} value={`area:${a.id}`}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </optgroup>
+                <NavigateIcon className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={onComplete}
+                title={task.status === "done" ? "Mark not done" : "Complete this task"}
+                className={cn(
+                  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors",
+                  task.status === "done"
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted hover:border-primary/60 hover:text-foreground"
                 )}
-                {projects.length > 0 && (
-                  <optgroup label="Projects">
-                    {projects.map((p) => (
-                      <option key={p.id} value={`proj:${p.id}`}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-            </label>
+              >
+                <CheckIcon className="h-3.5 w-3.5" />
+                {task.status === "done" ? "Done" : "Complete"}
+              </button>
+            </div>
 
             {/* ── Always open: identity + the work ──────────────────────── */}
             <input
@@ -820,51 +897,90 @@ export function TaskSheet({
               </span>
             </div>
 
-            {/* Due date: at the TOP now, not folded inside a Schedule section.
-                A deadline is a headline fact about a task, so it sits with the
-                priority. The time is a small popover that only appears once a
-                date is set, so an empty time field never takes up space. */}
-            <div className="flex items-center gap-2">
-              <div className="min-w-0 max-w-[12rem] flex-1">
+            {/* THE TWO DATES, side by side at the top. Her ask, and the
+                distinction is the point: DUE is when the task is owed and
+                changing it means renegotiating a commitment, PLANNED is the day
+                I mean to sit down with it and it moves around freely. They were
+                collapsed into one field plus an "Add to Today" button, which
+                could only ever set the planned date to today, so the date that
+                shifts most was the one you could not choose.
+
+                Both are set often, so both are plain pickers rather than one
+                hiding behind the other. The due TIME stays a small popover that
+                only appears once a due date exists. ───────────────────────── */}
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+              <span
+                className="text-[11px] text-subtle"
+                title="When this is owed. A deadline: moving it means moving a commitment."
+              >
+                Due
+              </span>
+              <span
+                className="text-[11px] text-subtle"
+                title="The day I mean to work on this. Free to shift; it is not a deadline. Setting it to today is what puts the task in Today, and an unfinished plan carries forward until it is done or removed."
+              >
+                Planned
+              </span>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <div className="min-w-0 flex-1">
+                  <DueDatePicker
+                    value={dueDate}
+                    placeholder="No deadline"
+                    onChange={(v) => {
+                      setDueDate(v);
+                      // Clearing the date clears any time with it: a bare time is
+                      // meaningless, and would keep the popover showing "14:00"
+                      // against no day.
+                      if (!v && dueTime) {
+                        setDueTime("");
+                        save({ due_date: null, due_time: null });
+                      } else {
+                        save({ due_date: v || null });
+                      }
+                    }}
+                    onDateTime={(date, time) => {
+                      setDueDate(date);
+                      const body: Record<string, unknown> = { due_date: date };
+                      if (time) {
+                        setDueTime(time);
+                        body.due_time = time;
+                      }
+                      save(body);
+                    }}
+                  />
+                </div>
+                {dueDate && (
+                  <DueTimePopover
+                    value={dueTime}
+                    onChange={(v) => {
+                      setDueTime(v);
+                      save({ due_time: v || null });
+                    }}
+                  />
+                )}
+              </div>
+              <div className="min-w-0">
                 <DueDatePicker
-                  value={dueDate}
+                  value={plannedDate}
+                  placeholder="Not planned"
                   onChange={(v) => {
-                    setDueDate(v);
-                    // Clearing the date clears any time with it: a bare time is
-                    // meaningless, and would keep the popover showing "14:00"
-                    // against no day.
-                    if (!v && dueTime) {
-                      setDueTime("");
-                      save({ due_date: null, due_time: null });
-                    } else {
-                      save({ due_date: v || null });
-                    }
+                    setPlannedDate(v);
+                    save({ planned_date: v || null });
                   }}
-                  onDateTime={(date, time) => {
-                    setDueDate(date);
-                    const body: Record<string, unknown> = { due_date: date };
-                    if (time) {
-                      setDueTime(time);
-                      body.due_time = time;
-                    }
-                    save(body);
+                  onDateTime={(date) => {
+                    setPlannedDate(date);
+                    save({ planned_date: date });
                   }}
                 />
               </div>
-              {dueDate && (
-                <DueTimePopover
-                  value={dueTime}
-                  onChange={(v) => {
-                    setDueTime(v);
-                    save({ due_time: v || null });
-                  }}
-                />
-              )}
             </div>
 
             {/* Add to Today: one of the most-used actions, so it lives up top,
-                always visible, not buried in the Schedule section. Marks intent
-                to work on it today without touching the deadline. */}
+                always visible. It is a shortcut on the planned date above (it
+                writes today into it), kept as its own button because Remove
+                does more than clear a field: it also clears the other reasons
+                the view is holding the task, and defers the ones it cannot
+                clear. ──────────────────────────────────────────────────── */}
             {task.status !== "done" && (
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -881,43 +997,35 @@ export function TaskSheet({
                   {isInToday ? "Remove from Today" : "Add to Today"}
                 </button>
 
-                {/* Optional is set on 2% of tasks, so the button to SET it lives
-                    on More. Once set it comes back here, because a task being a
-                    nice-to-have changes how you read everything else on the
-                    sheet. Clicking it here un-sets it. */}
-                {!!optional && (
-                  <button
-                    type="button"
-                    title="Optional: a nice-to-have, not a commitment. Click to make it a commitment again."
-                    onClick={() => {
-                      setOptional(false);
-                      // D1 has no boolean type, so store 0/1.
-                      save({ optional: 0 });
-                    }}
-                    className="inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed border-primary bg-primary/10 px-2.5 py-1.5 text-sm font-medium text-primary transition-colors"
-                  >
-                    Optional
-                  </button>
-                )}
-
-                {/* Estimate: 14% of tasks carry one, and it is one small field,
-                    so it rides here rather than costing a trip to More. The
-                    TIMER (never used) stayed behind. */}
-                <label className="flex items-center gap-1 text-xs text-subtle">
-                  <input
-                    type="number"
-                    value={estimate}
-                    onChange={(e) =>
-                      setEstimate(e.target.value === "" ? "" : Number(e.target.value))
-                    }
-                    onBlur={() =>
-                      save({ time_estimate_min: estimate === "" ? null : Number(estimate) })
-                    }
-                    placeholder="–"
-                    className="h-8 w-14 rounded-md border border-input bg-surface px-2 text-xs text-foreground outline-none focus:border-primary"
-                  />
-                  min est
-                </label>
+                {/* Optional, in BOTH directions, on the main page. Her ask, and
+                    it overrides the usage rule that put the "set it" half on
+                    More (optional is set on 2% of tasks): deciding a task is a
+                    nice-to-have is a decision you make WHILE looking at the
+                    task, so making you cross a tab to record it is the wrong
+                    trade even at that rate. The estimate went the other way, to
+                    More, on the same instruction. */}
+                <button
+                  type="button"
+                  title={
+                    optional
+                      ? "Optional: a nice-to-have, not a commitment. Click to make it a commitment again."
+                      : "Optional: a nice-to-have, not a commitment"
+                  }
+                  onClick={() => {
+                    const next = !optional;
+                    setOptional(next);
+                    // D1 has no boolean type, so store 0/1.
+                    save({ optional: next ? 1 : 0 });
+                  }}
+                  className={cn(
+                    "inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-sm font-medium transition-colors",
+                    optional
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-input text-muted hover:border-primary/50 hover:bg-surface-2"
+                  )}
+                >
+                  {optional ? "Optional" : "Mark optional"}
+                </button>
               </div>
             )}
 
@@ -1211,7 +1319,10 @@ export function TaskSheet({
 
               {/* Snooze: hide until a chosen day. */}
               <div>
-                <span className="flex items-center gap-1.5 text-xs text-muted">
+                <span
+                  className="flex w-fit cursor-help items-center gap-1.5 text-xs text-muted underline decoration-dotted decoration-from-font underline-offset-2"
+                  title="Snooze: hide this task completely until a chosen day. It asks for nothing in the meantime and comes back untouched."
+                >
                   <SnoozeIcon className="h-3.5 w-3.5" /> Snooze
                   {task.snoozed_until && (
                     <span className="text-warning">until {task.snoozed_until}</span>
@@ -1249,7 +1360,13 @@ export function TaskSheet({
 
               {/* Repeat. */}
               <div>
-                <span className="flex items-center gap-1.5 text-xs text-muted">
+                <span
+                  className="flex w-fit cursor-help items-center gap-1.5 text-xs text-muted underline decoration-dotted decoration-from-font underline-offset-2"
+                  title={
+                    "Repeat: runs on a schedule. Completing it rolls the task to its next occurrence instead of finishing it.\n\n" +
+                    "Not the same as a checkpoint (which nudges you about ONE task on its way to a due date), or a cadence (sidebar: things that reset whenever you do them, like calling mum or watering the plants)."
+                  }
+                >
                   <RepeatIcon className="h-3.5 w-3.5" /> Repeat
                 </span>
                 <div className="mt-1 flex gap-2">
@@ -1368,44 +1485,43 @@ export function TaskSheet({
                   to check it is on track, without moving its due date. */}
               <CheckpointControl task={task} save={save} today={todayStr()} />
 
-              {/* The app has three repetition mechanisms; this is the one place
-                  they sit together, so this is where the signpost lives. */}
-              <p className="text-[11px] leading-relaxed text-subtle">
-                Which one? <span className="text-muted">Repeat</span> runs on a
-                schedule. <span className="text-muted">Checkpoints</span> nudge
-                you to check progress until the due date. For things that reset
-                whenever you do them (call mum, water plants), use a{" "}
-                <span className="text-muted">cadence</span> (sidebar, More).
-              </p>
+              {/* The app has three repetition mechanisms and this is the one
+                  place two of them sit together, so this is where the signpost
+                  lives. It used to be a paragraph under all three, spending four
+                  permanent lines to answer a question you ask once. Each heading
+                  is now dotted-underlined and carries the explanation on hover,
+                  including what it is NOT, which is the part that was actually
+                  doing the work. */}
             </div>
 
-            {/* Timer: never once started in 442 tasks. Kept, not removed (the
-                estimate it pairs with IS used, and it moved to Task), but this
-                is exactly what More is for. */}
+            {/* Estimate + timer. The estimate was on Task (14% of tasks carry
+                one, above the 1-in-10 line) and she moved it here: it is the
+                number you set when you are planning the work, not when you are
+                reading the task, and it was the field making the top of the
+                sheet busy. Set, it still shows as a chip on Task, so a value is
+                never hidden. It sits with the TIMER because they are the same
+                measurement, estimated and actual. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3">
+              <label className="flex items-center gap-1.5 text-xs text-subtle">
+                <input
+                  type="number"
+                  value={estimate}
+                  onChange={(e) =>
+                    setEstimate(e.target.value === "" ? "" : Number(e.target.value))
+                  }
+                  onBlur={() =>
+                    save({ time_estimate_min: estimate === "" ? null : Number(estimate) })
+                  }
+                  placeholder="–"
+                  className="h-8 w-14 rounded-md border border-input bg-surface px-2 text-xs text-foreground outline-none focus:border-primary"
+                />
+                min estimate
+              </label>
               <TimeTracker task={task} />
               <span className="text-xs text-subtle">
                 {task.time_spent_min > 0 ? `${task.time_spent_min}m spent` : "no time logged"}
               </span>
             </div>
-
-            {/* Optional lives here when it is NOT set: making a task a
-                nice-to-have is a 2% action. Set, it shows on Task instead. */}
-            {!optional && (
-              <div className="border-t border-border pt-3">
-                <button
-                  type="button"
-                  title="Optional: a nice-to-have, not a commitment"
-                  onClick={() => {
-                    setOptional(true);
-                    save({ optional: 1 });
-                  }}
-                  className="inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed border-input px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:border-primary/50 hover:bg-surface-2"
-                >
-                  Mark optional
-                </button>
-              </div>
-            )}
 
             {/* Files and the note this task came from. */}
             <div className="space-y-3 border-t border-border pt-3">
@@ -1440,6 +1556,8 @@ export function TaskSheet({
             </div>
           </div>
         )}
+        {/* The open-steps question, for completing from in here. */}
+        {guardDialog}
       </SheetContent>
     </Sheet>
   );

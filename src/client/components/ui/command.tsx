@@ -93,6 +93,16 @@ const CommandGroup = React.forwardRef<
 ));
 CommandGroup.displayName = CommandPrimitive.Group.displayName;
 
+// Shown when the filter matches nothing, so an empty popover says why it is
+// empty instead of looking broken.
+const CommandEmpty = React.forwardRef<
+  React.ElementRef<typeof CommandPrimitive.Empty>,
+  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Empty>
+>(({ className, ...props }, ref) => (
+  <CommandPrimitive.Empty ref={ref} className={cn(className)} {...props} />
+));
+CommandEmpty.displayName = CommandPrimitive.Empty.displayName;
+
 const CommandItem = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item>
@@ -115,4 +125,5 @@ export {
   CommandList,
   CommandGroup,
   CommandItem,
+  CommandEmpty,
 };

@@ -80,16 +80,30 @@ views.get("/today", async (c) => {
   );
 });
 
+// Upcoming: everything dated ahead of today. That means due dates, and ALSO a
+// task planned for a future day that carries no deadline at all.
+//
+// The planned clause is here because planned_date became a date you can SET
+// (it used to be writable only as "today", by the Add to Today button). A task
+// you deliberately planned for next Thursday and gave no deadline would
+// otherwise appear on no forward-looking list: not here, not in Today until the
+// day arrives, and not in the Backlog once it has an area. Planning it would
+// have made it less visible than leaving it alone, which is the opposite of
+// what a second date is for.
+//
+// Strictly `due_date IS NULL` on that side, so a task with both dates is listed
+// once, on its DEADLINE, which is the date that orders a forward list. Ordering
+// coalesces for the same reason: a plan-only task sorts by the only date it has.
 views.get("/upcoming", async (c) => {
   const userId = await getUserId(c);
   const today = todayStr();
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
-       AND due_date > ?
+       AND (due_date > ? OR (due_date IS NULL AND planned_date > ?))
        ${NOT_SNOOZED}
-     ORDER BY due_date, due_time IS NULL, due_time, priority`,
-    [userId, today, today]
+     ORDER BY COALESCE(due_date, planned_date), due_time IS NULL, due_time, priority`,
+    [userId, today, today, today]
   );
 });
 

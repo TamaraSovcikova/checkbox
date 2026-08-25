@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DndContext } from "@dnd-kit/core";
+import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { TaskRow } from "../components/TaskRow";
 import { TopBar } from "../components/TopBar";
@@ -13,12 +14,17 @@ import type { Task } from "../../shared/types";
 
 function providers(ui: ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // A router, because a row reads ?focus= to know whether it is the task the
+  // sheet's Navigate button just sent you to. The app always has one; a test
+  // without one was only ever testing a shape the app never renders.
   return render(
-    <QueryClientProvider client={qc}>
-      <ToastProvider>
-        <DndContext>{ui}</DndContext>
-      </ToastProvider>
-    </QueryClientProvider>
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <ToastProvider>
+          <DndContext>{ui}</DndContext>
+        </ToastProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
   );
 }
 
@@ -84,6 +90,36 @@ describe("TaskRow", () => {
   it("keeps the exact date reachable on hover, not just the humanised label", () => {
     providers(<TaskRow task={{ ...sample, due_date: todayStr() }} onOpen={() => {}} />);
     expect(screen.getByText("Today")).toHaveAttribute("title", todayStr());
+  });
+
+  // Due and planned are two dates now. A plan for a day other than today has to
+  // be readable from the list, or setting it would have made the task LESS
+  // visible than leaving it alone.
+  it("says which day a task is planned for, when that is not today", () => {
+    const [y, m, d] = todayStr().split("-").map(Number);
+    const inThree = new Date(Date.UTC(y, m - 1, d + 3)).toISOString().slice(0, 10);
+    providers(<TaskRow task={{ ...sample, planned_date: inThree }} onOpen={() => {}} />);
+    expect(screen.getByText(/^plan /)).toHaveAttribute(
+      "title",
+      `Planned for ${inThree}`
+    );
+  });
+
+  it("leaves today's plan to the Today marker rather than printing a chip", () => {
+    providers(
+      <TaskRow task={{ ...sample, planned_date: todayStr() }} onOpen={() => {}} />
+    );
+    expect(screen.queryByText(/^plan /)).not.toBeInTheDocument();
+  });
+
+  it("names a carried-forward plan as carried, not as overdue", () => {
+    const [y, m, d] = todayStr().split("-").map(Number);
+    const threeAgo = new Date(Date.UTC(y, m - 1, d - 3)).toISOString().slice(0, 10);
+    providers(<TaskRow task={{ ...sample, planned_date: threeAgo }} onOpen={() => {}} />);
+    const chip = screen.getByText(/^plan /);
+    expect(chip).toHaveAttribute("title", `Planned for ${threeAgo} (carried forward)`);
+    // A missed plan is a plan to move, not a broken promise: never danger-toned.
+    expect(chip.className).toContain("text-muted");
   });
 
   it("marks an optional task without hiding it", () => {

@@ -32,6 +32,7 @@ import {
   ChevronDownIcon,
 } from "../lib/icons";
 import { useTaskHover } from "./TaskHoverCard";
+import { useFocusTask, FOCUS_RING } from "../lib/use-focus-task";
 import type { RowSelection } from "./TaskListControls";
 
 export function TaskRow({
@@ -106,6 +107,9 @@ export function TaskRow({
   // Rest the mouse on a row to read its notes and blockers without opening the
   // sheet. Suppressed mid-drag.
   const { hoverProps, card } = useTaskHover(task, isDragging);
+  // Arriving here from the sheet's Navigate button: scroll this row into view
+  // and flash it, so landing on a long list actually shows you the task.
+  const { focusRef, lit } = useFocusTask(task.id);
 
   // Mark on track: advance the checkpoint to its next pulse, so the task drops
   // out of Today until then. Undoable to the exact prior pulse date.
@@ -153,11 +157,13 @@ export function TaskRow({
   const accent = tintArea && area ? areaColorVar(area.color) : undefined;
   return (
     <div
+      ref={focusRef}
       {...hoverProps}
       className={cn(
         // A hairline border so each row reads as its own card against the page,
         // rather than text floating on the background.
         "rounded-md border border-border",
+        lit && FOCUS_RING,
         isDragging && "opacity-40",
         // Dim the far future; hover restores full opacity so it never feels lost.
         // Suppressed mid-drag, where opacity-40 already applies.
