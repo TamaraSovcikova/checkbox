@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { format, parseISO, addDays } from "date-fns";
+import { format, addDays } from "date-fns";
 import type { Task, Subtask, Priority } from "../../shared/types";
 import { api } from "../lib/api";
 import {
@@ -16,6 +16,7 @@ import {
 } from "../lib/queries";
 import { RECURRENCE_PRESETS, recurrenceLabel } from "../../shared/recurrence";
 import { Markdown } from "../lib/markdown";
+import { safeFormat, safeParse } from "../lib/safe-date";
 import { parseDatePhrase, parseCapture } from "../lib/nlp";
 import { PRIORITY_VAR, shouldPill } from "../lib/colors";
 import { useCompleteGuard } from "../lib/use-complete-guard";
@@ -36,6 +37,7 @@ import { Button } from "./ui/button";
 import { PriorityPill } from "./ui";
 import { Sheet, SheetContent } from "./ui/sheet";
 import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
+import { Hint } from "./ui/hint";
 import {
   CalendarIcon,
   ClockIcon,
@@ -183,7 +185,9 @@ function DueDatePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [phrase, setPhrase] = useState("");
-  const selected = value ? parseISO(value) : undefined;
+  // A stored value that is not a date must not reach the calendar either: it
+  // renders as no selection rather than throwing on an Invalid Date.
+  const selected = safeParse(value) ?? undefined;
 
   function applyPhrase() {
     const p = phrase.trim();
@@ -205,12 +209,12 @@ function DueDatePicker({
           <CalendarIcon className="h-4 w-4 text-muted" />
           {value ? (
             <span className="truncate">
-              {format(
-                parseISO(value),
-                parseISO(value).getFullYear() === new Date().getFullYear()
+              {safeFormat(
+                value,
+                selected?.getFullYear() === new Date().getFullYear()
                   ? "d MMM"
                   : "d MMM yy"
-              )}
+              ) ?? value}
             </span>
           ) : (
             <span className="truncate text-subtle">{placeholder ?? "Pick a date"}</span>
@@ -370,14 +374,10 @@ function CheckpointControl({
 
   return (
     <div>
-      <span
-        className="flex w-fit cursor-help items-center gap-1.5 text-xs text-muted underline decoration-dotted decoration-from-font underline-offset-2"
-        title={
-          "Checkpoints: nudge you to check progress on THIS task every N days on its way to its due date. Marking it on track moves it to the next pulse; the due date never changes.\n\n" +
-          "Not a repeat (which finishes and starts again), and not a cadence (sidebar: things with no deadline that reset whenever you do them)."
-        }
-      >
-        <CheckpointIcon className="h-3.5 w-3.5" /> Checkpoints
+      <span className="flex items-center gap-1.5 text-xs text-muted">
+        <Hint text="Nudges you to check progress before the due date.">
+          <CheckpointIcon className="h-3.5 w-3.5" /> Checkpoints
+        </Hint>
         {days && (
           <span className="text-subtle">
             every {days}d
@@ -660,7 +660,8 @@ export function TaskSheet({
           Icon: CheckpointIcon,
         },
         task.scheduled_start && {
-          label: format(parseISO(task.scheduled_start), "d MMM HH:mm"),
+          label:
+            safeFormat(task.scheduled_start, "d MMM HH:mm") ?? task.scheduled_start,
           Icon: CalendarIcon,
         },
         task.time_estimate_min && {
@@ -1301,9 +1302,10 @@ export function TaskSheet({
                 <div className="flex items-center justify-between rounded-md bg-surface-2/60 px-2.5 py-1.5 text-xs">
                   <span className="flex items-center gap-1.5 text-foreground">
                     <CalendarIcon className="h-3.5 w-3.5 text-muted" />
-                    {format(parseISO(task.scheduled_start), "d MMM HH:mm")}
-                    {task.scheduled_end
-                      ? `–${format(parseISO(task.scheduled_end), "HH:mm")}`
+                    {safeFormat(task.scheduled_start, "d MMM HH:mm") ??
+                      task.scheduled_start}
+                    {safeFormat(task.scheduled_end, "HH:mm")
+                      ? `–${safeFormat(task.scheduled_end, "HH:mm")}`
                       : ""}
                   </span>
                   <button
@@ -1319,11 +1321,10 @@ export function TaskSheet({
 
               {/* Snooze: hide until a chosen day. */}
               <div>
-                <span
-                  className="flex w-fit cursor-help items-center gap-1.5 text-xs text-muted underline decoration-dotted decoration-from-font underline-offset-2"
-                  title="Snooze: hide this task completely until a chosen day. It asks for nothing in the meantime and comes back untouched."
-                >
-                  <SnoozeIcon className="h-3.5 w-3.5" /> Snooze
+                <span className="flex items-center gap-1.5 text-xs text-muted">
+                  <Hint text="Hides the task until a day you pick.">
+                    <SnoozeIcon className="h-3.5 w-3.5" /> Snooze
+                  </Hint>
                   {task.snoozed_until && (
                     <span className="text-warning">until {task.snoozed_until}</span>
                   )}
@@ -1360,14 +1361,10 @@ export function TaskSheet({
 
               {/* Repeat. */}
               <div>
-                <span
-                  className="flex w-fit cursor-help items-center gap-1.5 text-xs text-muted underline decoration-dotted decoration-from-font underline-offset-2"
-                  title={
-                    "Repeat: runs on a schedule. Completing it rolls the task to its next occurrence instead of finishing it.\n\n" +
-                    "Not the same as a checkpoint (which nudges you about ONE task on its way to a due date), or a cadence (sidebar: things that reset whenever you do them, like calling mum or watering the plants)."
-                  }
-                >
-                  <RepeatIcon className="h-3.5 w-3.5" /> Repeat
+                <span className="flex items-center gap-1.5 text-xs text-muted">
+                  <Hint text="Runs on a schedule. Finishing it starts the next one.">
+                    <RepeatIcon className="h-3.5 w-3.5" /> Repeat
+                  </Hint>
                 </span>
                 <div className="mt-1 flex gap-2">
                   <select

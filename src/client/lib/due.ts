@@ -1,4 +1,5 @@
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
+import { safeParse } from "./safe-date";
 
 // Shift a bare YYYY-MM-DD by whole days. String maths via UTC so it cannot drift
 // across a DST boundary the way adding 86_400_000 to a local Date can.
@@ -19,7 +20,13 @@ export function dueLabel(due: string, today: string): string {
   if (due === shift(today, 1)) return "Tomorrow";
   if (due === shift(today, -1)) return "Yesterday";
 
-  const date = parseISO(due);
+  // A date that cannot be parsed prints as itself rather than throwing. This is
+  // the exact call that blanked the app when ~50 rows held the string "null":
+  // date-fns coerces with +, so +"null" is NaN and format throws a RangeError
+  // mid-render. Writers and the database both refuse such a value now; this is
+  // the layer that does not rely on either being perfect.
+  const date = safeParse(due);
+  if (!date) return due;
   // Inside the coming week a weekday name places it faster than a number does.
   if (due > today && due <= shift(today, 6)) return format(date, "EEE");
 

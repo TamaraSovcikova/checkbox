@@ -130,7 +130,13 @@ export function SectionPicker({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    // `modal`, and the reason is not cosmetic: the sheet this picker lives in is
+    // a modal dialog, which locks page scrolling through react-remove-scroll,
+    // and the popover portals to the body OUTSIDE that lock's allowed subtree.
+    // The list scrolled with the arrow keys and refused the wheel, which is how
+    // a long project list becomes unreachable. A modal popover brings its own
+    // lock, and the topmost lock is the one that decides what may scroll.
+    <Popover open={open} onOpenChange={setOpen} modal>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -150,7 +156,9 @@ export function SectionPicker({
       <PopoverContent align="start" className="w-72 p-0">
         <Command filter={matches}>
           <CommandInput placeholder="Search areas and projects…" />
-          <CommandList>
+          {/* Capped explicitly rather than inheriting, so the list is always
+              short enough to read and long enough to be worth scrolling. */}
+          <CommandList className="max-h-72">
             <CommandEmpty className="px-3 py-4 text-xs text-subtle">
               Nothing matches.
             </CommandEmpty>

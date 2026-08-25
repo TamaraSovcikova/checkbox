@@ -1,4 +1,4 @@
-import { format, parseISO } from "date-fns";
+import { safeFormat } from "./lib/safe-date";
 import type { ReactNode } from "react";
 import { useReview, useAreas } from "./lib/queries";
 import { StatsWidget } from "./components/StatsWidget";
@@ -14,7 +14,7 @@ export function ReviewPage() {
 
   function fmtRange(from: string, to: string) {
     try {
-      return `${format(parseISO(from), "d MMM")} to ${format(parseISO(to), "d MMM yyyy")}`;
+      return `${safeFormat(from, "d MMM") ?? from} to ${safeFormat(to, "d MMM yyyy") ?? to}`;
     } catch {
       return `${from} to ${to}`;
     }

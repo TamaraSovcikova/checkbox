@@ -5,6 +5,7 @@ import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { logTrackerForTask, unlogTrackerForTask } from "../lib/trackers";
 import { enforceProjectArea } from "../lib/section";
 import { nextDueDate, rollDecision } from "../../shared/recurrence";
+import { checkDateFields, checkDate } from "../../shared/dates";
 
 export const tasks = new Hono<{ Bindings: Bindings }>();
 
@@ -170,6 +171,12 @@ tasks.post("/", async (c) => {
     return c.json({ error: "title required" }, 400);
   const refErr = await badRefs(c.env.DB, userId, b);
   if (refErr) return c.json({ error: refErr }, 400);
+  // Every date-shaped field, checked and normalised before it can reach a
+  // column. See shared/dates: the string "null" in due_date is what blanked the
+  // app, and a column is the wrong place to find that out.
+  const dated = checkDateFields(b);
+  if (!dated.ok) return c.json({ error: dated.error }, 400);
+  Object.assign(b, dated.value);
   // A task in a project belongs to that project's area, whatever the caller said.
   await enforceProjectArea(c.env.DB, userId, b);
   const id = uuid();
@@ -207,6 +214,9 @@ tasks.patch("/:id", async (c) => {
   const b = await c.req.json<Record<string, unknown>>();
   const refErr = await badRefs(c.env.DB, userId, b);
   if (refErr) return c.json({ error: refErr }, 400);
+  const dated = checkDateFields(b);
+  if (!dated.ok) return c.json({ error: dated.error }, 400);
+  Object.assign(b, dated.value);
   // Moving a task into a project moves it into that project's area too. Only
   // fires when the body actually names a project, so a title-only PATCH is
   // untouched.
@@ -499,12 +509,14 @@ tasks.post("/:id/snooze", async (c) => {
   if (!(await ownsTask(c.env.DB, userId, id)))
     return c.json({ error: "not found" }, 404);
   const b = await c.req.json<{ until: string | null }>();
+  const until = checkDate(b.until);
+  if (!until.ok) return c.json({ error: `until: ${until.error}` }, 400);
   await c.env.DB.prepare(
     "UPDATE tasks SET snoozed_until = ?, updated_at = ? WHERE id = ? AND user_id = ?"
   )
-    .bind(b.until ?? null, now(), id, userId)
+    .bind(until.value, now(), id, userId)
     .run();
-  return c.json({ ok: true, snoozed_until: b.until ?? null });
+  return c.json({ ok: true, snoozed_until: until.value });
 });
 
 // --- time tracking ---
@@ -686,7 +698,9 @@ tasks.post("/:id/subtasks", async (c) => {
     priority?: number | null;
   }>();
   const id = uuid();
-  const due_date = b.due_date ?? null;
+  const d = checkDate(b.due_date);
+  if (!d.ok) return c.json({ error: `due_date: ${d.error}` }, 400);
+  const due_date = d.value;
   const priority = b.priority ?? null;
   await c.env.DB.prepare(
     "INSERT INTO subtasks (id, task_id, title, due_date, priority) VALUES (?, ?, ?, ?, ?)"
@@ -723,8 +737,10 @@ tasks.patch("/:id/subtasks/:subId", async (c) => {
   // due_date/priority accept null to clear. `in b` (not != null) so an explicit
   // null reaches the column instead of being skipped.
   if ("due_date" in b) {
+    const d = checkDate(b.due_date);
+    if (!d.ok) return c.json({ error: `due_date: ${d.error}` }, 400);
     sets.push("due_date = ?");
-    binds.push(b.due_date ?? null);
+    binds.push(d.value);
   }
   if ("priority" in b) {
     sets.push("priority = ?");

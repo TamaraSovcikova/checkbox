@@ -18,6 +18,7 @@ import { insertCandidates, type CandidateInput } from "./notes";
 import { upsertMailCandidate, type MailCandidateInput } from "./mail";
 import { nextDueDate } from "../../shared/recurrence";
 import { startCheckpointBody } from "../../shared/checkpoint";
+import { checkDateFields } from "../../shared/dates";
 import { parseVaultLine, renderVaultLine, pullDecision } from "../../shared/vault";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { enforceProjectArea } from "../lib/section";
@@ -208,12 +209,12 @@ const TOOLS = [
         title: { type: "string" },
         notes: { type: "string" },
         priority: { type: "number", enum: [1, 2, 3, 4] },
-        due_date: { type: "string", description: "YYYY-MM-DD" },
-        due_time: { type: "string", description: "HH:MM" },
+        due_date: { type: ["string", "null"], description: "YYYY-MM-DD, or null" },
+        due_time: { type: ["string", "null"], description: "HH:MM, or null" },
         planned_date: {
           type: "string",
           description:
-            "YYYY-MM-DD. 'I intend to work on this on this day.' Set to today's date to put the task in the Today view (this is how you 'add to Today'); it does NOT change the deadline.",
+            "YYYY-MM-DD, or null. 'I intend to work on this on this day.' Set to today's date to put the task in the Today view (this is how you 'add to Today'); it does NOT change the deadline.",
         },
         scheduled_start: {
           type: "string",
@@ -274,15 +275,15 @@ const TOOLS = [
         title: { type: "string" },
         notes: { type: "string" },
         priority: { type: "number", enum: [1, 2, 3, 4] },
-        due_date: { type: "string" },
-        due_time: { type: "string" },
+        due_date: { type: ["string", "null"], description: "YYYY-MM-DD, or null to clear" },
+        due_time: { type: ["string", "null"], description: "HH:MM, or null to clear" },
         planned_date: {
-          type: "string",
+          type: ["string", "null"],
           description:
-            "YYYY-MM-DD. 'I intend to work on this on this day.' Set to today's date to put the task in the Today view (this is how you 'add to Today'); it does NOT change the deadline. Pass an empty string to remove it.",
+            "YYYY-MM-DD, or null to clear. 'I intend to work on this on this day.' Set to today's date to put the task in the Today view (this is how you 'add to Today'); it does NOT change the deadline.",
         },
-        scheduled_start: { type: "string" },
-        scheduled_end: { type: "string" },
+        scheduled_start: { type: ["string", "null"] },
+        scheduled_end: { type: ["string", "null"] },
         time_estimate_min: { type: "number" },
         area_id: { type: "string" },
         project_id: { type: "string" },
@@ -337,10 +338,14 @@ const TOOLS = [
       properties: {
         id: { type: "string" },
         due_date: {
-          type: "string",
+          // ["string", "null"], not "string". The old schema said string and the
+          // description said "or null to clear", so callers sent the STRING
+          // "null" and the column took it. A field that can be cleared has to
+          // say so in its type.
+          type: ["string", "null"],
           description: "YYYY-MM-DD, or null to clear",
         },
-        due_time: { type: "string", description: "HH:MM, or null to clear" },
+        due_time: { type: ["string", "null"], description: "HH:MM, or null to clear" },
       },
       required: ["id", "due_date"],
     },
@@ -683,7 +688,7 @@ const TOOLS = [
         area_id: { type: "string" },
         description: { type: "string" },
         goal: { type: "string" },
-        due_date: { type: "string", description: "YYYY-MM-DD" },
+        due_date: { type: ["string", "null"], description: "YYYY-MM-DD, or null" },
         board_columns: {
           type: "array",
           items: { type: "string" },
@@ -705,8 +710,8 @@ const TOOLS = [
         description: { type: "string" },
         goal: { type: "string" },
         status: { type: "string", enum: ["active", "completed", "archived"] },
-        start_date: { type: "string" },
-        due_date: { type: "string" },
+        start_date: { type: ["string", "null"], description: "YYYY-MM-DD, or null to clear" },
+        due_date: { type: ["string", "null"], description: "YYYY-MM-DD, or null to clear" },
         board_columns: { type: "array", items: { type: "string" } },
       },
       required: ["id"],
@@ -940,6 +945,21 @@ async function handleTool(
 ): Promise<unknown> {
   const db = env.DB;
 
+  // ── Every date-shaped argument, checked and normalised before any handler
+  // sees it. THIS is where the "null" dates came from: reschedule_task typed
+  // due_date as a plain string while its description said "or null to clear",
+  // so a caller wanting to clear a date sent the four characters n-u-l-l, the
+  // column took them, and the client's formatter threw on a value that is not a
+  // date. About 50 tasks were affected and the app rendered blank.
+  //
+  // Done here rather than per-handler because the failure was a gap between two
+  // places that were each individually reasonable. One gate, before the switch,
+  // has no gaps. The field names mean the same thing in every tool, and a tool
+  // that does not carry them is simply untouched.
+  const dated = checkDateFields(args);
+  if (!dated.ok) return text(`Rejected: ${dated.error}`);
+  args = dated.value;
+
   switch (name) {
     // ── list_tasks ──────────────────────────────────────────────────────────
     case "list_tasks": {
@@ -1017,7 +1037,13 @@ async function handleTool(
       const ids: string[] = [];
       for (const it of items) {
         if (!it || typeof it.title !== "string" || !it.title.trim()) continue;
-        ids.push(await createOneTask(db, userId, it));
+        // The gate above the switch sees only top-level args; a batch hides its
+        // dates one level down, which is exactly the sort of place a rule gets
+        // skipped. One bad date fails the whole call rather than filing 19 good
+        // tasks and one landmine.
+        const d = checkDateFields(it);
+        if (!d.ok) return text(`Rejected "${it.title}": ${d.error}`);
+        ids.push(await createOneTask(db, userId, d.value));
       }
       for (const id of ids) await gcalSync(env, userId, id);
       return json({ created: ids.length, ids });

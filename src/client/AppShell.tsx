@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { UpdateGate } from "./components/UpdateGate";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -60,6 +61,8 @@ function useQuickAddParam() {
 //                     ├── "view:today"   -> plan it for today (planned_date)
 //                     └── "view:backlog" -> clear area_id + project_id
 export function AppShell() {
+  // Keys the error boundary: a new route is a new attempt.
+  const { pathname } = useLocation();
   useQuickAddParam();
   const [task, setTask] = useState<Task | null>(null);
   const [drawer, setDrawer] = useState(false);
@@ -189,7 +192,14 @@ export function AppShell() {
                 the last row's controls are never stuck underneath it at the end
                 of the scroll. Desktop has no FAB and keeps the tighter pad. */}
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 md:px-6 md:pb-6">
-              <Outlet />
+              {/* Around the PAGE, not the shell: whatever a page does to itself,
+                  the sidebar and the nav survive it, so a crash is something you
+                  can walk away from instead of a white screen. Keyed on the
+                  path, so moving to another view is a fresh attempt rather than
+                  the same dead panel following you around. */}
+              <ErrorBoundary key={pathname}>
+                <Outlet />
+              </ErrorBoundary>
             </div>
           </main>
 
