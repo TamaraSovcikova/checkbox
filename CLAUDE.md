@@ -37,7 +37,7 @@ installable/auto-updating PWA. Deployed at https://checkbox.tamara-sovcik.worker
 Health: GET /api/health → { ok: true, phase: 8 }
 Version: GET /api/version → the deployed client bundle (deploy-freshness gate)
 MCP:    /mcp → 43 tools, bearer auth (per-user tokens in mcp_tokens)
-D1:     migrations 0001-0034 applied local + remote
+D1:     migrations 0001-0035 applied local + remote
 ```
 
 Surfaces beyond the task views: `/home` (composable widget dashboard, layout in
@@ -45,10 +45,19 @@ UserPrefs.dashboard), `/flow` + a per-project Flow tab (dependency runway, see
 shared/flow.ts), Cards, Cadences (sections via trackers.section + the prefs
 registry), Calendar, Weekly review, Mail coverage.
 
+Every date column is guarded THREE ways after the "null" incident (migration 0035
++ `shared/dates.ts` + `lib/safe-date.ts`): the MCP and REST writers normalise or
+reject, D1 triggers ABORT a malformed write, and the client formatters return
+null instead of throwing. A clearable date field in an MCP schema is typed
+`["string","null"]`, never `"string"` with "or null" in the description: that gap
+is what let the string "null" into ~50 rows and blanked the app. See
+docs/MISTAKES.md before touching a date path.
+
 Migration index: 0001-0031 as before (init, calendar, push, auth, recurrence,
 tier2, day_plans, note_candidates, attachments, trackers, checkpoints, reminders,
 vault sync) · 0032 projects.starred · 0033 trackers.section · 0034 task_links
-(symmetric related-task links, both rows written per link).
+(symmetric related-task links, both rows written per link) · 0035 date-shape
+triggers on tasks/subtasks/projects.
 
 A task carries TWO dates. `due_date` is when it is owed; `planned_date` is the day
 you mean to work on it, it shifts freely, and it is what "Add to Today" writes
