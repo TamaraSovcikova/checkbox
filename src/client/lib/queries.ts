@@ -52,11 +52,42 @@ export const useTasksByIds = (ids: string[]) => {
 };
 
 // Invalidate everything task-shaped after a write (cheap for a personal app).
+// Every cache that holds task data, invalidated together after any task write.
+//
+// This list IS the contract, and it has to be exhaustive: a cache missing from it
+// does not refresh, and a page reading it shows work that is no longer there.
+// Deleting a task from a SAVED FILTER left the row on screen, still clickable,
+// still opening a sheet for a task that no longer existed, until a manual reload.
+// The filter page reads ["filter-tasks", id], which was in neither line above.
+//
+// The three below it are snapshots rather than live reads: a day plan block
+// carries its own title and priority, and the weekly review and the stats
+// carry counts and task refs taken at fetch time. None of them re-derive from
+// ["tasks"], so none of them notice a deletion on their own.
+//
+// Pins are the exception that proves the rule: a pin line stores a task_id and
+// reads the live task through ["tasks"], so it self-heals. Refreshed anyway,
+// since the pin row itself can change server-side when its task goes.
+//
+// RULE for anything added later: if a query returns task titles, ids, dates or
+// counts, its key belongs here. Over-invalidating costs a cheap refetch on a
+// single-user app; under-invalidating costs trust in what the screen says.
+const TASK_BEARING_KEYS = [
+  ["view"],
+  ["tasks"],
+  ["filter-tasks"],
+  ["day-plan"],
+  ["review"],
+  ["stats"],
+  ["pins"],
+  ["triage"],
+] as const;
+
 export function useTaskInvalidate() {
   const qc = useQueryClient();
   return () => {
-    qc.invalidateQueries({ queryKey: ["view"] });
-    qc.invalidateQueries({ queryKey: ["tasks"] });
+    for (const queryKey of TASK_BEARING_KEYS)
+      qc.invalidateQueries({ queryKey: queryKey as unknown as unknown[] });
   };
 }
 
