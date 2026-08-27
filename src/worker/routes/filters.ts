@@ -11,15 +11,26 @@ export const filters = new Hono<{ Bindings: Bindings }>();
 //   label       label name
 //   area_id / project_id
 //   due         overdue | today | week | none | any
+//   planned     same vocabulary, over planned_date (the day I mean to work on it)
 //   status      open | done | any   (default open)
+//   whenever / optional / recurring / blocked
+//               any | yes | no
+type DateFilter = "any" | "overdue" | "today" | "week" | "none";
+type TriState = "any" | "yes" | "no";
+
 type FilterQuery = {
   text?: string;
   priority_max?: number;
   label?: string;
   area_id?: string;
   project_id?: string;
-  due?: "overdue" | "today" | "week" | "none" | "any";
+  due?: DateFilter;
+  planned?: DateFilter;
   status?: "open" | "done" | "any";
+  whenever?: TriState;
+  optional?: TriState;
+  recurring?: TriState;
+  blocked?: TriState;
 };
 
 function todayStr(tz = "Europe/Brussels") {
@@ -150,19 +161,60 @@ filters.get("/:id/tasks", async (c) => {
     where.push("t.project_id = ?");
     binds.push(query.project_id);
   }
-  if (query.due && query.due !== "any") {
-    const today = todayStr();
-    if (query.due === "none") where.push("t.due_date IS NULL");
-    else if (query.due === "overdue") {
-      where.push("t.due_date < ?");
+  const today = todayStr();
+
+  // One clause builder for BOTH date columns, so "due this week" and "planned
+  // this week" can never drift into meaning different spans of days.
+  const dateWhere = (col: string, mode: DateFilter | undefined) => {
+    if (!mode || mode === "any") return;
+    if (mode === "none") {
+      where.push(`t.${col} IS NULL`);
+    } else if (mode === "overdue") {
+      // Strictly before today, and NOT-NULL is implicit in SQL comparison, which
+      // is what we want: an undated task is not late, it is undated.
+      where.push(`t.${col} < ?`);
       binds.push(today);
-    } else if (query.due === "today") {
-      where.push("t.due_date = ?");
+    } else if (mode === "today") {
+      where.push(`t.${col} = ?`);
       binds.push(today);
-    } else if (query.due === "week") {
-      where.push("t.due_date >= ? AND t.due_date <= ?");
+    } else if (mode === "week") {
+      where.push(`t.${col} >= ? AND t.${col} <= ?`);
       binds.push(today, addDaysStr(today, 7));
     }
+  };
+  dateWhere("due_date", query.due);
+  dateWhere("planned_date", query.planned);
+
+  // 0/1 columns. `yes` and `no` are both real answers; absent means "do not ask".
+  const flagWhere = (col: string, mode: TriState | undefined) => {
+    if (!mode || mode === "any") return;
+    where.push(`t.${col} = ?`);
+    binds.push(mode === "yes" ? 1 : 0);
+  };
+  flagWhere("whenever", query.whenever);
+  flagWhere("optional", query.optional);
+
+  // Recurring is not a flag column: it is "has a recurrence rule". Empty string
+  // counts as none, because that is how the sheet clears it.
+  if (query.recurring && query.recurring !== "any") {
+    where.push(
+      query.recurring === "yes"
+        ? "(t.recurrence IS NOT NULL AND t.recurrence != '')"
+        : "(t.recurrence IS NULL OR t.recurrence = '')"
+    );
+  }
+
+  // Blocked, defined exactly as the rest of the app defines it (see
+  // client/lib/blocked isBlocked): an OPEN task blocker, or a blocked-until date
+  // still in the future. Kept in one expression so `no` is the true negation of
+  // `yes` rather than a second, subtly different rule.
+  if (query.blocked && query.blocked !== "any") {
+    const isBlocked = `(EXISTS (SELECT 1 FROM task_dependencies d
+                                  JOIN tasks b ON b.id = d.depends_on_id
+                                 WHERE d.task_id = t.id AND b.status != 'done')
+                        OR (t.blocked_until IS NOT NULL AND t.blocked_until > ?))`;
+    where.push(query.blocked === "yes" ? isBlocked : `NOT ${isBlocked}`);
+    binds.push(today);
   }
 
   sql += ` WHERE ${where.join(" AND ")} ORDER BY t.priority, t.due_date IS NULL, t.due_date, t.position`;

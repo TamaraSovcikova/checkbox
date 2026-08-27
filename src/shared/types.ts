@@ -168,6 +168,21 @@ export interface TaskRef {
   due_date?: string | null;
 }
 
+// How a saved filter talks about a DATE column. One vocabulary for both dates,
+// so "due this week" and "planned this week" cannot drift apart.
+//
+// `overdue` means "before today" and reads differently per column, which is why
+// the UI labels it per field: a due date in the past is late, a PLANNED date in
+// the past is a plan you did not get to (Today carries it forward rather than
+// treating it as a failure).
+export type DateFilter = "any" | "overdue" | "today" | "week" | "none";
+
+// A yes/no property of a task, plus "do not care". Three states rather than a
+// boolean, because "not set" and "explicitly no" are different questions:
+// `whenever: "no"` means "hide the someday pile", `undefined` means "I have not
+// thought about it".
+export type TriState = "any" | "yes" | "no";
+
 // A saved filter's query. Every field optional and ANDed together server-side.
 export interface FilterQuery {
   text?: string;
@@ -175,8 +190,20 @@ export interface FilterQuery {
   label?: string;
   area_id?: string;
   project_id?: string;
-  due?: "overdue" | "today" | "week" | "none" | "any";
+  due?: DateFilter;
+  // The second date (migration 0010): the day I mean to work on it. It became
+  // a field you can actually SET in chat #59, which is what made its absence
+  // here worth fixing.
+  planned?: DateFilter;
   status?: "open" | "done" | "any";
+  // The "what kind of task is this" axes. None of these had a filter at all,
+  // so a flag you could set was a flag you could not then find by.
+  whenever?: TriState;
+  optional?: TriState;
+  recurring?: TriState;
+  // Blocked as the rest of the app defines it (client/lib/blocked): an open
+  // task blocker OR a blocked-until date still in the future.
+  blocked?: TriState;
 }
 
 export interface SavedFilter {

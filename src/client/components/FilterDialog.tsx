@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useNavigate } from "react-router-dom";
-import type { FilterQuery, SavedFilter, Priority } from "../../shared/types";
+import type {
+  FilterQuery,
+  SavedFilter,
+  Priority,
+  DateFilter,
+  TriState,
+} from "../../shared/types";
 import { useAreas, useLabels, useProjects } from "../lib/queries";
 import { useCreateFilter, useUpdateFilter } from "../lib/queries";
 import { Button, Input } from "./ui";
@@ -46,7 +52,12 @@ export function FilterDialog({
     if (q.area_id) clean.area_id = q.area_id;
     if (q.project_id) clean.project_id = q.project_id;
     if (q.due && q.due !== "any") clean.due = q.due;
+    if (q.planned && q.planned !== "any") clean.planned = q.planned;
     if (q.status && q.status !== "open") clean.status = q.status;
+    for (const k of ["whenever", "optional", "recurring", "blocked"] as const) {
+      const v = q[k];
+      if (v && v !== "any") clean[k] = v;
+    }
 
     if (existing) {
       await update.mutateAsync({ id: existing.id, body: { name: name.trim(), query: clean } });
@@ -62,8 +73,8 @@ export function FilterDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface p-5 shadow-lg data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95">
-          <div className="mb-4 flex items-center justify-between">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-3rem)] w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-surface p-5 shadow-lg data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95">
+          <div className="mb-4 flex shrink-0 items-center justify-between">
             <Dialog.Title className="text-base font-semibold text-foreground">
               {existing ? "Edit filter" : "New filter"}
             </Dialog.Title>
@@ -72,7 +83,10 @@ export function FilterDialog({
             </Dialog.Close>
           </div>
 
-          <div className="space-y-3">
+          {/* Scrolls at the FORM, not the dialog: the title and the buttons
+              stay put, so Create is always reachable however many fields there
+              are. min-h-0 lets the middle actually shrink inside the column. */}
+          <div className="-mx-1 min-h-0 flex-1 space-y-3 overflow-y-auto px-1">
             <Field label="Name">
               <Input
                 value={name}
@@ -107,13 +121,44 @@ export function FilterDialog({
               <Field label="Due">
                 <Select
                   value={q.due ?? "any"}
-                  onChange={(v) => set({ due: v as FilterQuery["due"] })}
+                  onChange={(v) => set({ due: v as DateFilter })}
                   options={[
                     ["any", "Any"],
                     ["overdue", "Overdue"],
                     ["today", "Today"],
                     ["week", "This week"],
-                    ["none", "No date"],
+                    ["none", "No due date"],
+                  ]}
+                />
+              </Field>
+            </div>
+
+            {/* The second date. Same vocabulary as Due so the two cannot mean
+                different spans of days, but labelled for what a PLANNED date in
+                the past actually is: not a missed deadline, a day you did not
+                get to, which Today carries forward rather than marking late. */}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Planned">
+                <Select
+                  value={q.planned ?? "any"}
+                  onChange={(v) => set({ planned: v as DateFilter })}
+                  options={[
+                    ["any", "Any"],
+                    ["overdue", "Carried over"],
+                    ["today", "Today"],
+                    ["week", "This week"],
+                    ["none", "Not planned"],
+                  ]}
+                />
+              </Field>
+              <Field label="Blocked">
+                <Select
+                  value={q.blocked ?? "any"}
+                  onChange={(v) => set({ blocked: v as TriState })}
+                  options={[
+                    ["any", "Any"],
+                    ["yes", "Only blocked"],
+                    ["no", "Not blocked"],
                   ]}
                 />
               </Field>
@@ -156,9 +201,53 @@ export function FilterDialog({
                 />
               </Field>
             </div>
+
+            {/* What KIND of task, as opposed to when it is owed. Each of these
+                is a flag you can already set and could not previously find by,
+                which is half a feature. Worded as what the filter DOES rather
+                than as yes/no, since "Recurring: no" reads as a fact about the
+                task and "Exclude routines" reads as an instruction. */}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Whenever">
+                <Select
+                  value={q.whenever ?? "any"}
+                  onChange={(v) => set({ whenever: v as TriState })}
+                  options={[
+                    ["any", "Any"],
+                    ["yes", "Only whenever"],
+                    ["no", "Exclude whenever"],
+                  ]}
+                />
+              </Field>
+              <Field label="Routines">
+                <Select
+                  value={q.recurring ?? "any"}
+                  onChange={(v) => set({ recurring: v as TriState })}
+                  options={[
+                    ["any", "Any"],
+                    ["yes", "Only repeating"],
+                    ["no", "Exclude repeating"],
+                  ]}
+                />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Optional">
+                <Select
+                  value={q.optional ?? "any"}
+                  onChange={(v) => set({ optional: v as TriState })}
+                  options={[
+                    ["any", "Any"],
+                    ["yes", "Only optional"],
+                    ["no", "Commitments only"],
+                  ]}
+                />
+              </Field>
+            </div>
           </div>
 
-          <div className="mt-5 flex justify-end gap-2">
+          <div className="mt-5 flex shrink-0 justify-end gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
