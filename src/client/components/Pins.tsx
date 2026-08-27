@@ -337,6 +337,58 @@ function TaskPicker({
 
 // A pin line that IS a task. The task row is authoritative: live title, live
 // status, and ticking it here completes the task itself rather than the line.
+// A card line's text: always fully visible, wrapping onto as many lines as it
+// needs, and editable in place.
+//
+// It was a single-line <input>, which cannot wrap by definition: a long line
+// scrolled sideways inside the field and the rest of it simply was not on the
+// screen. Her words: "I want to be able to see all the text all the time".
+//
+// Same trick as the task sheet's SubtaskTitle, and the same reasoning: a
+// textarea sized to its own scrollHeight on every render and every keystroke, so
+// the row is exactly as tall as the words in it.
+export function PinLineText({
+  value,
+  done,
+  onChange,
+  onCommit,
+}: {
+  value: string;
+  done: boolean;
+  onChange: (v: string) => void;
+  onCommit: () => void;
+}) {
+  const fit = (el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+  return (
+    <textarea
+      value={value}
+      rows={1}
+      ref={fit}
+      onChange={(e) => {
+        onChange(e.target.value);
+        fit(e.target);
+      }}
+      onBlur={onCommit}
+      // Enter commits rather than opening a second line: these are checklist
+      // lines, and the wrapping is for long text, not for paragraphs.
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          (e.target as HTMLTextAreaElement).blur();
+        }
+      }}
+      className={cn(
+        "min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-[13px] leading-snug text-foreground outline-none",
+        done && "text-subtle line-through"
+      )}
+    />
+  );
+}
+
 function LinkedTaskLine({
   item,
   task,
@@ -354,9 +406,9 @@ function LinkedTaskLine({
   // and offer the only useful action left.
   if (!task) {
     return (
-      <div className="flex items-center gap-2">
-        <span className="h-3.5 w-3.5 shrink-0" />
-        <span className="min-w-0 flex-1 truncate text-[13px] text-subtle line-through">
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] text-subtle line-through">
           {item.text || "(task deleted)"}
         </span>
         <button
@@ -373,7 +425,9 @@ function LinkedTaskLine({
 
   const isDone = task.status === "done";
   return (
-    <div className="group/line flex items-center gap-2">
+    // items-start, not items-center: a title that wraps to three lines should
+    // keep its checkbox beside the FIRST line, not floating in the middle.
+    <div className="group/line flex items-start gap-2">
       <input
         type="checkbox"
         checked={isDone}
@@ -382,21 +436,21 @@ function LinkedTaskLine({
         onChange={() =>
           guard(task, () => complete.mutate({ id: task.id, done: !isDone }))
         }
-        className="h-3.5 w-3.5 shrink-0 [accent-color:var(--primary)]"
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 [accent-color:var(--primary)]"
         aria-label={task.title}
       />
       <button
         onClick={() => open(task)}
         title="Open task"
         className={cn(
-          "min-w-0 flex-1 truncate text-left text-[13px] text-foreground",
+          "min-w-0 flex-1 whitespace-pre-wrap break-words text-left text-[13px] leading-snug text-foreground",
           isDone && "text-subtle line-through"
         )}
       >
         {task.title}
       </button>
       {/* A link icon marks this as a task, not a line you typed. */}
-      <LinkIcon className="h-3 w-3 shrink-0 text-subtle opacity-60" />
+      <LinkIcon className="mt-1 h-3 w-3 shrink-0 text-subtle opacity-60" />
       <button
         onClick={onUnlink}
         aria-label="Unlink task"
@@ -549,11 +603,24 @@ function PinCard({
           : { borderColor: "var(--border)" }),
         // A pin only spans columns where there IS a grid to span (the strip).
         ...(resize === "both" ? { gridColumn: `span ${span}` } : null),
-        ...(resize !== "none" && height ? { height } : null),
+        // minHeight, not height. A dragged size used to be a CEILING: anything
+        // that did not fit was hidden behind a scrollbar inside the card, which
+        // is the opposite of her ask ("I want to be able to see all the text all
+        // the time"). It is now a floor, so the size you drag is "at least this
+        // tall" and content is never cut off.
+        //
+        // This reverses a deliberate earlier choice (the min-h-0 below exists
+        // precisely so a fixed-height pin could NOT be pushed taller by its own
+        // content). The trade it makes: you can still drag a short card taller
+        // to line it up with its neighbours, but you can no longer drag a card
+        // shorter than the words inside it.
+        ...(resize !== "none" && height ? { minHeight: height } : null),
       }}
     >
-      <div className="mb-1.5 flex shrink-0 items-center gap-2">
-        <span className="shrink-0 text-subtle">
+      {/* items-start so a title that wraps keeps its icon and menu beside the
+          first line rather than centred against three. */}
+      <div className="mb-1.5 flex shrink-0 items-start gap-2">
+        <span className="mt-0.5 shrink-0 text-subtle">
           {pin.kind === "tracker" ? (
             <CadenceIcon className="h-3.5 w-3.5" />
           ) : pin.kind === "list" ? (
@@ -563,16 +630,34 @@ function PinCard({
           )}
         </span>
         {showTitleInput ? (
-          <input
+          // A long title wraps rather than scrolling sideways out of view, for
+          // the same reason the lines below it do.
+          <textarea
             value={title}
+            rows={1}
             autoFocus={editingTitle}
-            onChange={(e) => setTitle(e.target.value)}
+            ref={(el) => {
+              if (!el) return;
+              el.style.height = "auto";
+              el.style.height = `${el.scrollHeight}px`;
+            }}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = `${e.target.scrollHeight}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                (e.target as HTMLTextAreaElement).blur();
+              }
+            }}
             onBlur={() => {
               setEditingTitle(false);
               if (title !== (pin.title ?? "")) update.mutate({ id: pin.id, body: { title } });
             }}
             placeholder="Title"
-            className="min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-subtle"
+            className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-sm font-medium leading-snug text-foreground outline-none placeholder:text-subtle"
           />
         ) : compact ? (
           <span className="flex-1" />
@@ -651,8 +736,11 @@ function PinCard({
         </div>
       )}
 
-      {/* min-h-0 so this can actually shrink inside the flex column: without it
-          a fixed-height pin would be pushed taller by its own content. */}
+      {/* The body grows with its content now that the card's dragged size is a
+          minimum rather than a fixed height (see minHeight above). overflow-auto
+          is kept as a backstop for a surface that genuinely constrains the card
+          from outside; in the normal case there is nothing to scroll, because
+          there is nothing hidden. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
       {pin.kind === "tracker" ? (
         // Scoped to the area it is pinned to, when it is pinned to one, so an
@@ -672,22 +760,19 @@ function PinCard({
                 onUnlink={() => removeItem(it.id)}
               />
             ) : (
-            <div key={it.id} className="group flex items-center gap-2">
+            <div key={it.id} className="group flex items-start gap-2">
               <input
                 type="checkbox"
                 checked={it.done}
                 onChange={() => toggle(it.id)}
-                className="h-3.5 w-3.5 shrink-0 [accent-color:var(--primary)]"
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 [accent-color:var(--primary)]"
                 aria-label={it.text}
               />
-              <input
+              <PinLineText
                 value={it.text}
-                onChange={(e) => editItem(it.id, e.target.value)}
-                onBlur={commitItem}
-                className={cn(
-                  "min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none",
-                  it.done && "text-subtle line-through"
-                )}
+                done={it.done}
+                onChange={(v) => editItem(it.id, v)}
+                onCommit={commitItem}
               />
               <button
                 onClick={() => removeItem(it.id)}
