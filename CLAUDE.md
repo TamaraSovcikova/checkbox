@@ -37,13 +37,29 @@ installable/auto-updating PWA. Deployed at https://checkbox.tamara-sovcik.worker
 Health: GET /api/health → { ok: true, phase: 8 }
 Version: GET /api/version → the deployed client bundle (deploy-freshness gate)
 MCP:    /mcp → 43 tools, bearer auth (per-user tokens in mcp_tokens)
-D1:     migrations 0001-0035 applied local + remote
+D1:     migrations 0001-0036 applied local + remote
 ```
 
 Surfaces beyond the task views: `/home` (composable widget dashboard, layout in
 UserPrefs.dashboard), `/flow` + a per-project Flow tab (dependency runway, see
 shared/flow.ts), Cards, Cadences (sections via trackers.section + the prefs
 registry), Calendar, Weekly review, Mail coverage.
+
+`whenever` = "no deadline, ever" (hobby goals, articles to read). NOT a synonym
+for priority 4 or `optional`: it marks a task that is undated ON PURPOSE, as
+opposed to one not scheduled yet, which is the one thing nothing else could say.
+Its own view `/whenever`, excluded from the Backlog, and the writers clear
+due/planned dates when the flag goes on, since the two claims contradict.
+
+Completing a task PLANS whatever it just unblocked, for today, and names them in
+the toast (`worker/lib/unblock`). Derived from the completion rather than from
+the blocker's due date, deliberately: a due date is a forecast, and a derived
+date that silently goes stale is worse than no date. See SESSION_LOG chat #60
+before changing this.
+
+0/1 flag columns accept `1`, `true`, `"1"` or `"true"` on the wire and store 0/1
+(`flagOn` / `normalizeFlags` in shared/dates). Never compare `=== 1` against a
+value that came from a client: that exact mistake is in docs/MISTAKES.md twice.
 
 Every date column is guarded THREE ways after the "null" incident (migration 0035
 + `shared/dates.ts` + `lib/safe-date.ts`): the MCP and REST writers normalise or
@@ -57,7 +73,7 @@ Migration index: 0001-0031 as before (init, calendar, push, auth, recurrence,
 tier2, day_plans, note_candidates, attachments, trackers, checkpoints, reminders,
 vault sync) · 0032 projects.starred · 0033 trackers.section · 0034 task_links
 (symmetric related-task links, both rows written per link) · 0035 date-shape
-triggers on tasks/subtasks/projects.
+triggers on tasks/subtasks/projects · 0036 tasks.whenever.
 
 A task carries TWO dates. `due_date` is when it is owed; `planned_date` is the day
 you mean to work on it, it shifts freely, and it is what "Add to Today" writes
