@@ -132,3 +132,61 @@ export function checkDateFields(
     run(TIME_FIELDS, checkTime);
   return err ? { ok: false, error: err } : { ok: true, value: out };
 }
+
+// "Whenever" and a date are contradictory claims, so the writers refuse to hold
+// both. Enforced server-side rather than in the sheet, because the sheet is not
+// the only writer: the MCP connector could otherwise produce a state the UI
+// forbids, and an invariant that only one client honours is not an invariant.
+//
+// Returns the fields to clear alongside the flag, and the caller reports them.
+// Deliberately loud: flagging a dated task DROPS its deadline, which is exactly
+// what the flag means and exactly the sort of thing that should never happen
+// quietly.
+export const FLAG_FIELDS = ["whenever", "optional", "gcal_hidden"] as const;
+
+export const WHENEVER_CLEARS = ["due_date", "due_time", "planned_date"] as const;
+
+// Is this flag ON, however the caller expressed it?
+//
+// D1 has no boolean, so these columns are 0/1, and the value can arrive as a
+// number, a real boolean, or a STRING: an MCP client whose cached tool schema
+// predates the field will happily serialise 1 as "1". The first cut compared
+// `=== 1` and silently did nothing on exactly that path, which is the same shape
+// as the bug that put the text "null" in due_date: a writer trusting that the
+// wire matches the schema it published.
+export function flagOn(v: unknown): boolean {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v === 1;
+  if (typeof v === "string") return v === "1" || v.toLowerCase() === "true";
+  return false;
+}
+
+// ...and the value actually stored is always 0 or 1, never "1" or true, so the
+// column cannot end up holding three spellings of the same thing.
+export function normalizeFlags(
+  body: Record<string, unknown>,
+  fields: readonly string[] = FLAG_FIELDS
+): Record<string, unknown> {
+  const out = { ...body };
+  for (const f of fields) if (f in out) out[f] = flagOn(out[f]) ? 1 : 0;
+  return out;
+}
+
+
+export function applyWheneverRule(
+  body: Record<string, unknown>,
+  current: { due_date?: unknown; due_time?: unknown; planned_date?: unknown } = {}
+): { body: Record<string, unknown>; cleared: string[] } {
+  // Only when the flag is being turned ON in this write. Turning it off restores
+  // nothing: the dates were a decision and re-making it is hers.
+  if (!flagOn(body.whenever)) return { body, cleared: [] };
+  const out = normalizeFlags(body);
+  const cleared: string[] = [];
+  for (const f of WHENEVER_CLEARS) {
+    // Report only what actually held a value, so the message names real losses.
+    const had = (f in out ? out[f] : current[f]) != null;
+    if (had) cleared.push(f);
+    out[f] = null;
+  }
+  return { body: out, cleared };
+}

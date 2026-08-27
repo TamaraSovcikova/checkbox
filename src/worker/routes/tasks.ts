@@ -5,7 +5,13 @@ import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { logTrackerForTask, unlogTrackerForTask } from "../lib/trackers";
 import { enforceProjectArea } from "../lib/section";
 import { nextDueDate, rollDecision } from "../../shared/recurrence";
-import { checkDateFields, checkDate } from "../../shared/dates";
+import {
+  checkDateFields,
+  checkDate,
+  applyWheneverRule,
+  normalizeFlags,
+  flagOn,
+} from "../../shared/dates";
 import { planNewlyUnblocked } from "../lib/unblock";
 
 export const tasks = new Hono<{ Bindings: Bindings }>();
@@ -179,6 +185,8 @@ tasks.post("/", async (c) => {
   const dated = checkDateFields(b);
   if (!dated.ok) return c.json({ error: dated.error }, 400);
   Object.assign(b, dated.value);
+  Object.assign(b, normalizeFlags(b));
+  Object.assign(b, applyWheneverRule(b).body);
   // A task in a project belongs to that project's area, whatever the caller said.
   await enforceProjectArea(c.env.DB, userId, b);
   const id = uuid();
@@ -219,6 +227,17 @@ tasks.patch("/:id", async (c) => {
   const dated = checkDateFields(b);
   if (!dated.ok) return c.json({ error: dated.error }, 400);
   Object.assign(b, dated.value);
+  // A task marked "whenever" holds no dates: the flag means "no deadline, ever",
+  // and a task that is both whenever and due Tuesday is not saying anything.
+  Object.assign(b, normalizeFlags(b));
+  if (flagOn(b.whenever)) {
+    const cur = await c.env.DB.prepare(
+      "SELECT due_date, due_time, planned_date FROM tasks WHERE id = ? AND user_id = ?"
+    )
+      .bind(id, userId)
+      .first<Record<string, unknown>>();
+    Object.assign(b, applyWheneverRule(b, cur ?? {}).body);
+  }
   // Moving a task into a project moves it into that project's area too. Only
   // fires when the body actually names a project, so a title-only PATCH is
   // untouched.
