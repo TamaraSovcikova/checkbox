@@ -34,7 +34,11 @@ export function Hint({
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
-        onClick={() => setOpen((o) => !o)}
+        // OPEN, never toggle. A tap fires focus and then click, so a toggle here
+        // opened the bubble and shut it again in the same gesture: on a phone,
+        // which has no hover and is this app's main surface, the tooltip could
+        // not be read at all. It closes on blur, which a tap elsewhere gives.
+        onClick={() => setOpen(true)}
         aria-label={text}
         className={cn(
           "inline-flex items-center gap-1.5 rounded outline-none",

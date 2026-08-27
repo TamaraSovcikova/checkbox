@@ -30,9 +30,9 @@ import { dueLabel } from "../lib/due";
 // kinds that hold something, because a value you cannot see is worse than a
 // field you did not want.
 
-// The shared shell. `open` is now driven from OUTSIDE by the one control above:
-// picking a kind opens that editor, and an editor that holds a value is always
-// open. It keeps its own state too, so an editor opened by hand stays open.
+// The shared shell, and it holds no state of its own: an editor is visible when
+// it has a value, or when the control above opened it. One owner, so "which
+// editors are showing" cannot be answered two different ways.
 function Collapsible({
   filled,
   forceOpen,
@@ -52,6 +52,18 @@ function Collapsible({
 export function BlockedEditor({ task }: { task: Task }) {
   const [picking, setPicking] = useState(false);
   const [opened, setOpened] = useState<Kind[]>([]);
+
+  // Both of those belong to the task they were opened on. The sheet does NOT
+  // remount when you move between tasks (clicking a linked chip swaps the prop
+  // on the same tree), so without this, opening "A date" on one task greeted the
+  // next one with an empty date editor it had never asked for.
+  //
+  // Keyed on the id, not the object: `task` is a live cache read and gets a new
+  // identity on every refetch, which would slam the picker shut mid-choice.
+  useEffect(() => {
+    setPicking(false);
+    setOpened([]);
+  }, [task.id]);
 
   const has = {
     task: (task.depends_on ?? []).length > 0,

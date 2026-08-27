@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   applyWheneverRule,
+  applyDateClearsWhenever,
   flagOn,
   normalizeFlags,
 } from "../src/shared/dates";
@@ -98,5 +99,67 @@ describe("flagOn / normalizeFlags", () => {
     const r = applyWheneverRule({ whenever: "1" }, { planned_date: "2026-09-15" });
     expect(r.cleared).toEqual(["planned_date"]);
     expect(r.body).toMatchObject({ whenever: 1, planned_date: null });
+  });
+});
+
+// The inverse. applyWheneverRule closes one direction; without this one the
+// other stayed open, and not hypothetically: the Today toggle on every row
+// writes planned_date, so adding a flagged task to Today produced exactly the
+// contradiction the flag exists to prevent, from a control that looks innocent.
+describe("applyDateClearsWhenever", () => {
+  const flagged = { whenever: 1 };
+
+  it("clears the flag when a date is set on a flagged task", () => {
+    const r = applyDateClearsWhenever({ planned_date: "2026-09-01" }, flagged);
+    expect(r.unflagged).toBe(true);
+    expect(r.body).toEqual({ planned_date: "2026-09-01", whenever: 0 });
+  });
+
+  it("counts a due date and a calendar block, not just a plan", () => {
+    expect(
+      applyDateClearsWhenever({ due_date: "2026-09-01" }, flagged).unflagged
+    ).toBe(true);
+    expect(
+      applyDateClearsWhenever({ scheduled_start: "2026-09-01T09:00:00Z" }, flagged)
+        .unflagged
+    ).toBe(true);
+  });
+
+  it("does NOT fire on clearing a date: that says nothing about deadlines", () => {
+    // Otherwise removing a due date would quietly flag half the backlog.
+    const r = applyDateClearsWhenever({ due_date: null }, flagged);
+    expect(r.unflagged).toBe(false);
+    expect(r.body).toEqual({ due_date: null });
+  });
+
+  it("leaves an unflagged task completely alone", () => {
+    const body = { planned_date: "2026-09-01" };
+    expect(applyDateClearsWhenever(body, { whenever: 0 })).toEqual({
+      body,
+      unflagged: false,
+    });
+  });
+
+  it("defers to an explicit flag in the same write", () => {
+    // "Make it whenever AND give it a date" is contradictory, and
+    // applyWheneverRule has already resolved it by clearing the date. This must
+    // not then undo the flag and leave neither rule applied.
+    const r = applyDateClearsWhenever(
+      { whenever: 1, planned_date: null },
+      flagged
+    );
+    expect(r.unflagged).toBe(false);
+  });
+
+  it("the two rules together leave a coherent task, whichever order they arrive", () => {
+    // Flagging a dated task: flag on, dates gone.
+    const a = applyWheneverRule({ whenever: 1 }, { due_date: "2026-09-01" });
+    const a2 = applyDateClearsWhenever(a.body, { whenever: 0 });
+    expect(a2.body).toMatchObject({ whenever: 1, due_date: null });
+
+    // Dating a flagged task: date kept, flag gone.
+    const b = applyWheneverRule({ due_date: "2026-09-01" }, flagged);
+    const b2 = applyDateClearsWhenever(b.body, flagged);
+    expect(b2.body).toEqual({ due_date: "2026-09-01", whenever: 0 });
   });
 });

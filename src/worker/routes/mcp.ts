@@ -21,8 +21,10 @@ import { startCheckpointBody } from "../../shared/checkpoint";
 import {
   checkDateFields,
   applyWheneverRule,
+  applyDateClearsWhenever,
   normalizeFlags,
   flagOn,
+  DATES_THAT_UNFLAG,
 } from "../../shared/dates";
 import { planNewlyUnblocked } from "../lib/unblock";
 import { parseVaultLine, renderVaultLine, pullDecision } from "../../shared/vault";
@@ -192,8 +194,9 @@ const TOOLS = [
       properties: {
         view: {
           type: "string",
-          enum: ["today", "upcoming", "overdue", "backlog", "logbook"],
-          description: "Smart view filter",
+          enum: ["today", "upcoming", "overdue", "backlog", "logbook", "whenever"],
+          description:
+            "Smart view filter. `whenever` is the no-deadline-ever pool (hobby goals, things to read): browse it when there is spare time, never schedule from it.",
         },
         project_id: { type: "string" },
         area_id: { type: "string" },
@@ -1006,8 +1009,14 @@ async function handleTool(
                ORDER BY due_date, priority`;
         binds.push(today);
       } else if (args.view === "backlog") {
+        // Mirrors routes/views: a "whenever" task is not waiting to be filed,
+        // it already lives where it belongs.
         sql = `SELECT * FROM tasks WHERE user_id = ? AND area_id IS NULL AND project_id IS NULL
-               AND status != 'done' ORDER BY priority, position`;
+               AND status != 'done' AND whenever = 0 ORDER BY priority, position`;
+      } else if (args.view === "whenever") {
+        sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
+               AND parent_task_id IS NULL AND whenever = 1
+               ORDER BY created_at DESC`;
       } else if (args.view === "logbook") {
         sql = `SELECT * FROM tasks WHERE user_id = ? AND status = 'done'
                ORDER BY completed_at DESC LIMIT 100`;
@@ -1088,15 +1097,21 @@ async function handleTool(
       // should do quietly just because it was implied.
       let wheneverNote = "";
       args = normalizeFlags(args);
-      if (flagOn(args.whenever)) {
+      if (flagOn(args.whenever) || DATES_THAT_UNFLAG.some((f) => f in args)) {
         const cur = await db
-          .prepare("SELECT due_date, due_time, planned_date FROM tasks WHERE id = ? AND user_id = ?")
+          .prepare(
+            "SELECT due_date, due_time, planned_date, whenever FROM tasks WHERE id = ? AND user_id = ?"
+          )
           .bind(id, userId)
           .first<Record<string, unknown>>();
         const r = applyWheneverRule(args, cur ?? {});
         args = r.body;
         if (r.cleared.length)
           wheneverNote = ` Cleared ${r.cleared.join(", ")}: a "whenever" task carries no dates.`;
+        const u = applyDateClearsWhenever(args, cur ?? {});
+        args = u.body;
+        if (u.unflagged)
+          wheneverNote += ' Removed the "whenever" flag: giving it a date says it has one.';
       }
       // Moving a task into a project moves it into that project's area too.
       await enforceProjectArea(db, userId, args);

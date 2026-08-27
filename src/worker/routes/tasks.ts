@@ -9,8 +9,10 @@ import {
   checkDateFields,
   checkDate,
   applyWheneverRule,
+  applyDateClearsWhenever,
   normalizeFlags,
   flagOn,
+  DATES_THAT_UNFLAG,
 } from "../../shared/dates";
 import { planNewlyUnblocked } from "../lib/unblock";
 
@@ -230,13 +232,16 @@ tasks.patch("/:id", async (c) => {
   // A task marked "whenever" holds no dates: the flag means "no deadline, ever",
   // and a task that is both whenever and due Tuesday is not saying anything.
   Object.assign(b, normalizeFlags(b));
-  if (flagOn(b.whenever)) {
+  if (flagOn(b.whenever) || DATES_THAT_UNFLAG.some((f) => f in b)) {
     const cur = await c.env.DB.prepare(
-      "SELECT due_date, due_time, planned_date FROM tasks WHERE id = ? AND user_id = ?"
+      "SELECT due_date, due_time, planned_date, whenever FROM tasks WHERE id = ? AND user_id = ?"
     )
       .bind(id, userId)
       .first<Record<string, unknown>>();
     Object.assign(b, applyWheneverRule(b, cur ?? {}).body);
+    // ...and the other direction: a task being given a date is no longer one
+    // that will never have one.
+    Object.assign(b, applyDateClearsWhenever(b, cur ?? {}).body);
   }
   // Moving a task into a project moves it into that project's area too. Only
   // fires when the body actually names a project, so a title-only PATCH is
@@ -504,26 +509,107 @@ tasks.post("/restore", async (c) => {
     if (refErr.startsWith("project")) snap.project_id = null;
   }
 
+  // A snapshot is client data like any other, so it goes through the same date
+  // gate as every write. Without it, a bad date here would reach the column and
+  // (since migration 0035) abort with a 500 instead of a clear 400.
+  const dated = checkDateFields(snap);
+  if (!dated.ok) return c.json({ error: dated.error }, 400);
+  Object.assign(snap, dated.value);
+  Object.assign(snap, normalizeFlags(snap));
+
   const cols = ["id", "user_id", ...WRITABLE.filter((f) => f in snap)];
   const vals = [id, userId, ...WRITABLE.filter((f) => f in snap).map((f) => snap[f])];
   const ph = cols.map(() => "?").join(",");
-  await c.env.DB.prepare(
+  const ins = await c.env.DB.prepare(
     `INSERT OR IGNORE INTO tasks (${cols.join(",")}) VALUES (${ph})`
   )
     .bind(...vals)
     .run();
 
+  // OR IGNORE means a second undo is a no-op on the TASK, but everything below
+  // would happily run again and give the task a second copy of every step. Undo
+  // is a button people press twice when they are not sure it worked.
+  const created = (ins.meta?.changes ?? 0) > 0;
+  if (!created) {
+    const existing = await c.env.DB.prepare(
+      "SELECT * FROM tasks WHERE id = ? AND user_id = ?"
+    )
+      .bind(id, userId)
+      .first();
+    const [already] = await hydrateTasks(c.env.DB, [existing as Record<string, unknown>]);
+    return c.json(already, 200);
+  }
+
   const labels = (snap.labels as { name: string }[] | undefined) ?? [];
   if (labels.length)
     await attachLabelNames(c.env.DB, userId, id, labels.map((l) => l.name));
 
-  const subs = (snap.subtasks as { title: string; done?: boolean; position?: number }[] | undefined) ?? [];
+  // Steps come back WHOLE. due_date and priority were being dropped, which is
+  // not a cosmetic loss: a step's due date is what carries its parent into
+  // Today, so a restored task quietly stopped showing up when it should.
+  const subs =
+    (snap.subtasks as
+      | {
+          title: string;
+          done?: boolean;
+          position?: number;
+          due_date?: string | null;
+          priority?: number | null;
+        }[]
+      | undefined) ?? [];
   for (const s of subs) {
+    const sd = checkDate(s.due_date);
     await c.env.DB.prepare(
-      "INSERT INTO subtasks (id, task_id, title, done, position) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO subtasks (id, task_id, title, done, position, due_date, priority) VALUES (?, ?, ?, ?, ?, ?, ?)"
     )
-      .bind(uuid(), id, s.title, s.done ? 1 : 0, s.position ?? 0)
+      .bind(
+        uuid(),
+        id,
+        s.title,
+        s.done ? 1 : 0,
+        s.position ?? 0,
+        sd.ok ? sd.value : null,
+        s.priority ?? null
+      )
       .run();
+  }
+
+  // Blockers and links, which the delete CASCADED away: the snapshot is the only
+  // record that they existed. Silently restoring the task without them made undo
+  // look complete while quietly unpicking the graph, and the Flow map with it.
+  //
+  // Each end is checked for existence first, because the other task may have been
+  // deleted too; a reference to a row that is gone is worse than a missing one.
+  const stillThere = async (otherId: string) =>
+    !!(await c.env.DB.prepare("SELECT 1 FROM tasks WHERE id = ? AND user_id = ?")
+      .bind(otherId, userId)
+      .first());
+
+  for (const d of (snap.depends_on as { id: string }[] | undefined) ?? []) {
+    if (d?.id && d.id !== id && (await stillThere(d.id)))
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?)"
+      )
+        .bind(id, d.id)
+        .run();
+  }
+  // The other direction too: tasks this one was blocking.
+  for (const b of (snap.blocks as { id: string }[] | undefined) ?? []) {
+    if (b?.id && b.id !== id && (await stillThere(b.id)))
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?)"
+      )
+        .bind(b.id, id)
+        .run();
+  }
+  // Links are symmetric: BOTH rows, or neither end can show it (migration 0034).
+  for (const r of (snap.related as { id: string }[] | undefined) ?? []) {
+    if (r?.id && r.id !== id && (await stillThere(r.id))) {
+      const li = c.env.DB.prepare(
+        "INSERT OR IGNORE INTO task_links (task_id, linked_id) VALUES (?, ?)"
+      );
+      await c.env.DB.batch([li.bind(id, r.id), li.bind(r.id, id)]);
+    }
   }
 
   const row = await c.env.DB.prepare("SELECT * FROM tasks WHERE id = ? AND user_id = ?")

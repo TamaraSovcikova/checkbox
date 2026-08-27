@@ -43,6 +43,11 @@ export function suggestForToday(
     if (t.scheduled_start?.slice(0, 10) === todayStr) continue;
     if (t.snoozed_until && t.snoozed_until > todayStr) continue;
     if (isBlocked(t)) continue;
+    // "Whenever" means no deadline, ever. Proposing one for TODAY is the one
+    // suggestion the flag exists to rule out, and a suggester that ignores a
+    // flag you set by hand teaches you to stop trusting it. Those tasks are
+    // browsed on purpose, in their own view, when there is room.
+    if (t.whenever) continue;
 
     const dueIn = t.due_date ? daysBetween(todayStr, t.due_date) : null;
     if (dueIn !== null && dueIn <= 0) continue; // due today / overdue: already in Today

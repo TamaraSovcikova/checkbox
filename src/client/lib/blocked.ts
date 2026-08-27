@@ -38,14 +38,6 @@ export function openBlockers(task: Task) {
   return (task.depends_on ?? []).filter((d) => d.status !== "done");
 }
 
-// "Send invoice · due 1 Sep", or just the title when the blocker has no date.
-export function blockerLine(
-  d: { title: string; due_date?: string | null },
-  label: (due: string) => string
-): string {
-  return d.due_date ? `${d.title} · due ${label(d.due_date)}` : d.title;
-}
-
 // The soonest day this task could plausibly start: the day after the LAST of its
 // blockers is due. Offered as a one-click preset in the planned-date picker,
 // never written automatically.

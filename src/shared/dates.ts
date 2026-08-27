@@ -190,3 +190,38 @@ export function applyWheneverRule(
   }
   return { body: out, cleared };
 }
+
+// The inverse rule: giving a task a date says it is no longer "whenever".
+//
+// applyWheneverRule closes one direction (flagging clears the dates). Without
+// this the other stays open, and not hypothetically: the Today toggle on any row
+// writes planned_date, so adding a flagged task to Today produced exactly the
+// contradiction the flag is supposed to make impossible, from a control that
+// looks entirely innocent.
+//
+// Deliberately triggered by SETTING a date, never by clearing one: clearing a
+// due date is not a statement about deadlines in general, and would silently
+// flag half her backlog.
+//
+// scheduled_start counts (a calendar block is scheduling), but is NOT in
+// WHENEVER_CLEARS: flagging a task must never delete a calendar event, while
+// putting one in the calendar is a plain enough statement of intent. Each
+// direction takes the side that cannot lose data.
+export const DATES_THAT_UNFLAG = [
+  "due_date",
+  "planned_date",
+  "scheduled_start",
+] as const;
+
+export function applyDateClearsWhenever(
+  body: Record<string, unknown>,
+  current: { whenever?: unknown } = {}
+): { body: Record<string, unknown>; unflagged: boolean } {
+  // The caller said something explicit about the flag in this same write; that
+  // wins, and applyWheneverRule has already had its say.
+  if ("whenever" in body) return { body, unflagged: false };
+  if (!flagOn(current.whenever)) return { body, unflagged: false };
+  const setting = DATES_THAT_UNFLAG.some((f) => f in body && body[f] != null);
+  if (!setting) return { body, unflagged: false };
+  return { body: { ...body, whenever: 0 }, unflagged: true };
+}
