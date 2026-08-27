@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { format, addDays } from "date-fns";
+import { format, parseISO, addDays } from "date-fns";
 import type { Task, Subtask, Priority } from "../../shared/types";
 import { api } from "../lib/api";
 import {
@@ -17,6 +17,8 @@ import {
 import { RECURRENCE_PRESETS, recurrenceLabel } from "../../shared/recurrence";
 import { Markdown } from "../lib/markdown";
 import { safeFormat, safeParse } from "../lib/safe-date";
+import { earliestStartAfterBlockers } from "../lib/blocked";
+import { completedMessage } from "../lib/completion";
 import { parseDatePhrase, parseCapture } from "../lib/nlp";
 import { PRIORITY_VAR, shouldPill } from "../lib/colors";
 import { useCompleteGuard } from "../lib/use-complete-guard";
@@ -57,11 +59,7 @@ import {
   NavigateIcon,
 } from "../lib/icons";
 import { TimeTracker } from "./TimeTracker";
-import {
-  BlockersEditor,
-  BlockedUntilEditor,
-  WaitingOnEditor,
-} from "./DependencyEditor";
+import { BlockedEditor } from "./DependencyEditor";
 import { RelatedEditor } from "./RelatedEditor";
 import { SectionPicker } from "./SectionPicker";
 import { AttachmentList } from "./AttachmentList";
@@ -170,6 +168,7 @@ function DueDatePicker({
   onChange,
   onDateTime,
   placeholder,
+  extraPresets,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -182,6 +181,11 @@ function DueDatePicker({
   // year is dropped when it is this one ("5 Sep" rather than "5 Sep 2026"),
   // which is what makes two dates plus a time popover fit on one line.
   placeholder?: string;
+  // Extra one-click dates that only make sense for THIS task, offered above the
+  // generic Today/Tomorrow row. The blocked case is what this exists for: the
+  // day after the last blocker is due, computed and shown, but never written
+  // until she clicks it. See lib/blocked earliestStartAfterBlockers.
+  extraPresets?: { label: string; date: string }[];
 }) {
   const [open, setOpen] = useState(false);
   const [phrase, setPhrase] = useState("");
@@ -233,6 +237,25 @@ function DueDatePicker({
             placeholder="Type a date… e.g. next tue 3pm"
             className="mb-2 h-8 w-full rounded-md border border-dashed border-input bg-transparent px-2 text-sm text-foreground outline-none placeholder:text-subtle focus:border-primary"
           />
+        )}
+        {/* Task-specific offers first: they are the reason the picker was
+            opened when they exist. */}
+        {extraPresets && extraPresets.length > 0 && (
+          <div className="mb-2 flex flex-col gap-1">
+            {extraPresets.map((p) => (
+              <button
+                key={p.label}
+                type="button"
+                onClick={() => {
+                  onChange(p.date);
+                  setOpen(false);
+                }}
+                className="rounded-md border border-dashed border-input px-2 py-1 text-left text-xs text-foreground transition-colors hover:border-primary/60 hover:bg-surface-2"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         )}
         {/* Quick presets: the common reschedules without opening the grid. */}
         <div className="mb-2 flex flex-wrap gap-1">
@@ -531,6 +554,7 @@ export function TaskSheet({
   const [rawSub, setRawSub] = useState(false);
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [optional, setOptional] = useState(false);
+  const [whenever, setWhenever] = useState(false);
   // Which half of the sheet is showing. Always opens on Task: More is where you
   // go deliberately, and a sheet that remembered the other tab would greet the
   // next task with its repeat settings.
@@ -555,6 +579,7 @@ export function TaskSheet({
     setSubtasks(task.subtasks ?? []);
     setAddingSub(false);
     setOptional(!!task.optional);
+    setWhenever(!!task.whenever);
     // Keyed on the task's ID, not the task object: `task` is now a live cache
     // read, so it gets a new identity on every refetch, and depending on the
     // object would reset these fields (blowing away half-typed text) each time
@@ -710,11 +735,10 @@ export function TaskSheet({
     if (!task) return;
     const wasDone = task.status === "done";
     guard(task, async () => {
-      await complete.mutateAsync({ id: task.id, done: !wasDone });
+      const res = await complete.mutateAsync({ id: task.id, done: !wasDone });
       if (wasDone) return;
-      toast(
-        task.recurrence ? "Done for today · repeats tomorrow morning" : "Completed",
-        () => complete.mutate({ id: task.id, done: false })
+      toast(completedMessage(task, res), () =>
+        complete.mutate({ id: task.id, done: false })
       );
     });
   }
@@ -754,6 +778,18 @@ export function TaskSheet({
       toast("Added to Today");
     }
   }
+
+  // The one-click offer in the planned-date picker for a blocked task: the day
+  // after its last blocker is due. Computed, shown, and written only if she
+  // clicks it, so it stays a date she chose rather than a forecast the app made
+  // on her behalf. Absent when nothing is blocking or no blocker has a date.
+  const blockedStart = task ? earliestStartAfterBlockers(task) : null;
+  const blockedPreset = blockedStart
+    ? {
+        label: `After its blockers · ${format(parseISO(blockedStart), "d MMM")}`,
+        date: blockedStart,
+      }
+    : null;
 
   // Gmail thread handles (present only for email-derived tasks).
   const gmailThread = task?.gmail_thread_id ?? null;
@@ -909,6 +945,16 @@ export function TaskSheet({
                 Both are set often, so both are plain pickers rather than one
                 hiding behind the other. The due TIME stays a small popover that
                 only appears once a due date exists. ───────────────────────── */}
+            {whenever ? (
+              // A task marked "whenever" has no dates by definition, so it does
+              // not spend two pickers saying so. The one line explains where it
+              // went, because a control that vanishes without a word reads as a
+              // bug.
+              <p className="text-[11px] text-subtle">
+                No dates: this one waits in{" "}
+                <span className="text-muted">Whenever</span> until you have the time.
+              </p>
+            ) : (
             <div className="grid grid-cols-2 gap-x-3 gap-y-1">
               <span
                 className="text-[11px] text-subtle"
@@ -964,6 +1010,7 @@ export function TaskSheet({
                 <DueDatePicker
                   value={plannedDate}
                   placeholder="Not planned"
+                  extraPresets={blockedPreset ? [blockedPreset] : undefined}
                   onChange={(v) => {
                     setPlannedDate(v);
                     save({ planned_date: v || null });
@@ -975,6 +1022,7 @@ export function TaskSheet({
                 />
               </div>
             </div>
+            )}
 
             {/* Add to Today: one of the most-used actions, so it lives up top,
                 always visible. It is a shortcut on the planned date above (it
@@ -1005,6 +1053,42 @@ export function TaskSheet({
                     task, so making you cross a tab to record it is the wrong
                     trade even at that rate. The estimate went the other way, to
                     More, on the same instruction. */}
+                {/* Whenever: something I mean to do that will never carry a
+                    date. Sits beside optional because they are the same species
+                    of judgement, and they are NOT the same claim: optional says
+                    I might not do this at all, whenever says I will, with no
+                    deadline, when there is room. Setting it clears any dates,
+                    since a task that is "whenever" and also due Tuesday is not
+                    saying anything coherent. */}
+                <button
+                  type="button"
+                  title={
+                    whenever
+                      ? "Whenever: no deadline, ever. Lives in the Whenever list until you have the time. Click to make it a dated task again."
+                      : "Whenever: something to do when there is time, that will never have a deadline"
+                  }
+                  onClick={() => {
+                    const next = !whenever;
+                    setWhenever(next);
+                    if (next) {
+                      setDueDate("");
+                      setDueTime("");
+                      setPlannedDate("");
+                      save({ whenever: 1, due_date: null, due_time: null, planned_date: null });
+                    } else {
+                      save({ whenever: 0 });
+                    }
+                  }}
+                  className={cn(
+                    "inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-sm font-medium transition-colors",
+                    whenever
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-input text-muted hover:border-primary/50 hover:bg-surface-2"
+                  )}
+                >
+                  {whenever ? "Whenever" : "Whenever?"}
+                </button>
+
                 <button
                   type="button"
                   title={
@@ -1271,17 +1355,14 @@ export function TaskSheet({
               </div>
             )}
 
-            {/* Connections. Blocked-by is set on 8% of tasks and waiting-on on
-                1%, which would put both on More, but she asked for them where
-                she can reach them. So they sit under the work, and each renders
-                as ONE dashed chip until it holds something: on a task with no
-                connections this whole block is a single line of three chips
-                that wrap in beside the "+ Step" one. Related links are new, so
-                there is no rate to argue from yet. */}
-            <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-              <BlockersEditor task={task} />
-              <BlockedUntilEditor task={task} />
-              <WaitingOnEditor task={task} />
+            {/* Connections. Two controls now, not four: "Blocked" asks the one
+                question (what is this waiting on?) and offers the three kinds
+                of answer, and "Link" is the separate, non-blocking relation. It
+                was three blocked-shaped chips in a row, which read as three
+                unrelated features and made you choose the storage before you
+                had finished having the thought. */}
+            <div className="flex flex-wrap items-start gap-2 border-t border-border pt-3">
+              <BlockedEditor task={task} />
               <RelatedEditor task={task} />
             </div>
 

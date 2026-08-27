@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { useTaskInvalidate } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import { useCompleteGuard } from "../lib/use-complete-guard";
+import { completedMessage } from "../lib/completion";
 import { CheckIcon, TrashIcon, RescheduleIcon, BacklogIcon, CloseIcon, SnoozeIcon } from "../lib/icons";
 import { Button } from "./ui";
 
@@ -215,16 +216,11 @@ export function useTaskSelection(
           // be the way to silently finish a task with steps still open.
           if (cur)
             guard(cur, () =>
-              api.completeTask(cur.id, true).then(() => {
+              api.completeTask(cur.id, true).then((res) => {
                 invalidate();
-                toast(
-                  cur.recurrence
-                    ? "Done for today · repeats tomorrow morning"
-                    : "Completed",
-                  () => {
-                    api.completeTask(cur.id, false).then(invalidate);
-                  }
-                );
+                toast(completedMessage(cur, res), () => {
+                  api.completeTask(cur.id, false).then(invalidate);
+                });
               })
             );
           break;

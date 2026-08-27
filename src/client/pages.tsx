@@ -55,6 +55,7 @@ import {
   UpcomingIcon,
   OverdueIcon,
   BacklogIcon,
+  WheneverIcon,
   LogbookIcon,
   ChevronRightIcon,
   BackIcon,
@@ -111,6 +112,12 @@ const VIEW_META: Record<
   upcoming: { title: "Upcoming", empty: "Nothing upcoming.", icon: UpcomingIcon },
   overdue: { title: "Overdue", empty: "Nothing overdue. Nice.", icon: OverdueIcon },
   backlog: { title: "Backlog", empty: "Backlog is empty.", icon: BacklogIcon },
+  whenever: {
+    title: "Whenever",
+    empty:
+      "Nothing here yet. Mark a task Whenever when you mean to do it but it will never have a deadline.",
+    icon: WheneverIcon,
+  },
   logbook: { title: "Logbook", empty: "No completed tasks yet.", icon: LogbookIcon },
   snoozed: {
     title: "Snoozed",

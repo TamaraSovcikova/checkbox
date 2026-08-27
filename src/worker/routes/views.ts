@@ -138,9 +138,33 @@ views.get("/backlog", async (c) => {
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
        AND area_id IS NULL AND project_id IS NULL
        AND (planned_date IS NULL OR planned_date <> ?)
+       -- A "whenever" task is not waiting to be filed, it is already where it
+       -- belongs (see /whenever). Leaving it here too would make the Backlog the
+       -- thing the flag exists to stop it being: a pile you avoid opening.
+       AND whenever = 0
        ${NOT_SNOOZED}
      ORDER BY created_at DESC`,
     [userId, today, today]
+  );
+});
+
+// Whenever: things with no date and no intention of having one. Hobby goals,
+// articles to read, curiosities. The pool you open when you have an hour and no
+// obligation, which is the whole reason the flag exists: a marker with nowhere
+// to go would just be a boolean you have to remember to filter by.
+//
+// Newest first, deliberately. There is no urgency to sort by, and the thing you
+// wrote down last week is the thing you are still curious about.
+views.get("/whenever", async (c) => {
+  const userId = await getUserId(c);
+  const today = todayStr();
+  return run(
+    c,
+    `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
+       AND whenever = 1
+       ${NOT_SNOOZED}
+     ORDER BY created_at DESC`,
+    [userId, today]
   );
 });
 

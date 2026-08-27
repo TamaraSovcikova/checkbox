@@ -29,6 +29,7 @@ import {
   UpcomingIcon,
   OverdueIcon,
   BacklogIcon,
+  WheneverIcon,
   LogbookIcon,
   CalendarIcon,
   FlowIcon,
@@ -75,6 +76,10 @@ const TASK_VIEWS: NavDef[] = [
   { to: "/upcoming", label: "Upcoming", icon: UpcomingIcon },
   { to: "/overdue", label: "Overdue", icon: OverdueIcon },
   { to: "/backlog", label: "Backlog", icon: BacklogIcon },
+  // Directly under Backlog because it is the same kind of place (things with no
+  // date) split by the one distinction that matters: Backlog is not scheduled
+  // YET, Whenever is never going to be.
+  { to: "/whenever", label: "Whenever", icon: WheneverIcon },
   { to: "/snoozed", label: "Snoozed", icon: SnoozeIcon },
   { to: "/logbook", label: "Logbook", icon: LogbookIcon },
 ];

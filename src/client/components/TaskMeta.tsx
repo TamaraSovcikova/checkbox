@@ -164,6 +164,16 @@ export function TaskMeta({
     <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-subtle">
       {shouldPill(task.priority) && <PriorityPill priority={task.priority} />}
       {/* Coerce: D1 stores 0/1, and a bare `0 &&` would render a literal 0. */}
+      {/* No deadline, ever, on purpose. Says so, because the useful thing to
+          know when scanning a list is which entries are asking for nothing. */}
+      {!!task.whenever && !done && (
+        <span
+          className="inline-flex items-center rounded border border-dashed border-input px-1 py-0.5 text-subtle"
+          title="Whenever: no deadline, ever. Waiting in the Whenever list for a gap."
+        >
+          whenever
+        </span>
+      )}
       {!!task.optional && !done && (
         <span
           className="inline-flex items-center rounded border border-dashed border-input px-1 py-0.5 text-subtle"

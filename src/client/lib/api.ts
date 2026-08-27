@@ -122,10 +122,14 @@ export const api = {
   updateTask: (id: string, b: Record<string, unknown>) =>
     httpMutate<Task>("PATCH", `/api/tasks/${id}`, b),
   completeTask: (id: string, done = true) =>
-    httpMutate<{ ok: boolean; recurred: boolean; due_date?: string }>(
-      "POST",
-      `/api/tasks/${id}/complete?done=${done ? 1 : 0}`
-    ),
+    httpMutate<{
+      ok: boolean;
+      recurred: boolean;
+      due_date?: string;
+      // Tasks this completion just made workable, planned for today by the
+      // server. Named in the toast; see lib/completion.
+      unblocked?: { id: string; title: string }[];
+    }>("POST", `/api/tasks/${id}/complete?done=${done ? 1 : 0}`),
   skipOccurrence: (id: string) =>
     httpMutate<{ ok: boolean; skipped: boolean; due_date: string | null; ended: boolean }>(
       "POST",

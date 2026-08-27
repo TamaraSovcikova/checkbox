@@ -50,7 +50,10 @@ export async function hydrateTasks(
   const depRows = await chunkedIn(
     db,
     ids,
-    (ph) => `SELECT d.task_id, d.depends_on_id, t.title, t.status
+    // t.due_date rides along so a blocked task can SAY when its blocker is owed.
+    // Her words: "I always have to open the blocked tasks, read them, see when
+    // they are due". The date was one join away the whole time.
+    (ph) => `SELECT d.task_id, d.depends_on_id, t.title, t.status, t.due_date
        FROM task_dependencies d JOIN tasks t ON t.id = d.depends_on_id
        WHERE d.task_id IN (${ph})`
   );
@@ -88,7 +91,12 @@ export async function hydrateTasks(
   const depsByTask = new Map<string, unknown[]>();
   for (const r of depRows as Record<string, unknown>[]) {
     const arr = depsByTask.get(r.task_id as string) ?? [];
-    arr.push({ id: r.depends_on_id, title: r.title, status: r.status });
+    arr.push({
+      id: r.depends_on_id,
+      title: r.title,
+      status: r.status,
+      due_date: r.due_date ?? null,
+    });
     depsByTask.set(r.task_id as string, arr);
   }
   const blocksByTask = new Map<string, unknown[]>();

@@ -120,6 +120,10 @@ export interface Task {
   // hiding its chip in the calendar's all-day box). Reversible; see sync.ts.
   gcal_hidden: number;
   optional: boolean; // a nice-to-have rather than a commitment
+  // "Whenever I have the chance": a thing I mean to do that will never carry a
+  // date. Distinct from optional (which says I might not do it at all) and from
+  // priority 4 (which ranks a commitment last). See migration 0036.
+  whenever: boolean;
   planned_date: string | null; // YYYY-MM-DD; "I intend to work on this today" (not a deadline)
   scheduled_start: string | null;
   scheduled_end: string | null;
@@ -158,6 +162,10 @@ export interface TaskRef {
   id: string;
   title: string;
   status: TaskStatus;
+  // Carried on BLOCKER refs so a blocked task can say when its blocker is owed
+  // without making you open the blocker to find out. Optional because most refs
+  // (related links, review lists) neither need nor set it.
+  due_date?: string | null;
 }
 
 // A saved filter's query. Every field optional and ANDed together server-side.

@@ -19,6 +19,7 @@ import { upsertMailCandidate, type MailCandidateInput } from "./mail";
 import { nextDueDate } from "../../shared/recurrence";
 import { startCheckpointBody } from "../../shared/checkpoint";
 import { checkDateFields } from "../../shared/dates";
+import { planNewlyUnblocked } from "../lib/unblock";
 import { parseVaultLine, renderVaultLine, pullDecision } from "../../shared/vault";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { enforceProjectArea } from "../lib/section";
@@ -143,6 +144,7 @@ const TASK_WRITABLE = [
   "area_id", "project_id", "parent_task_id", "section_id", "board_column",
   "status", "recurrence", "recurrence_mode", "planned_date",
   "gmail_thread_id", "gmail_message_id", "gmail_permalink",
+  "optional", "whenever",
 ] as const;
 
 // Insert one task from a create-shaped args object and attach any label_names.
@@ -237,6 +239,17 @@ const TOOLS = [
           type: "string",
           description:
             "Recurrence spec: daily | weekdays | weekly | monthly | yearly | weekly:<mon,tue,...> | every:<N>:day|week|month|year",
+        },
+        whenever: {
+          type: "number",
+          enum: [0, 1],
+          description:
+            "1 = 'whenever I have the chance': something I mean to do that will never carry a date (a hobby goal, an article to read). It stays out of the dated views and lives in its own pool. Not the same as priority 4 (a commitment ranked last) or optional (something I might not do at all).",
+        },
+        optional: {
+          type: "number",
+          enum: [0, 1],
+          description: "1 = a nice-to-have rather than a commitment.",
         },
         recurrence_mode: {
           type: "string",
@@ -1125,7 +1138,19 @@ async function handleTool(
       ).bind(done ? "done" : "todo", done ? now() : null, now(), id, userId).run();
       // Re-completing keeps the event; un-completing re-pushes it.
       await gcalSync(env, userId, id);
-      return text(`Task ${id} marked ${done ? "done" : "todo"}.`);
+      // Same rule as the app: whatever this task was holding up is now workable
+      // and gets today's plan, and it is NAMED rather than done quietly. See
+      // lib/unblock for why this derives from the completion rather than from
+      // the blocker's due date.
+      const freed = done
+        ? await planNewlyUnblocked(db, userId, id, todayBrussels())
+        : [];
+      return text(
+        `Task ${id} marked ${done ? "done" : "todo"}.` +
+          (freed.length
+            ? ` Unblocked and planned for today: ${freed.map((t) => t.title).join(", ")}.`
+            : "")
+      );
     }
 
     // ── delete_task ──────────────────────────────────────────────────────────

@@ -52,6 +52,7 @@ const sample: Task = {
   recurrence_count: null,
     gcal_hidden: 0,
   optional: false,
+  whenever: false,
   planned_date: null,
   scheduled_start: null,
   scheduled_end: null,

@@ -6,6 +6,7 @@ import { logTrackerForTask, unlogTrackerForTask } from "../lib/trackers";
 import { enforceProjectArea } from "../lib/section";
 import { nextDueDate, rollDecision } from "../../shared/recurrence";
 import { checkDateFields, checkDate } from "../../shared/dates";
+import { planNewlyUnblocked } from "../lib/unblock";
 
 export const tasks = new Hono<{ Bindings: Bindings }>();
 
@@ -40,6 +41,7 @@ const WRITABLE = [
   "planned_date",
   "blocked_until",
   "optional",
+  "whenever",
   "gcal_hidden",
   "checkpoint_days",
   "checkpoint_next",
@@ -342,7 +344,19 @@ tasks.post("/:id/complete", async (c) => {
     // Re-opened: put it back on the calendar if it still has a date/time-block.
     c.executionCtx?.waitUntil(pushTaskToGcal(c.env, id, userId).catch(console.error));
   }
-  return c.json({ ok: true, recurred: false });
+
+  // Anything this task was holding up is now workable, so it gets today's plan
+  // and the caller is told which, by name. Reported rather than silent: an
+  // automatic write you cannot see is how a tool stops being predictable.
+  //
+  // Only on completion. Re-opening deliberately does NOT unplan them: by then
+  // she may have acted on the plan, and taking a date back off a task she has
+  // started is a worse surprise than leaving one that is briefly optimistic.
+  const unblocked = done
+    ? await planNewlyUnblocked(c.env.DB, userId, id, todayStr())
+    : [];
+
+  return c.json({ ok: true, recurred: false, unblocked });
 });
 
 // Skip one occurrence of a recurring task: advance the due date to the next

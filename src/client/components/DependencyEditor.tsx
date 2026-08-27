@@ -4,46 +4,134 @@ import type { Task, TaskRef } from "../../shared/types";
 import { api } from "../lib/api";
 import { useTaskInvalidate } from "../lib/queries";
 import { BlockedIcon, AddIcon, CloseIcon, CheckIcon } from "../lib/icons";
-import { cn } from "@/lib/utils";
+import { cn, todayStr } from "@/lib/utils";
+import { dueLabel } from "../lib/due";
 
-// The three ways a task can be waiting, each its own control: blocked BY another
-// task, blocked UNTIL a date, waiting on the WORLD. The row/view badge derives
-// from all three.
+// Why a task cannot be done yet: ONE question, three kinds of answer.
 //
-// Each is empty on the overwhelming majority of tasks (8%, 1%, 1%), and each
-// used to render its full editor regardless: a heading, a list, an add button, a
-// date input with two presets, two text fields. That is most of a screen spent
-// saying "no" on a task that has nothing to say. Empty now means ONE dashed
-// chip; clicking it opens the real control in place. Set means the control, in
-// full, because a value you cannot see is worse than a field you did not want.
+// Her words: "whats the difference between having a blocked by, a blocked until
+// and a waiting on all there? could we combine them somehow, to have it more
+// clean?" She is right about the question and the controls, and wrong about the
+// data, so this combines exactly one of the two.
+//
+// From her side it IS one decision, asked once: what is this waiting on? Three
+// dashed chips in a row made it look like three unrelated features, and made you
+// choose the storage before you had finished having the thought.
+//
+// Underneath they stay three fields, because they do genuinely different work
+// downstream and merging them would cost that work:
+//   • another TASK   feeds the Flow map and the "unlocks N" chip, and is what
+//                    the auto-plan-on-unblock rule watches (worker/lib/unblock).
+//   • a DATE         suppresses the task until then. Nothing to chase.
+//   • a PERSON/event turns into a CHASE nudge once its expected date passes,
+//                    because by then the useful action is chasing, not waiting.
+//
+// So: one control, three kinds. Empty is a single chip. Set renders only the
+// kinds that hold something, because a value you cannot see is worse than a
+// field you did not want.
 
-// The shared shell: chip when there is nothing to show, editor once there is.
+// The shared shell. `open` is now driven from OUTSIDE by the one control above:
+// picking a kind opens that editor, and an editor that holds a value is always
+// open. It keeps its own state too, so an editor opened by hand stays open.
 function Collapsible({
-  label,
   filled,
+  forceOpen,
   children,
 }: {
-  label: string;
   filled: boolean;
+  forceOpen: boolean;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  if (!filled && !open)
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 rounded-full border border-dashed border-input px-2.5 py-1 text-[11.5px] text-subtle transition-colors hover:border-primary/50 hover:text-foreground"
-      >
-        <AddIcon className="h-3 w-3" />
-        {label}
-      </button>
-    );
+  if (!filled && !forceOpen) return null;
   return <div className="w-full">{children}</div>;
 }
 
+// The one control. Empty, it is a single dashed chip; clicking it asks which
+// kind, in her words rather than the schema's ("another task", "a date",
+// "someone else"). Whatever she picks opens that editor in place.
+export function BlockedEditor({ task }: { task: Task }) {
+  const [picking, setPicking] = useState(false);
+  const [opened, setOpened] = useState<Kind[]>([]);
+
+  const has = {
+    task: (task.depends_on ?? []).length > 0,
+    date: !!task.blocked_until,
+    person: !!task.waiting_on,
+  };
+  const anything = has.task || has.date || has.person || opened.length > 0;
+
+  const KINDS: { kind: Kind; label: string; hint: string }[] = [
+    { kind: "task", label: "Another task", hint: "It has to happen first" },
+    { kind: "date", label: "A date", hint: "Cannot start before then" },
+    { kind: "person", label: "Someone else", hint: "Waiting on them to come back" },
+  ];
+
+  function pick(kind: Kind) {
+    setOpened((o) => (o.includes(kind) ? o : [...o, kind]));
+    setPicking(false);
+  }
+
+  return (
+    <div className="w-full">
+      {anything && (
+        <div className="space-y-2">
+          <BlockersEditor task={task} forceOpen={opened.includes("task")} />
+          <BlockedUntilEditor task={task} forceOpen={opened.includes("date")} />
+          <WaitingOnEditor task={task} forceOpen={opened.includes("person")} />
+        </div>
+      )}
+
+      {picking ? (
+        <div className="mt-2 w-full overflow-hidden rounded-md border border-border bg-surface">
+          <div className="border-b border-border px-2.5 py-1.5 text-[11px] text-subtle">
+            What is it waiting on?
+          </div>
+          {KINDS.map((k) => (
+            <button
+              key={k.kind}
+              type="button"
+              onClick={() => pick(k.kind)}
+              className="block w-full px-2.5 py-2 text-left transition-colors hover:bg-surface-2"
+            >
+              <span className="block text-sm text-foreground">{k.label}</span>
+              <span className="block text-[11px] text-subtle">{k.hint}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setPicking(false)}
+            className="block w-full border-t border-border px-2.5 py-1.5 text-left text-[11px] text-muted transition-colors hover:bg-surface-2"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setPicking(true)}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full border border-dashed border-input px-2.5 py-1 text-[11.5px] text-subtle transition-colors hover:border-primary/50 hover:text-foreground",
+            anything && "mt-2"
+          )}
+        >
+          <AddIcon className="h-3 w-3" />
+          {anything ? "Add another" : "Blocked"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+type Kind = "task" | "date" | "person";
+
 // Blocked BY another task: search and pick. The one with a real rate (8%).
-export function BlockersEditor({ task }: { task: Task }) {
+export function BlockersEditor({
+  task,
+  forceOpen = false,
+}: {
+  task: Task;
+  forceOpen?: boolean;
+}) {
   const invalidate = useTaskInvalidate();
   const [deps, setDeps] = useState<TaskRef[]>(task.depends_on ?? []);
   const [adding, setAdding] = useState(false);
@@ -87,7 +175,7 @@ export function BlockersEditor({ task }: { task: Task }) {
   const openBlockers = deps.filter((d) => d.status !== "done").length;
 
   return (
-    <Collapsible label="Blocker" filled={deps.length > 0}>
+    <Collapsible filled={deps.length > 0} forceOpen={forceOpen}>
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-xs text-muted">
           <BlockedIcon className="h-3.5 w-3.5" /> Blocked by
@@ -117,12 +205,23 @@ export function BlockersEditor({ task }: { task: Task }) {
             </span>
             <span
               className={cn(
-                "flex-1 truncate",
+                "min-w-0 flex-1 truncate",
                 d.status === "done" ? "text-subtle line-through" : "text-foreground"
               )}
             >
               {d.title}
             </span>
+            {/* The blocker's OWN deadline, here rather than one click away.
+                Her words: "I always have to open the blocked tasks, read them,
+                see when they are due". */}
+            {d.status !== "done" && d.due_date && (
+              <span
+                className="shrink-0 text-[11px] text-warning"
+                title={`This blocker is due ${d.due_date}`}
+              >
+                due {dueLabel(d.due_date, todayStr())}
+              </span>
+            )}
             <button
               onClick={() => remove(d.id)}
               aria-label="Remove blocker"
@@ -172,7 +271,13 @@ export function BlockersEditor({ task }: { task: Task }) {
 
 // Blocked until a DATE ("wait until next Saturday"). Independent of blockers;
 // either one keeps the task blocked.
-export function BlockedUntilEditor({ task }: { task: Task }) {
+export function BlockedUntilEditor({
+  task,
+  forceOpen = false,
+}: {
+  task: Task;
+  forceOpen?: boolean;
+}) {
   const invalidate = useTaskInvalidate();
   const [blockedUntil, setBlockedUntil] = useState(task.blocked_until ?? "");
   useEffect(() => setBlockedUntil(task.blocked_until ?? ""), [task]);
@@ -184,7 +289,7 @@ export function BlockedUntilEditor({ task }: { task: Task }) {
   }
 
   return (
-    <Collapsible label="Blocked until" filled={!!blockedUntil}>
+    <Collapsible filled={!!blockedUntil} forceOpen={forceOpen}>
       <span className="flex items-center gap-1.5 text-xs text-muted">
         <BlockedIcon className="h-3.5 w-3.5" /> Blocked until
         {blockedUntil && <span className="text-warning">{blockedUntil}</span>}
@@ -224,7 +329,13 @@ export function BlockedUntilEditor({ task }: { task: Task }) {
 // Waiting on an EXTERNAL event ("Revolut card arrives"): not a block, the task
 // stays visible with a chip; once the expected date passes the chip flips to
 // "chase". Blockers wait on tasks, this waits on the world.
-export function WaitingOnEditor({ task }: { task: Task }) {
+export function WaitingOnEditor({
+  task,
+  forceOpen = false,
+}: {
+  task: Task;
+  forceOpen?: boolean;
+}) {
   const invalidate = useTaskInvalidate();
   const [waitingOn, setWaitingOn] = useState(task.waiting_on ?? "");
   const [waitingExpected, setWaitingExpected] = useState(task.waiting_expected ?? "");
@@ -241,7 +352,7 @@ export function WaitingOnEditor({ task }: { task: Task }) {
   }
 
   return (
-    <Collapsible label="Waiting on" filled={!!task.waiting_on}>
+    <Collapsible filled={!!task.waiting_on} forceOpen={forceOpen}>
       <span className="flex items-center gap-1.5 text-xs text-muted">
         <BlockedIcon className="h-3.5 w-3.5" /> Waiting on
         {task.waiting_expected && task.waiting_on && (

@@ -32,6 +32,7 @@ import {
   ChevronDownIcon,
 } from "../lib/icons";
 import { useTaskHover } from "./TaskHoverCard";
+import { completedMessage } from "../lib/completion";
 import { useFocusTask, FOCUS_RING } from "../lib/use-focus-task";
 import type { RowSelection } from "./TaskListControls";
 
@@ -129,14 +130,10 @@ export function TaskRow({
   }
 
   async function runComplete() {
-    await complete.mutateAsync({ id: task.id, done: !done });
+    const res = await complete.mutateAsync({ id: task.id, done: !done });
     if (done) return; // was un-completing
-    // A recurring task stays crossed out for the rest of the day and the
-    // morning sweep wakes it as the next occurrence: say so, so its calm is
-    // never mistaken for the repeat being broken.
-    toast(
-      task.recurrence ? "Done for today · repeats tomorrow morning" : "Completed",
-      () => complete.mutate({ id: task.id, done: false })
+    toast(completedMessage(task, res), () =>
+      complete.mutate({ id: task.id, done: false })
     );
   }
 
