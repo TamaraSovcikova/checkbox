@@ -10,6 +10,11 @@
 // commitment", and her real optional tasks read exactly that way ("PARKED:
 // reopens only if the author path is ruled an income path"). So this is one
 // list split in two, not a second system.
+//
+// The Whenever page itself now splits by TAB rather than by these headings
+// ("with many tasks it's quite hard to reach the Someday, maybe tasks"), but the
+// grouping stays: it is a general axis any list can use, and it is what the tab
+// split is derived from.
 
 import { describe, it, expect } from "vitest";
 import { groupTasks } from "../pages";

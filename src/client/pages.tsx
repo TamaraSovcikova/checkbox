@@ -273,12 +273,7 @@ function useTaskCollection(
   empty: string,
   // Area/project pages set this false: every row there shares one area colour, so
   // tinting them all says nothing and just makes the list heavy.
-  tintArea = true,
-  // What this view groups by before she has said otherwise. Only Whenever sets
-  // it: that list is two different things (taken on / might never) and reads as
-  // one undifferentiated pile without the split. A stored preference still wins,
-  // so choosing None on that page sticks.
-  defaultGroup: GroupKey = "none"
+  tintArea = true
 ) {
   const { data: areas = [] } = useAreas();
   const { data: projects = [] } = useProjects();
@@ -292,7 +287,7 @@ function useTaskCollection(
   // change stays reversible.
   const view = (vd.mode === "grid" ? "list" : vd.mode ?? "list") as ViewMode;
   const sort = (vd.sort as SortKey) ?? "manual";
-  const group = (vd.group as GroupKey) ?? defaultGroup;
+  const group = (vd.group as GroupKey) ?? "none";
   const filter = (vd.filter as FilterKey) ?? "all";
 
   const setView = (m: ViewMode) => setViewDefault(prefsKey, { mode: m });
@@ -398,6 +393,19 @@ const AREA_TABS: Tab<ViewMode>[] = [
 ];
 // Today also offers a To do / Doing / Done board you can drag between.
 const TODAY_TABS: Tab<ViewMode>[] = [LIST_TAB, BOARD_TAB];
+
+// Whenever holds two claims, and they are two separate browsing sessions rather
+// than one list: "what could I pick up in this free hour" and "what might I one
+// day do". It shipped as two stacked sections, which reads well and scrolls
+// badly. Her report: "with many tasks it's quite hard to reach the Someday,
+// maybe tasks."
+//
+// TABS rather than collapsing the lower section, because collapsing does not
+// actually fix it: the collapsed header would still sit underneath everything
+// you were scrolling past. Tabs put both at the top, always one click away,
+// whatever the counts are. It is also the move the area page already makes for
+// exactly this shape of problem (dormant routines in their own tab).
+type WheneverTab = "taking" | "someday";
 // A project's three shapes. Board first: it is the one worth defaulting to.
 // Flow is the read-only dependency map (metro rendering, see ProjectFlow).
 const PROJECT_TABS: Tab<ViewMode>[] = [
@@ -508,23 +516,50 @@ function SideRail({
 
 export function ViewPage({ name }: { name: string }) {
   const { data: tasks = [] } = useView(name);
+  // Which half of Whenever is showing. Local, not a stored preference: the page
+  // should open on what she is actually working through, every time, rather
+  // than on wherever she happened to leave it.
+  const [wheneverTab, setWheneverTab] = useState<WheneverTab>("taking");
   // Today's board keeps a Done column, which the Today view (open tasks only)
   // can't fill, so pull today's completed tasks alongside. Cheap + cached.
   const { data: completedToday = [] } = useView("completed-today");
   const meta = VIEW_META[name];
   const { hide } = useViewPrefs();
+
+  // Whenever is split by whether she has taken the task on (`optional` = might
+  // never). The split is by TAB rather than by section heading now; see
+  // WheneverTab. Everything else on the page is unchanged, so the tabs get the
+  // full sort/group/filter/multi-select machinery rather than a reduced list.
+  const isWhenever = name === "whenever";
+  const takingOn = isWhenever ? tasks.filter((t) => !t.optional) : [];
+  const someday = isWhenever ? tasks.filter((t) => !!t.optional) : [];
+  const listed = isWhenever
+    ? wheneverTab === "someday"
+      ? someday
+      : takingOn
+    : tasks;
+  const wheneverTabs: Tab<WheneverTab>[] = [
+    {
+      id: "taking",
+      // Counted on the tab: the reason to look at the other one is usually
+      // "how much is over there", and that should not need a click.
+      label: `Taking on${takingOn.length ? ` · ${takingOn.length}` : ""}`,
+      icon: <WheneverIcon className={ICON_SIZE} />,
+    },
+    {
+      id: "someday",
+      label: `Someday${someday.length ? ` · ${someday.length}` : ""}`,
+      icon: <SnoozeIcon className={ICON_SIZE} />,
+    },
+  ];
+  const emptyFor = isWhenever
+    ? wheneverTab === "someday"
+      ? "Nothing on the maybe pile. Mark a Whenever task Optional to park it here."
+      : "Nothing you are actively picking up. Whenever tasks with no deadline land here."
+    : meta.empty;
+
   const { view, setView, controls, body, sortMenu, groupMenu, filterMenu } =
-    useTaskCollection(
-      `/${name}`,
-      tasks,
-      meta.empty,
-      true,
-      // Whenever holds two different things: what she is actively picking up as
-      // she goes, and what she might never get to at all ("learn a penspinning
-      // trick... if I ever get to it"). Same shape of task, different claim, and
-      // together they read as one undifferentiated pile.
-      name === "whenever" ? "commitment" : "none"
-    );
+    useTaskCollection(`/${name}`, listed, emptyFor);
   const isToday = name === "today";
   const showBoard = isToday && view === "board";
   const pinScope = scopeForView(name);
@@ -539,9 +574,19 @@ export function ViewPage({ name }: { name: string }) {
         icon={<meta.icon className={ICON_SIZE} />}
         // Only Today has a second shape. Everywhere else a lone "List" tab is
         // just a label pretending to be a control, so show no tab bar at all.
-        tabs={isToday ? TODAY_TABS : undefined}
-        activeTab={view}
-        onTab={setView}
+        tabs={
+          isToday
+            ? TODAY_TABS
+            : isWhenever
+            ? (wheneverTabs as unknown as Tab<ViewMode>[])
+            : undefined
+        }
+        activeTab={isWhenever ? (wheneverTab as unknown as ViewMode) : view}
+        onTab={
+          isWhenever
+            ? (t: string) => setWheneverTab(t as WheneverTab)
+            : (setView as (t: string) => void)
+        }
         sort={sortMenu}
         group={groupMenu}
         filter={filterMenu}
