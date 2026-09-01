@@ -27,7 +27,7 @@ Personal task manager. This is the operational file that lives with the code. Na
 - MCP: JSON-RPC 2.0 over HTTP at `/mcp`. Bearer token auth. 35 tools (read + full
   write: task/area/project/subtask CRUD, dependencies, recurrence, batch create).
 
-## Current state (2026-08-25)
+## Current state (2026-09-01)
 
 **Phases 0-4 + Tier 1 + Tier 2 + the Tier 4 moat (ambient planner #30, note
 extraction #31) are all live**, plus full activation (push, email, R2) and an
@@ -36,7 +36,7 @@ installable/auto-updating PWA. Deployed at https://checkbox.tamara-sovcik.worker
 ```
 Health: GET /api/health → { ok: true, phase: 8 }
 Version: GET /api/version → the deployed client bundle (deploy-freshness gate)
-MCP:    /mcp → 43 tools, bearer auth (per-user tokens in mcp_tokens)
+MCP:    /mcp → 43 tools, bearer auth (field parity with the app is tested) (per-user tokens in mcp_tokens)
 D1:     migrations 0001-0036 applied local + remote
 ```
 
@@ -50,6 +50,14 @@ for priority 4 or `optional`: it marks a task that is undated ON PURPOSE, as
 opposed to one not scheduled yet, which is the one thing nothing else could say.
 Its own view `/whenever`, excluded from the Backlog, and the writers clear
 due/planned dates when the flag goes on, since the two claims contradict.
+`/whenever` splits into TWO TABS by `optional`: "Taking on" (actively picking it
+up) and "Someday" (might never). whenever + optional together = bucket list; the
+`commitment` grouping is the same split, available on any list.
+
+A task RENDERS as its due steps whenever it has one due or overdue
+(`isSubtaskLed`), not only when the step is its sole claim on today. Two separate
+questions: what CARRIES a task into Today stays strictly same-day, what a row
+LOOKS like does not. The parent keeps its own complete circle on its own line.
 
 Completing a task PLANS whatever it just unblocked, for today, and names them in
 the toast (`worker/lib/unblock`). Derived from the completion rather than from
@@ -60,6 +68,18 @@ before changing this.
 0/1 flag columns accept `1`, `true`, `"1"` or `"true"` on the wire and store 0/1
 (`flagOn` / `normalizeFlags` in shared/dates). Never compare `=== 1` against a
 value that came from a client: that exact mistake is in docs/MISTAKES.md twice.
+
+The MCP's writable field set is pinned against the REST one by
+test/mcp-coverage.test.ts, with the deliberate exceptions listed and reasoned.
+Add a task field to `WRITABLE` and that test tells you to add it to
+`TASK_WRITABLE` and to the tool schema too: a field the handler accepts but the
+schema never mentions is a field no agent will ever pass.
+
+Saved filters can ask about planned date, whenever, optional, recurring and
+blocked as well as the older fields (routes/filters.ts, one shared clause builder
+for both date columns). Bulk actions go through `bulkUpdate` in
+TaskListControls, which snapshots per task for undo; the bar's Today/Tomorrow
+set the PLANNED date, not a deadline.
 
 Every date column is guarded THREE ways after the "null" incident (migration 0035
 + `shared/dates.ts` + `lib/safe-date.ts`): the MCP and REST writers normalise or
