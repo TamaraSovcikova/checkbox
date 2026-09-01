@@ -228,24 +228,41 @@ describe("isSubtaskLed / subtasksDueToday", () => {
     );
   });
 
-  it("is NOT led when the task is in Today on its own account too", () => {
-    // Planned for today AND carrying a step due today: the task is the work,
-    // and the step shows in the checklist under it as before.
+  // REVERSED, on her instruction: "if we have a main task that is due/overdue in
+  // today and also it has a subtask that is due or overdue it only shows the
+  // main task, whereas the subtask should be the preferred one, as realistically
+  // it's the subtask that you are working on to do the main task."
+  //
+  // The rule used to require the step be the task's ONLY claim on today, so
+  // exactly that case fell through and the step was demoted to a chip.
+  it("IS led by its step even when the task is in Today on its own account", () => {
     expect(
       isSubtaskLed(task({ planned_date: TODAY, subtasks: [sub({ due_date: TODAY })] }), TODAY)
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isSubtaskLed(task({ due_date: TODAY, subtasks: [sub({ due_date: TODAY })] }), TODAY)
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("is NOT led by an overdue or future step", () => {
+  it("IS led by an OVERDUE step: a step you owe is the work, whenever it was owed", () => {
     expect(
       isSubtaskLed(task({ ...farOff, subtasks: [sub({ due_date: "2026-07-01" })] }), TODAY)
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("is NOT led by a FUTURE step, which is not owed yet", () => {
     expect(
       isSubtaskLed(task({ ...farOff, subtasks: [sub({ due_date: "2026-07-20" })] }), TODAY)
     ).toBe(false);
+  });
+
+  it("still does not let an old step CARRY a task into Today", () => {
+    // The two questions stay separate: "should this be on screen" is
+    // conservative (same-day only, or a task with a step due last Friday
+    // resurrects every morning forever), "what am I looking at" is not.
+    const withOldStep = task({ ...farOff, subtasks: [sub({ due_date: "2026-07-01" })] });
+    expect(inTodayView(withOldStep, TODAY)).toBe(false);
+    expect(isSubtaskLed(withOldStep, TODAY)).toBe(true);
   });
 
   it("a done task is never step-led", () => {

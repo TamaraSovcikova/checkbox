@@ -13,7 +13,7 @@ import {
   hasSubtaskDueToday,
   hasCheckpointDue,
   isSubtaskLed,
-  subtasksDueToday,
+  leadingSubtasks,
 } from "../lib/today";
 import { advanceCheckpointBody } from "../../shared/checkpoint";
 import {
@@ -68,7 +68,7 @@ export function TaskRow({
   // The steps that put the task here. They are rendered as the row's main lines,
   // so they come OUT of the collapsed checklist below (which would otherwise
   // print each of them twice).
-  const leadSteps = subtaskLed ? subtasksDueToday(task, todayStr()) : [];
+  const leadSteps = subtaskLed ? leadingSubtasks(task, todayStr()) : [];
   // Open the checklist on sight when a step is already due and the row is NOT
   // step-led (a task in Today on its own account that also has a step due):
   // making you click to find out which one would be a poor joke. Initial state
@@ -278,14 +278,41 @@ export function TaskRow({
              step title open the task sheet (which is where a step is edited);
              only the step's own circle ticks it off. */
           <div className="min-w-0 flex-1">
-            <button
-              onClick={(e) => (selection ? selection.onRowClick(e) : onOpen(task))}
-              className="flex w-full items-center gap-1 text-left text-[11px] leading-tight text-subtle hover:text-muted"
-              title={`Part of: ${task.title}`}
-            >
-              <SubtaskIcon className="h-3 w-3 shrink-0" />
-              <span className="truncate">{task.title}</span>
-            </button>
+            <div className="flex items-center gap-1">
+              {/* The PARENT's circle, on the parent's own line.
+                  #58 removed it from step-led rows for a good reason: a circle
+                  that finishes the whole task, sitting beside a step's title, is
+                  a trap. That reason is about POSITION, not about the button, and
+                  it does not apply here: this circle sits against the parent's
+                  own title, where it can only mean one thing. Without it a task
+                  that is itself due today could not be ticked off from the row at
+                  all, which is the case this whole change is about. */}
+              {!done && (
+                <button
+                  aria-label={`Complete ${task.title}`}
+                  title="Finish the whole task"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onComplete();
+                  }}
+                  className={cn(
+                    "grid h-3 w-3 shrink-0 place-items-center rounded-full border transition-colors hover:border-primary",
+                    "relative z-10 before:absolute before:content-[''] max-md:before:-inset-3 md:before:-inset-1.5",
+                    !!task.optional && "border-dashed"
+                  )}
+                  style={{ borderColor: PRIORITY_VAR[task.priority] }}
+                />
+              )}
+              <button
+                onClick={(e) => (selection ? selection.onRowClick(e) : onOpen(task))}
+                className="flex min-w-0 flex-1 items-center gap-1 text-left text-[11px] leading-tight text-subtle hover:text-muted"
+                title={`Part of: ${task.title}`}
+              >
+                <SubtaskIcon className="h-3 w-3 shrink-0" />
+                <span className="truncate">{task.title}</span>
+              </button>
+            </div>
             <ul className="mt-0.5 space-y-1">
               {leadSteps.map((s) => (
                 <li key={s.id} className="flex items-start gap-2">
@@ -311,6 +338,17 @@ export function TaskRow({
                   >
                     {s.title}
                   </button>
+                  {/* Steps can now be OVERDUE here, not just due today, so the
+                      line has to say which. A step due today needs no date: it
+                      is today, that is why it is printed. */}
+                  {s.due_date && s.due_date < todayIsToday && (
+                    <span
+                      className="shrink-0 text-[11px] text-danger"
+                      title={`This step was due ${s.due_date}`}
+                    >
+                      {dueLabel(s.due_date, todayIsToday)}
+                    </span>
+                  )}
                   {shouldPill(s.priority) && <PriorityPill priority={s.priority} />}
                 </li>
               ))}

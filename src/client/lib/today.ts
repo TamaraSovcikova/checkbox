@@ -45,12 +45,33 @@ export const hasSubtaskDueToday = (task: Task, today: string): boolean =>
 export const subtasksDueToday = (task: Task, today: string): Subtask[] =>
   (task.subtasks ?? []).filter((s) => !s.done && s.due_date === today);
 
-// In the Today view ONLY because a step is due: the step is the work and the
-// task is its context. This is the one condition that changes how a row is
-// drawn, so it lives here beside the rules it is made of rather than in the
-// component.
+// The steps a step-led row prints as its own lines: open, and due today OR
+// already overdue.
+//
+// Deliberately WIDER than the rule that CARRIES a task into Today (which stays
+// strictly same-day, see hasSubtaskDueToday and the resurrection it fixed).
+// Those are two different questions. "Should this task be on the screen at all"
+// has to be conservative, or an old step drags a task back every morning
+// forever. "Now that it IS on the screen, what am I actually looking at" does
+// not: a step you owe is the work whether it was owed today or last Tuesday.
+export const leadingSubtasks = (task: Task, today: string): Subtask[] =>
+  subtasksDueBy(task, today);
+
+// Render this task AS its due steps, with the task as their context.
+//
+// Her words: "if we have a main task that is due/overdue in today and also it
+// has a subtask that is due or overdue it only shows the main task, whereas the
+// subtask should be the preferred one, as realistically it's the subtask that
+// you are working on to do the main task."
+//
+// It used to require that the step was the task's ONLY claim on today
+// (`&& !inToday`), so exactly the case she describes fell through: a task due
+// today with a step due today rendered as the plain parent, and the step it
+// actually needed was reduced to an "N subtasks today" chip. The parent's own
+// deadline is not lost by leading with the step; it still prints in the meta
+// line below, and the parent keeps a complete circle of its own on its own line.
 export const isSubtaskLed = (task: Task, today: string): boolean =>
-  task.status !== "done" && hasSubtaskDueToday(task, today) && !inToday(task, today);
+  task.status !== "done" && leadingSubtasks(task, today).length > 0;
 
 // A checkpoint pulse is due: the task is in Today to be marked on track. Like a
 // subtask due, this is not a reason leaveTodayBody can clear outright (the

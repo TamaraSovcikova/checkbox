@@ -162,11 +162,15 @@ describe("TaskRow", () => {
       expect(screen.getByTitle("Part of: Buy milk")).toBeInTheDocument();
     });
 
-    it("the tick completes the STEP, not the whole task", () => {
+    it("gives each line its own tick, for its own subject", () => {
       providers(<TaskRow task={stepLed} onOpen={() => {}} />);
+      // The step's circle finishes the step...
       expect(screen.getByLabelText("Complete post the form")).toBeInTheDocument();
-      // No circle that would complete the parent: on this row that is a trap.
-      expect(screen.queryByLabelText("Complete")).not.toBeInTheDocument();
+      // ...and the parent's finishes the parent, from the parent's own line.
+      // What #58 banned was an unlabelled circle sitting beside a STEP's title,
+      // where it looks like it belongs to the step. Two labelled circles on two
+      // lines is the opposite of that ambiguity.
+      expect(screen.getByLabelText("Complete Buy milk")).toBeInTheDocument();
     });
 
     it("does not print the leading step twice", () => {
@@ -230,13 +234,45 @@ describe("TaskRow", () => {
       expect(screen.queryByText(/unfinished subtask/)).not.toBeInTheDocument();
     });
 
-    it("a task in Today on its own account keeps its own title and circle", () => {
+    // REVERSED on her instruction. A task due today whose step is ALSO due today
+    // used to render as the plain parent, demoting the step to a chip: "the
+    // subtask should be the preferred one, as realistically it's the subtask
+    // that you are working on to do the main task."
+    it("leads with the STEP even when the task is due today itself", () => {
       providers(
         <TaskRow task={{ ...sample, due_date: todayStr(), subtasks: [step] }} onOpen={() => {}} />
       );
-      expect(screen.getByText("Buy milk")).toBeInTheDocument();
-      expect(screen.getByLabelText("Complete")).toBeInTheDocument();
-      expect(screen.queryByTitle("Part of: Buy milk")).not.toBeInTheDocument();
+      expect(screen.getByTitle("Part of: Buy milk")).toBeInTheDocument();
+      expect(screen.getByText("post the form")).toBeInTheDocument();
+    });
+
+    it("...and the parent is still finishable, from its own line", () => {
+      // #58 took the parent's circle off step-led rows because a circle that
+      // finishes the whole task beside a STEP's title is a trap. That is about
+      // position: this one sits against the parent's own title, where it can
+      // only mean one thing, and without it a task that is itself due today
+      // could not be ticked off from the row at all.
+      providers(
+        <TaskRow task={{ ...sample, due_date: todayStr(), subtasks: [step] }} onOpen={() => {}} />
+      );
+      expect(screen.getByLabelText("Complete Buy milk")).toBeInTheDocument();
+      expect(screen.getByLabelText("Complete post the form")).toBeInTheDocument();
+    });
+
+    it("leads with an OVERDUE step, and says it is overdue", () => {
+      const late = { ...step, due_date: "2020-01-01" };
+      providers(
+        <TaskRow task={{ ...sample, due_date: todayStr(), subtasks: [late] }} onOpen={() => {}} />
+      );
+      expect(screen.getByTitle("This step was due 2020-01-01")).toBeInTheDocument();
+    });
+
+    it("keeps the parent's own deadline visible below the step", () => {
+      // Leading with the step must not bury what the TASK owes.
+      providers(
+        <TaskRow task={{ ...sample, due_date: todayStr(), subtasks: [step] }} onOpen={() => {}} />
+      );
+      expect(screen.getByText("Today")).toBeInTheDocument();
     });
   });
 });

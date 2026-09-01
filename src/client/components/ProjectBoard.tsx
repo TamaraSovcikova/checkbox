@@ -17,7 +17,7 @@ import {
 import { cn, todayStr } from "@/lib/utils";
 import { useTaskHover } from "./TaskHoverCard";
 import { useFocusTask, FOCUS_RING } from "../lib/use-focus-task";
-import { isSubtaskLed, subtasksDueToday } from "../lib/today";
+import { isSubtaskLed, leadingSubtasks } from "../lib/today";
 
 // Draggable board card. Drops resolve in the app-level DndContext (AppShell),
 // so a card can go to another column OR onto a sidebar area/project.
@@ -38,7 +38,7 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
   // above it as context. Same rule and same shape as the list row, so the Today
   // board and the Today list say the same thing about the same task.
   const stepLed = isSubtaskLed(task, todayStr());
-  const leadSteps = stepLed ? subtasksDueToday(task, todayStr()) : [];
+  const leadSteps = stepLed ? leadingSubtasks(task, todayStr()) : [];
   const restSubs = subs.filter((s) => !leadSteps.some((l) => l.id === s.id));
   // Area resolved through the project, so a card is tinted whenever the same task
   // in a list would be. Far-future dimming shared with the row, so a board card

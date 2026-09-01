@@ -50,7 +50,7 @@ import {
   ChevronRightIcon,
   SubtaskIcon,
 } from "./lib/icons";
-import { isSubtaskLed, subtasksDueToday } from "./lib/today";
+import { isSubtaskLed, leadingSubtasks } from "./lib/today";
 import { dormantTone } from "./components/TaskMeta";
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ function TaskLine({ t, today }: { t: Task; today: string }) {
   // is live today is a step, the step is what the line says, with the task named
   // quietly above it. A widget is the shortest surface in the app, so this is
   // where showing the wrong one of the two costs the most.
-  const steps = isSubtaskLed(t, today) ? subtasksDueToday(t, today) : [];
+  const steps = isSubtaskLed(t, today) ? leadingSubtasks(t, today) : [];
   return (
     <button
       type="button"
@@ -230,7 +230,7 @@ function MiniBoard({ tasks, done }: { tasks: Task[]; done?: Task[] }) {
 
 function MiniCard({ t, today }: { t: Task; today: string }) {
   const { open } = useTaskUI();
-  const steps = isSubtaskLed(t, today) ? subtasksDueToday(t, today) : [];
+  const steps = isSubtaskLed(t, today) ? leadingSubtasks(t, today) : [];
   return (
     <button
       type="button"
