@@ -115,7 +115,7 @@ const VIEW_META: Record<
   whenever: {
     title: "Whenever",
     empty:
-      "Nothing here yet. Mark a task Whenever when you mean to do it but it will never have a deadline.",
+      "Nothing here yet. Mark a task Whenever when you mean to do it but it will never have a deadline. Mark it Optional as well for the ones you might never get to.",
     icon: WheneverIcon,
   },
   logbook: { title: "Logbook", empty: "No completed tasks yet.", icon: LogbookIcon },
@@ -129,7 +129,12 @@ const VIEW_META: Record<
 // ── Client-side sort / group over the fetched task list ───────────────────────
 
 type SortKey = "manual" | "priority" | "due" | "title" | "created";
-type GroupKey = "none" | "due" | "priority" | "area" | "project";
+// "commitment" splits a list by whether each task is something you have taken
+// on or something you might never get to (the `optional` flag). It is the axis
+// the Whenever view needs and it is not specific to that view: any list can
+// usefully separate what you are actually doing from what you are merely
+// keeping. See the Whenever default below.
+type GroupKey = "none" | "due" | "priority" | "area" | "project" | "commitment";
 
 const SORT_LABEL: Record<SortKey, string> = {
   manual: "Manual",
@@ -145,7 +150,12 @@ const GROUP_LABEL: Record<GroupKey, string> = {
   priority: "Priority",
   area: "Area",
   project: "Project",
+  commitment: "Taking on / someday",
 };
+
+// Ordered, not alphabetical: what you are doing comes before what you might
+// never do, which is the whole point of separating them.
+const COMMITMENT_ORDER = ["Taking these on", "Someday, maybe"];
 
 // Bucket a task by due date into a fixed, chronological set of groups.
 const DUE_ORDER = ["Overdue", "Today", "This week", "Later", "No date"];
@@ -177,12 +187,26 @@ function sortTasks(tasks: Task[], key: SortKey): Task[] {
   }
 }
 
-function groupTasks(
+export function groupTasks(
   tasks: Task[],
   key: GroupKey,
   names: { area: (id: string | null) => string; project: (id: string | null) => string }
 ): { label: string; tasks: Task[] }[] {
   if (key === "none") return [{ label: "", tasks }];
+
+  // Two fixed sections in a fixed order, for the same reason Due has fixed
+  // buckets: alphabetical would put "Someday" first, which is backwards.
+  if (key === "commitment") {
+    const groups = new Map<string, Task[]>();
+    for (const t of tasks) {
+      const label = t.optional ? COMMITMENT_ORDER[1] : COMMITMENT_ORDER[0];
+      (groups.get(label) ?? groups.set(label, []).get(label)!).push(t);
+    }
+    return COMMITMENT_ORDER.filter((l) => groups.has(l)).map((label) => ({
+      label,
+      tasks: groups.get(label)!,
+    }));
+  }
 
   // Due grouping uses fixed chronological buckets rather than alphabetical order.
   if (key === "due") {
@@ -249,7 +273,12 @@ function useTaskCollection(
   empty: string,
   // Area/project pages set this false: every row there shares one area colour, so
   // tinting them all says nothing and just makes the list heavy.
-  tintArea = true
+  tintArea = true,
+  // What this view groups by before she has said otherwise. Only Whenever sets
+  // it: that list is two different things (taken on / might never) and reads as
+  // one undifferentiated pile without the split. A stored preference still wins,
+  // so choosing None on that page sticks.
+  defaultGroup: GroupKey = "none"
 ) {
   const { data: areas = [] } = useAreas();
   const { data: projects = [] } = useProjects();
@@ -263,7 +292,7 @@ function useTaskCollection(
   // change stays reversible.
   const view = (vd.mode === "grid" ? "list" : vd.mode ?? "list") as ViewMode;
   const sort = (vd.sort as SortKey) ?? "manual";
-  const group = (vd.group as GroupKey) ?? "none";
+  const group = (vd.group as GroupKey) ?? defaultGroup;
   const filter = (vd.filter as FilterKey) ?? "all";
 
   const setView = (m: ViewMode) => setViewDefault(prefsKey, { mode: m });
@@ -485,7 +514,17 @@ export function ViewPage({ name }: { name: string }) {
   const meta = VIEW_META[name];
   const { hide } = useViewPrefs();
   const { view, setView, controls, body, sortMenu, groupMenu, filterMenu } =
-    useTaskCollection(`/${name}`, tasks, meta.empty);
+    useTaskCollection(
+      `/${name}`,
+      tasks,
+      meta.empty,
+      true,
+      // Whenever holds two different things: what she is actively picking up as
+      // she goes, and what she might never get to at all ("learn a penspinning
+      // trick... if I ever get to it"). Same shape of task, different claim, and
+      // together they read as one undifferentiated pile.
+      name === "whenever" ? "commitment" : "none"
+    );
   const isToday = name === "today";
   const showBoard = isToday && view === "board";
   const pinScope = scopeForView(name);
