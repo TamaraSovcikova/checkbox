@@ -1,12 +1,27 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Task } from "../../shared/types";
 import { api } from "../lib/api";
-import { useTaskInvalidate } from "../lib/queries";
+import { useTaskInvalidate, useAreas, useProjects } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import { useCompleteGuard } from "../lib/use-complete-guard";
 import { completedMessage } from "../lib/completion";
-import { CheckIcon, TrashIcon, RescheduleIcon, BacklogIcon, CloseIcon, SnoozeIcon } from "../lib/icons";
+import {
+  CheckIcon,
+  TrashIcon,
+  RescheduleIcon,
+  CloseIcon,
+  SnoozeIcon,
+  MoreIcon,
+} from "../lib/icons";
 import { Button } from "./ui";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "./ui/dropdown-menu";
 
 // Today (Europe/Brussels) as YYYY-MM-DD, matching the server's day boundary.
 function todayStr() {
@@ -43,7 +58,17 @@ export interface TaskControls {
   // bulk operations
   completeSelected: () => void;
   deleteSelected: () => void;
+  // Sets a DEADLINE on the whole selection.
   scheduleSelected: (date: string | null) => void;
+  // Sets the PLANNED day, which is what the bar's Today/Tomorrow buttons do.
+  planSelected: (date: string) => void;
+  // "Set these fields on everything selected", with a per-task undo snapshot.
+  // Everything below is expressible through it; the named ones survive because
+  // they do more than write columns (backlog also clears the project).
+  bulkUpdate: (
+    patch: Record<string, unknown>,
+    said: (n: number) => string
+  ) => void;
   moveSelectedToBacklog: () => void;
   snoozeSelected: (until: string) => void;
 }
@@ -131,6 +156,8 @@ export function useTaskSelection(
     });
   }, [selectedTasks, invalidate, clear, toast]);
 
+  // Deadlines in bulk. Kept, but no longer what the bar's Today/Tomorrow
+  // buttons do: see planSelected.
   const scheduleSelected = useCallback(
     (date: string | null) => {
       const items = selectedTasks();
@@ -159,6 +186,46 @@ export function useTaskSelection(
       });
     },
     [selectedTasks, invalidate, clear, toast]
+  );
+
+  // Every "set a field on all of them" action, in one place.
+  //
+  // There were five near-identical callbacks differing only in which columns
+  // they wrote and how they phrased the toast, which is why the list of bulk
+  // actions stopped growing: each new one cost a copy of the same twelve lines.
+  // This snapshots exactly the keys it is about to change, per task, so the undo
+  // restores what each one had rather than a single shared value.
+  const bulkUpdate = useCallback(
+    (patch: Record<string, unknown>, said: (n: number) => string) => {
+      const items = selectedTasks();
+      if (!items.length) return;
+      const keys = Object.keys(patch);
+      const prev = items.map((t) => {
+        const before: Record<string, unknown> = {};
+        // ?? null, not the raw value: JSON.stringify drops undefined, and a
+        // field missing from the undo body is a field the undo silently skips.
+        for (const k of keys) before[k] = (t as unknown as Record<string, unknown>)[k] ?? null;
+        return { id: t.id, before };
+      });
+      Promise.all(items.map((t) => api.updateTask(t.id, patch))).then(invalidate);
+      clear();
+      toast(said(items.length), () => {
+        Promise.all(prev.map((p) => api.updateTask(p.id, p.before))).then(invalidate);
+      });
+    },
+    [selectedTasks, invalidate, clear, toast]
+  );
+
+  // "Today"/"Tomorrow" in the bar PLAN the selection; they used to set a due
+  // date. That was right before planned_date was a field you could set, and
+  // wrong after: every other Today control in the app writes planned_date, and a
+  // bulk button that quietly hands twenty tasks a DEADLINE instead is the kind
+  // of disagreement you only notice a week later. Deadlines in bulk are still
+  // available through scheduleSelected, they are just not what this button is.
+  const planSelected = useCallback(
+    (date: string) =>
+      bulkUpdate({ planned_date: date }, (n) => `${n} planned`),
+    [bulkUpdate]
   );
 
   const moveSelectedToBacklog = useCallback(() => {
@@ -296,6 +363,8 @@ export function useTaskSelection(
     rowFor,
     clear,
     completeSelected,
+    bulkUpdate,
+    planSelected,
     deleteSelected,
     scheduleSelected,
     moveSelectedToBacklog,
@@ -317,12 +386,16 @@ export function BulkActionBar({ controls }: { controls: TaskControls }) {
         Complete
       </BarBtn>
       <BarBtn
-        onClick={() => controls.scheduleSelected(today)}
+        onClick={() => controls.planSelected(today)}
         icon={<RescheduleIcon className="h-4 w-4" />}
+        title="Plan these for today. Does not set a deadline."
       >
         Today
       </BarBtn>
-      <BarBtn onClick={() => controls.scheduleSelected(addDaysStr(today, 1))}>
+      <BarBtn
+        onClick={() => controls.planSelected(addDaysStr(today, 1))}
+        title="Plan these for tomorrow. Does not set a deadline."
+      >
         Tomorrow
       </BarBtn>
       <BarBtn
@@ -331,12 +404,10 @@ export function BulkActionBar({ controls }: { controls: TaskControls }) {
       >
         Snooze
       </BarBtn>
-      <BarBtn
-        onClick={controls.moveSelectedToBacklog}
-        icon={<BacklogIcon className="h-4 w-4" />}
-      >
-        Backlog
-      </BarBtn>
+      {/* Everything else. A bar wide enough for every bulk action would not fit
+          a phone, and the ones below are each worth having but none is worth a
+          permanent slot. */}
+      <BulkMore controls={controls} today={today} />
       <BarBtn
         onClick={controls.deleteSelected}
         icon={<TrashIcon className="h-4 w-4" />}
@@ -356,13 +427,154 @@ export function BulkActionBar({ controls }: { controls: TaskControls }) {
   );
 }
 
+// The rest of the bulk actions.
+//
+// Her report: "with the multiselect on the task lists I can do things like make
+// all optional and others, right now I can only do the basics." The basics were
+// complete / reschedule / snooze / backlog / delete, and every field the sheet
+// had gained since (priority, optional, whenever, and moving into an area or a
+// project) had no bulk form at all.
+//
+// A flat menu with labelled groups rather than nested submenus: the dropdown
+// primitive here has no Sub, and the Cadences page already sets this pattern for
+// "pick one of many areas".
+function BulkMore({
+  controls,
+  today,
+}: {
+  controls: TaskControls;
+  today: string;
+}) {
+  const { data: areas = [] } = useAreas();
+  const { data: projects = [] } = useProjects();
+  const n = controls.count;
+  const live = projects.filter((p) => p.status === "active");
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          title="More bulk actions"
+          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-sm text-foreground transition-colors hover:bg-surface"
+        >
+          <MoreIcon className="h-4 w-4" />
+          More
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-96 w-56 overflow-y-auto">
+        <DropdownMenuLabel>Priority</DropdownMenuLabel>
+        <div className="flex gap-1 px-2 pb-1.5">
+          {[1, 2, 3, 4].map((p) => (
+            <button
+              key={p}
+              onClick={() =>
+                controls.bulkUpdate({ priority: p }, (c) => `${c} set to P${p}`)
+              }
+              className="flex-1 rounded-md border border-border py-1 text-xs text-foreground transition-colors hover:border-primary hover:bg-surface-2"
+            >
+              P{p}
+            </button>
+          ))}
+        </div>
+
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Mark</DropdownMenuLabel>
+        <DropdownMenuItem
+          onSelect={() =>
+            controls.bulkUpdate({ optional: 1 }, (c) => `${c} marked optional`)
+          }
+        >
+          Optional
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() =>
+            controls.bulkUpdate({ optional: 0 }, (c) => `${c} made commitments`)
+          }
+        >
+          Not optional
+        </DropdownMenuItem>
+        {/* The server clears the dates when this flag goes on, and says so; see
+            shared/dates applyWheneverRule. */}
+        <DropdownMenuItem
+          onSelect={() =>
+            controls.bulkUpdate({ whenever: 1 }, (c) => `${c} moved to Whenever`)
+          }
+        >
+          Whenever (drops their dates)
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() =>
+            controls.bulkUpdate({ whenever: 0 }, (c) => `${c} taken out of Whenever`)
+          }
+        >
+          Not whenever
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Plan</DropdownMenuLabel>
+        <DropdownMenuItem
+          onSelect={() =>
+            controls.bulkUpdate({ planned_date: null }, (c) => `${c} unplanned`)
+          }
+        >
+          Clear the plan
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => controls.scheduleSelected(today)}>
+          Set deadline: today
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => controls.scheduleSelected(null)}>
+          Clear the deadline
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Move {n} to</DropdownMenuLabel>
+        <DropdownMenuItem onSelect={controls.moveSelectedToBacklog}>
+          Backlog (no section)
+        </DropdownMenuItem>
+        {areas.map((a) => (
+          <DropdownMenuItem
+            key={a.id}
+            onSelect={() =>
+              // An area clears any project, exactly as the sheet's picker does:
+              // a task cannot sit in a project belonging to a different area.
+              controls.bulkUpdate(
+                { area_id: a.id, project_id: null },
+                (c) => `${c} moved to ${a.name}`
+              )
+            }
+          >
+            {a.name}
+          </DropdownMenuItem>
+        ))}
+        {live.map((pr) => (
+          <DropdownMenuItem
+            key={pr.id}
+            onSelect={() =>
+              controls.bulkUpdate(
+                { project_id: pr.id, area_id: pr.area_id },
+                (c) => `${c} moved to ${pr.name}`
+              )
+            }
+          >
+            <span className="pl-3 text-muted">{pr.name}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function BarBtn({
   children,
+  title,
   icon,
   onClick,
   danger,
 }: {
   children: React.ReactNode;
+  // Says what the button will actually do when the label cannot. "Today" is the
+  // case: it plans, it does not set a deadline.
+  title?: string;
   icon?: React.ReactNode;
   onClick: () => void;
   danger?: boolean;
@@ -371,6 +583,7 @@ function BarBtn({
     <Button
       variant="ghost"
       onClick={onClick}
+      title={title}
       className={danger ? "text-danger hover:bg-danger/10" : undefined}
     >
       {icon}

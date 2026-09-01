@@ -152,6 +152,13 @@ const TASK_WRITABLE = [
   "status", "recurrence", "recurrence_mode", "planned_date",
   "gmail_thread_id", "gmail_message_id", "gmail_permalink",
   "optional", "whenever",
+  // Everything the task sheet can set and the connector could not. The gap was
+  // invisible from inside a chat: an agent asked to "mark this as waiting on
+  // Maxime" had no field for it and would silently do something else instead.
+  // Dates here are gated by checkDateFields above the switch, like every other
+  // date the connector takes.
+  "snoozed_until", "blocked_until", "waiting_on", "waiting_expected",
+  "recurrence_until", "recurrence_count",
 ] as const;
 
 // Insert one task from a create-shaped args object and attach any label_names.
@@ -307,6 +314,35 @@ const TOOLS = [
         },
         scheduled_start: { type: ["string", "null"] },
         scheduled_end: { type: ["string", "null"] },
+        snoozed_until: {
+          type: ["string", "null"],
+          description:
+            "YYYY-MM-DD, or null to un-snooze. Hides the task from every active view until that day; it asks for nothing meanwhile and comes back untouched.",
+        },
+        blocked_until: {
+          type: ["string", "null"],
+          description:
+            "YYYY-MM-DD, or null. Cannot be started before this day. Unlike snooze the task stays visible, marked blocked.",
+        },
+        waiting_on: {
+          type: ["string", "null"],
+          description:
+            "Free text: an EXTERNAL thing this task waits on ('Revolut card arrives'). Not a block on another task, which is set_task_dependency. The task stays visible with a chip, and the chip turns into a chase nudge once waiting_expected passes.",
+        },
+        waiting_expected: {
+          type: ["string", "null"],
+          description: "YYYY-MM-DD, or null: when the waiting_on thing is expected.",
+        },
+        recurrence_until: {
+          type: ["string", "null"],
+          description:
+            "YYYY-MM-DD, or null: the last day an occurrence may land on. Mutually exclusive with recurrence_count.",
+        },
+        recurrence_count: {
+          type: ["number", "null"],
+          description:
+            "Occurrences REMAINING, or null: the roll that reaches zero completes the series for real. Mutually exclusive with recurrence_until.",
+        },
         time_estimate_min: { type: "number" },
         area_id: { type: "string" },
         project_id: { type: "string" },
@@ -751,12 +787,23 @@ const TOOLS = [
   },
   {
     name: "create_subtask",
-    description: "Add a checklist subtask to a task.",
+    description:
+      "Add a checklist subtask (a step) to a task. A step can carry its OWN due date and priority: a step due today pulls its parent into the Today view and the parent then renders AS that step, so this is how you say 'the bit of this that is owed now'.",
     inputSchema: {
       type: "object",
       properties: {
         task_id: { type: "string" },
         title: { type: "string" },
+        due_date: {
+          type: ["string", "null"],
+          description:
+            "YYYY-MM-DD, or null. The STEP's own deadline, independent of the task's.",
+        },
+        priority: {
+          type: ["number", "null"],
+          enum: [1, 2, 3, 4, null],
+          description: "The step's own priority, or null to inherit the task's.",
+        },
       },
       required: ["task_id", "title"],
     },
@@ -770,6 +817,15 @@ const TOOLS = [
         id: { type: "string" },
         title: { type: "string" },
         done: { type: "boolean" },
+        due_date: {
+          type: ["string", "null"],
+          description: "YYYY-MM-DD, or null to clear. The step's own deadline.",
+        },
+        priority: {
+          type: ["number", "null"],
+          enum: [1, 2, 3, 4, null],
+          description: "The step's own priority, or null to inherit the task's.",
+        },
       },
       required: ["id"],
     },
@@ -1860,10 +1916,26 @@ async function handleTool(
         "SELECT COALESCE(MAX(position) + 1, 0) AS p FROM subtasks WHERE task_id = ?"
       ).bind(taskId).first<{ p: number }>();
       const id = uuid();
+      // due_date rides through the same gate as every other date the connector
+      // takes: DATE_FIELDS covers it above the switch, so "null" and "" have
+      // already become SQL NULL by the time we get here.
       await db.prepare(
-        "INSERT INTO subtasks (id, task_id, title, position) VALUES (?, ?, ?, ?)"
-      ).bind(id, taskId, title, pos?.p ?? 0).run();
-      return text(`Added subtask "${title}" (id: ${id}) to task ${taskId}.`);
+        "INSERT INTO subtasks (id, task_id, title, position, due_date, priority) VALUES (?, ?, ?, ?, ?, ?)"
+      )
+        .bind(
+          id,
+          taskId,
+          title,
+          pos?.p ?? 0,
+          (args.due_date as string | null) ?? null,
+          typeof args.priority === "number" ? args.priority : null
+        )
+        .run();
+      return text(
+        `Added subtask "${title}" (id: ${id}) to task ${taskId}` +
+          (args.due_date ? `, due ${args.due_date}` : "") +
+          "."
+      );
     }
 
     // ── update_subtask ────────────────────────────────────────────────────────
@@ -1872,6 +1944,17 @@ async function handleTool(
       const binds: unknown[] = [];
       if ("title" in args) { sets.push("title = ?"); binds.push(args.title); }
       if ("done" in args) { sets.push("done = ?"); binds.push(args.done ? 1 : 0); }
+      // `in args`, not a truthiness check: null is a real value here (clear the
+      // step's date / let it inherit the task's priority) and must reach the
+      // column rather than being read as "not given".
+      if ("due_date" in args) {
+        sets.push("due_date = ?");
+        binds.push((args.due_date as string | null) ?? null);
+      }
+      if ("priority" in args) {
+        sets.push("priority = ?");
+        binds.push(typeof args.priority === "number" ? args.priority : null);
+      }
       if (!sets.length) return text("No fields to update.");
       // Isolation: only touch a subtask whose parent task is the caller's.
       const res = await db.prepare(
