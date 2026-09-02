@@ -178,7 +178,18 @@ export interface TaskRef {
 // the UI labels it per field: a due date in the past is late, a PLANNED date in
 // the past is a plan you did not get to (Today carries it forward rather than
 // treating it as a failure).
-export type DateFilter = "any" | "overdue" | "today" | "week" | "none";
+export type DateFilter =
+  | "any"
+  | "overdue"
+  | "today"
+  | "week"
+  | "month"
+  // A range she types: `<col>_from` / `<col>_to`, inclusive, and either end may
+  // be left open ("anything due before October", "anything from Monday on").
+  // With neither end given it means "has a date at all", which is the honest
+  // reading and a useful filter in itself.
+  | "range"
+  | "none";
 
 // A yes/no property of a task, plus "do not care". Three states rather than a
 // boolean, because "not set" and "explicitly no" are different questions:
@@ -194,10 +205,17 @@ export interface FilterQuery {
   area_id?: string;
   project_id?: string;
   due?: DateFilter;
+  // Only read when the matching mode is "range". Kept as flat sibling fields
+  // rather than nesting the date filter into an object, so the two filters she
+  // has already saved (plain strings) keep working untouched.
+  due_from?: string;
+  due_to?: string;
   // The second date (migration 0010): the day I mean to work on it. It became
   // a field you can actually SET in chat #59, which is what made its absence
   // here worth fixing.
   planned?: DateFilter;
+  planned_from?: string;
+  planned_to?: string;
   status?: "open" | "done" | "any";
   // The "what kind of task is this" axes. None of these had a filter at all,
   // so a flag you could set was a flag you could not then find by.

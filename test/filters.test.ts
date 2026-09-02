@@ -135,6 +135,77 @@ describe("filter by PLANNED date, her ask", () => {
   });
 });
 
+// Her ask: "the filters should also be a little less rigid, currently I've got
+// set ones, e.g. due this month or within a certain date or something."
+describe("wider date windows and a typed range", () => {
+  beforeEach(() => {
+    task("today", { due: TODAY });
+    task("in-3", { due: IN_3 });
+    task("in-20", { due: brussels(20) });
+    task("in-60", { due: brussels(60) });
+    task("late", { due: YESTERDAY });
+    task("undated");
+  });
+
+  it("next 30 days reaches past the 7-day window without reaching everything", () =>
+    expect(run({ due: "month" })).resolves.toEqual(["in-20", "in-3", "today"]));
+
+  it("the windows ROLL from today rather than snapping to a calendar month", async () => {
+    // A saved filter is opened on an arbitrary day. "Next 30 days" answers the
+    // same question every time; "September" stops being the question in October.
+    const wide = await run({ due: "month" });
+    const narrow = await run({ due: "week" });
+    expect(narrow.every((id) => wide.includes(id))).toBe(true);
+    expect(wide).toContain("in-20");
+    expect(narrow).not.toContain("in-20");
+  });
+
+  it("takes a typed range, inclusive at both ends", () =>
+    expect(
+      run({ due: "range", due_from: TODAY, due_to: brussels(3) })
+    ).resolves.toEqual(["in-3", "today"]));
+
+  it("leaves either end open", async () => {
+    // "Anything from today on" and "anything up to three days out".
+    await expect(run({ due: "range", due_from: TODAY })).resolves.toEqual([
+      "in-20",
+      "in-3",
+      "in-60",
+      "today",
+    ]);
+    await expect(run({ due: "range", due_to: TODAY })).resolves.toEqual([
+      "late",
+      "today",
+    ]);
+  });
+
+  it("an unbounded range means 'has a date at all', never 'everything'", async () => {
+    const out = await run({ due: "range" });
+    expect(out).not.toContain("undated");
+    expect(out).toContain("late");
+  });
+
+  it("can reach backwards, which no preset could", () =>
+    expect(
+      run({ due: "range", due_from: YESTERDAY, due_to: TODAY })
+    ).resolves.toEqual(["late", "today"]));
+
+  it("applies to the planned date with the same vocabulary", async () => {
+    task("planned-soon", { planned: IN_3 });
+    task("planned-far", { planned: brussels(60) });
+    await expect(run({ planned: "month" })).resolves.toEqual(["planned-soon"]);
+    await expect(
+      run({ planned: "range", planned_from: IN_3, planned_to: IN_3 })
+    ).resolves.toEqual(["planned-soon"]);
+  });
+
+  it("ignores bounds when the mode is not a range", () =>
+    // The dialog does not save them in that case; the server must not read them
+    // either, or an old stored filter could quietly narrow itself.
+    expect(run({ due: "today", due_from: "2020-01-01", due_to: "2020-01-02" }))
+      .resolves.toEqual(["today"]));
+});
+
 describe("filter by what KIND of task it is", () => {
   it("finds, and excludes, whenever tasks", async () => {
     task("someday", { whenever: 1 });

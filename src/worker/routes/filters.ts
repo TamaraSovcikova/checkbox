@@ -12,10 +12,19 @@ export const filters = new Hono<{ Bindings: Bindings }>();
 //   area_id / project_id
 //   due         overdue | today | week | none | any
 //   planned     same vocabulary, over planned_date (the day I mean to work on it)
+//   <col>_from / <col>_to
+//               inclusive bounds, read only when that column's mode is "range"
 //   status      open | done | any   (default open)
 //   whenever / optional / recurring / blocked
 //               any | yes | no
-type DateFilter = "any" | "overdue" | "today" | "week" | "none";
+type DateFilter =
+  | "any"
+  | "overdue"
+  | "today"
+  | "week"
+  | "month"
+  | "range"
+  | "none";
 type TriState = "any" | "yes" | "no";
 
 type FilterQuery = {
@@ -25,7 +34,11 @@ type FilterQuery = {
   area_id?: string;
   project_id?: string;
   due?: DateFilter;
+  due_from?: string;
+  due_to?: string;
   planned?: DateFilter;
+  planned_from?: string;
+  planned_to?: string;
   status?: "open" | "done" | "any";
   whenever?: TriState;
   optional?: TriState;
@@ -165,7 +178,12 @@ filters.get("/:id/tasks", async (c) => {
 
   // One clause builder for BOTH date columns, so "due this week" and "planned
   // this week" can never drift into meaning different spans of days.
-  const dateWhere = (col: string, mode: DateFilter | undefined) => {
+  const dateWhere = (
+    col: string,
+    mode: DateFilter | undefined,
+    from?: string,
+    to?: string
+  ) => {
     if (!mode || mode === "any") return;
     if (mode === "none") {
       where.push(`t.${col} IS NULL`);
@@ -177,13 +195,30 @@ filters.get("/:id/tasks", async (c) => {
     } else if (mode === "today") {
       where.push(`t.${col} = ?`);
       binds.push(today);
-    } else if (mode === "week") {
+    } else if (mode === "week" || mode === "month") {
+      // Both are ROLLING windows from today, not calendar weeks or months. A
+      // saved filter is read on an arbitrary day, and "the next 30 days" answers
+      // the same question every time you open it, while "September" stops being
+      // the question the moment September ends.
       where.push(`t.${col} >= ? AND t.${col} <= ?`);
-      binds.push(today, addDaysStr(today, 7));
+      binds.push(today, addDaysStr(today, mode === "week" ? 7 : 30));
+    } else if (mode === "range") {
+      // Inclusive, and each end independently optional. Neither given means
+      // "has a date at all", which is the literal reading of an unbounded range
+      // and a filter worth having on its own.
+      where.push(`t.${col} IS NOT NULL`);
+      if (from) {
+        where.push(`t.${col} >= ?`);
+        binds.push(from);
+      }
+      if (to) {
+        where.push(`t.${col} <= ?`);
+        binds.push(to);
+      }
     }
   };
-  dateWhere("due_date", query.due);
-  dateWhere("planned_date", query.planned);
+  dateWhere("due_date", query.due, query.due_from, query.due_to);
+  dateWhere("planned_date", query.planned, query.planned_from, query.planned_to);
 
   // 0/1 columns. `yes` and `no` are both real answers; absent means "do not ask".
   const flagWhere = (col: string, mode: TriState | undefined) => {

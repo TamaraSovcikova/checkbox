@@ -53,6 +53,18 @@ export function FilterDialog({
     if (q.project_id) clean.project_id = q.project_id;
     if (q.due && q.due !== "any") clean.due = q.due;
     if (q.planned && q.planned !== "any") clean.planned = q.planned;
+    // Bounds only mean anything in range mode, so they are not carried when the
+    // mode has moved on: a stored filter should describe what it does, and a
+    // stale `due_from` sitting under "Overdue" is a question waiting to be asked
+    // wrongly the next time someone reads it.
+    if (q.due === "range") {
+      if (q.due_from) clean.due_from = q.due_from;
+      if (q.due_to) clean.due_to = q.due_to;
+    }
+    if (q.planned === "range") {
+      if (q.planned_from) clean.planned_from = q.planned_from;
+      if (q.planned_to) clean.planned_to = q.planned_to;
+    }
     if (q.status && q.status !== "open") clean.status = q.status;
     for (const k of ["whenever", "optional", "recurring", "blocked"] as const) {
       const v = q[k];
@@ -126,11 +138,28 @@ export function FilterDialog({
                     ["any", "Any"],
                     ["overdue", "Overdue"],
                     ["today", "Today"],
-                    ["week", "This week"],
+                    // Named for what they are: rolling windows from today, not
+                    // calendar weeks or months. "This week" read as the calendar
+                    // week and never was.
+                    ["week", "Next 7 days"],
+                    ["month", "Next 30 days"],
+                    ["range", "Between…"],
                     ["none", "No due date"],
                   ]}
                 />
               </Field>
+              {q.due === "range" && (
+                <RangeBounds
+                  from={q.due_from ?? ""}
+                  to={q.due_to ?? ""}
+                  onChange={(p) =>
+                    set({
+                      ...(p.from !== undefined ? { due_from: p.from || undefined } : {}),
+                      ...(p.to !== undefined ? { due_to: p.to || undefined } : {}),
+                    })
+                  }
+                />
+              )}
             </div>
 
             {/* The second date. Same vocabulary as Due so the two cannot mean
@@ -146,11 +175,27 @@ export function FilterDialog({
                     ["any", "Any"],
                     ["overdue", "Carried over"],
                     ["today", "Today"],
-                    ["week", "This week"],
+                    ["week", "Next 7 days"],
+                    ["month", "Next 30 days"],
+                    ["range", "Between…"],
                     ["none", "Not planned"],
                   ]}
                 />
               </Field>
+              {q.planned === "range" && (
+                <RangeBounds
+                  from={q.planned_from ?? ""}
+                  to={q.planned_to ?? ""}
+                  onChange={(p) =>
+                    set({
+                      ...(p.from !== undefined
+                        ? { planned_from: p.from || undefined }
+                        : {}),
+                      ...(p.to !== undefined ? { planned_to: p.to || undefined } : {}),
+                    })
+                  }
+                />
+              )}
               <Field label="Blocked">
                 <Select
                   value={q.blocked ?? "any"}
@@ -258,6 +303,42 @@ export function FilterDialog({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+// The two ends of a "Between…" range.
+//
+// Only rendered when that mode is chosen, so the dialog does not carry two date
+// inputs on every filter to serve the one that needs them. Either end may be
+// left blank: blank-to means "from this date onwards", blank-from means "up to
+// this date", and both blank means "has a date at all".
+function RangeBounds({
+  from,
+  to,
+  onChange,
+}: {
+  from: string;
+  to: string;
+  onChange: (patch: { from?: string; to?: string }) => void;
+}) {
+  return (
+    <div className="col-span-2 -mt-1 flex items-center gap-2">
+      <input
+        type="date"
+        value={from}
+        onChange={(e) => onChange({ from: e.target.value })}
+        title="From (inclusive). Leave blank for no lower bound."
+        className="h-9 min-w-0 flex-1 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
+      />
+      <span className="shrink-0 text-xs text-subtle">to</span>
+      <input
+        type="date"
+        value={to}
+        onChange={(e) => onChange({ to: e.target.value })}
+        title="To (inclusive). Leave blank for no upper bound."
+        className="h-9 min-w-0 flex-1 rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
+      />
+    </div>
   );
 }
 
