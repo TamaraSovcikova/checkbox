@@ -7,7 +7,7 @@ import {
 } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useDroppable } from "@dnd-kit/core";
-import type { Area } from "../../shared/types";
+import type { Area, Label } from "../../shared/types";
 import {
   useAreas,
   useLabels,
@@ -123,11 +123,16 @@ function dropForView(to: string): DropSpec | undefined {
 function NavItem({
   def,
   onHide,
+  onMove,
   alert,
   count,
 }: {
   def: NavDef;
   onHide?: () => void;
+  // Manage mode only. Up/down rather than drag: the sidebar sits inside the
+  // app's DndContext (which is watching for task drags), a nav row is a small
+  // target on a phone, and reordering eight items is a thing you do once.
+  onMove?: (dir: -1 | 1) => void;
   // `alert` tints the row orange (used by Overdue when it has tasks); `count`
   // shows a trailing pill.
   alert?: boolean;
@@ -168,17 +173,79 @@ function NavItem({
           </span>
         )}
       </NavLink>
+      {onMove && (
+        <>
+          <button
+            title={`Move ${def.label} up`}
+            aria-label={`Move ${def.label} up`}
+            onClick={() => onMove(-1)}
+            className="h-6 w-5 shrink-0 rounded text-subtle hover:text-foreground"
+          >
+            ↑
+          </button>
+          <button
+            title={`Move ${def.label} down`}
+            aria-label={`Move ${def.label} down`}
+            onClick={() => onMove(1)}
+            className="h-6 w-5 shrink-0 rounded text-subtle hover:text-foreground"
+          >
+            ↓
+          </button>
+        </>
+      )}
       {onHide && (
         <button
           title={`Hide ${def.label}`}
           aria-label={`Hide ${def.label}`}
           onClick={onHide}
-          className="mr-1 hidden h-6 w-6 shrink-0 place-items-center rounded text-subtle hover:text-foreground group-hover:grid"
+          // Always visible in manage mode: it sits beside the move arrows there,
+          // and a hover-only control next to two permanent ones reads as broken.
+          className={cn(
+            "mr-1 h-6 w-6 shrink-0 place-items-center rounded text-subtle hover:text-foreground",
+            onMove ? "grid" : "hidden group-hover:grid"
+          )}
         >
           ✕
         </button>
       )}
     </div>
+  );
+}
+
+// The rows of one nav section.
+//
+// Exists because the ordering controls need to know WHICH LIST an item is being
+// moved within: "up" means "swap with the row above it in this section", and a
+// section that handed the mover a different list would move things it was not
+// showing. Four copies of that would be four chances to pass the wrong one.
+function NavItems({
+  items,
+  manage,
+  onHide,
+  onMove,
+  extra,
+}: {
+  items: NavDef[];
+  manage: boolean;
+  onHide: (to: string) => void;
+  onMove: (to: string, dir: -1 | 1, within: string[]) => void;
+  // Per-row decoration the section knows about and this does not (Overdue's
+  // count, so far).
+  extra?: (d: NavDef) => { alert?: boolean; count?: number };
+}) {
+  const within = items.map((x) => x.to);
+  return (
+    <>
+      {items.map((s) => (
+        <NavItem
+          key={s.to}
+          def={s}
+          onHide={manage ? () => onHide(s.to) : undefined}
+          onMove={manage ? (d) => onMove(s.to, d, within) : undefined}
+          {...(extra?.(s) ?? {})}
+        />
+      ))}
+    </>
   );
 }
 
@@ -421,7 +488,7 @@ function SidebarInner() {
   // The hand-picked current shortlist; stars are set from a project's ... menu.
   const starred = allProjects.filter((p) => !!p.starred && p.status === "active");
   const { online, pending } = useOnlineStatus();
-  const { hide, show, isHidden } = useViewPrefs();
+  const { hide, show, isHidden, orderViews, moveView } = useViewPrefs();
   // Collapsed "More" group, remembered per browser. Default closed: these are
   // occasional management pages, not daily nav.
   const [moreOpen, setMoreOpen] = useState(
@@ -437,7 +504,10 @@ function SidebarInner() {
   const [areaDialog, setAreaDialog] = useState(false);
 
   const hiddenViews = ALL_VIEWS.filter((s) => isHidden(s.to));
-  const visible = (items: NavDef[]) => items.filter((s) => !isHidden(s.to));
+  // Hidden ones drop out, then the rest take her order. Both halves of "can I
+  // customise this sidebar": what appears, and in what order.
+  const visible = (items: NavDef[]) =>
+    orderViews(items.filter((s) => !isHidden(s.to)));
 
   return (
     <>
@@ -475,19 +545,20 @@ function SidebarInner() {
           }
         />
         <nav className="space-y-0.5">
-          {visible(TASK_VIEWS)
-            // Overdue only earns a slot when something is actually overdue (unless
-            // you're in manage mode, where every view stays visible to toggle).
-            .filter((s) => s.to !== "/overdue" || manage || overdueCount > 0)
-            .map((s) => (
-              <NavItem
-                key={s.to}
-                def={s}
-                onHide={manage ? () => hide(s.to) : undefined}
-                alert={s.to === "/overdue" && overdueCount > 0}
-                count={s.to === "/overdue" ? overdueCount : undefined}
-              />
-            ))}
+          <NavItems
+            items={visible(TASK_VIEWS)
+              // Overdue only earns a slot when something is actually overdue
+              // (unless you're in manage mode, where every view stays visible to
+              // toggle).
+              .filter((s) => s.to !== "/overdue" || manage || overdueCount > 0)}
+            manage={manage}
+            onHide={hide}
+            onMove={moveView}
+            extra={(s) => ({
+              alert: s.to === "/overdue" && overdueCount > 0,
+              count: s.to === "/overdue" ? overdueCount : undefined,
+            })}
+          />
         </nav>
 
         {/* Plan */}
@@ -496,9 +567,12 @@ function SidebarInner() {
             <div className="mt-5" />
             <SectionHeader title="Plan" />
             <nav className="space-y-0.5">
-              {visible(PLAN_VIEWS).map((s) => (
-                <NavItem key={s.to} def={s} onHide={manage ? () => hide(s.to) : undefined} />
-              ))}
+              <NavItems
+                  items={visible(PLAN_VIEWS)}
+                  manage={manage}
+                  onHide={hide}
+                  onMove={moveView}
+                />
             </nav>
           </>
         )}
@@ -509,9 +583,12 @@ function SidebarInner() {
             <div className="mt-5" />
             <SectionHeader title="Review" />
             <nav className="space-y-0.5">
-              {visible(REVIEW_VIEWS).map((s) => (
-                <NavItem key={s.to} def={s} onHide={manage ? () => hide(s.to) : undefined} />
-              ))}
+              <NavItems
+                  items={visible(REVIEW_VIEWS)}
+                  manage={manage}
+                  onHide={hide}
+                  onMove={moveView}
+                />
             </nav>
           </>
         )}
@@ -536,9 +613,12 @@ function SidebarInner() {
             </button>
             {(moreOpen || manage) && (
               <nav className="space-y-0.5">
-                {visible(MORE_VIEWS).map((s) => (
-                  <NavItem key={s.to} def={s} onHide={manage ? () => hide(s.to) : undefined} />
-                ))}
+                <NavItems
+                  items={visible(MORE_VIEWS)}
+                  manage={manage}
+                  onHide={hide}
+                  onMove={moveView}
+                />
               </nav>
             )}
           </>
@@ -654,30 +734,91 @@ function SidebarInner() {
           )}
         </nav>
 
-        {/* Labels */}
-        {labels.length > 0 && (
-          <>
-            <div className="mt-5" />
-            <SectionHeader title="Labels" />
-            <div className="flex flex-wrap gap-1 px-1">
-              {labels.map((l) => (
-                <NavLink
-                  key={l.id}
-                  to={`/label/${encodeURIComponent(l.name)}`}
-                  onClick={closeNav}
-                  className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:bg-surface-2/70 hover:text-foreground"
-                >
-                  @{l.name}
-                </NavLink>
-              ))}
-            </div>
-          </>
-        )}
+        {/* Labels. Her report: "now that I have a lot of labels it's very
+            crowded." Measured before changing anything: 68 labels, 28 of them
+            with NO open task, and the top ten carrying most of the weight. So a
+            third of that wall led nowhere and the rest was ordered by nothing
+            useful (alphabetically).
+
+            Now: the ones with open work, heaviest first, capped at a handful,
+            with everything else one click away. Nothing becomes unreachable,
+            it just stops being permanently in the way. */}
+        {labels.length > 0 && <LabelStrip labels={labels} onNavigate={closeNav} />}
       </div>
 
       <ProfileCard />
       <FilterDialog open={filterDialog} onOpenChange={setFilterDialog} />
       <AreaDialog open={areaDialog} onOpenChange={setAreaDialog} />
+    </>
+  );
+}
+
+// The label list, kept short by default.
+//
+// LABEL_PEEK is the whole design: a sidebar section earns its height by what you
+// click, and on her data the click-through is concentrated in the top handful.
+// Sorted by open tasks rather than by name, because "which of these has anything
+// in it" is the question you are actually asking when you glance at this list.
+const LABEL_PEEK = 8;
+
+function LabelStrip({
+  labels,
+  onNavigate,
+}: {
+  labels: Label[];
+  onNavigate: () => void;
+}) {
+  const [all, setAll] = useState(false);
+  // Heaviest first. A label with no open task is not offered by default: there
+  // is nothing behind it to go and look at. It comes back under "show all", so
+  // an old label is still reachable and still renameable.
+  const ranked = [...labels].sort(
+    (a, b) =>
+      (b.open_count ?? 0) - (a.open_count ?? 0) || a.name.localeCompare(b.name)
+  );
+  const live = ranked.filter((l) => (l.open_count ?? 0) > 0);
+  const shown = all ? ranked : live.slice(0, LABEL_PEEK);
+  const hidden = ranked.length - shown.length;
+
+  return (
+    <>
+      <div className="mt-5" />
+      <SectionHeader title="Labels" />
+      <div className="flex flex-wrap gap-1 px-1">
+        {shown.map((l) => (
+          <NavLink
+            key={l.id}
+            to={`/label/${encodeURIComponent(l.name)}`}
+            onClick={onNavigate}
+            // The count lives in the tooltip, not on the chip: printed, it would
+            // roughly double the width of every chip to answer a question you
+            // only ask occasionally, and the ORDER already tells you the shape.
+            title={`@${l.name} · ${l.open_count ?? 0} open`}
+            className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:bg-surface-2/70 hover:text-foreground"
+          >
+            @{l.name}
+          </NavLink>
+        ))}
+        {hidden > 0 && (
+          <button
+            type="button"
+            onClick={() => setAll(true)}
+            title="Includes labels with no open tasks"
+            className="rounded px-1.5 py-0.5 text-[11px] text-subtle transition-colors hover:text-foreground"
+          >
+            +{hidden} more
+          </button>
+        )}
+        {all && (
+          <button
+            type="button"
+            onClick={() => setAll(false)}
+            className="rounded px-1.5 py-0.5 text-[11px] text-subtle transition-colors hover:text-foreground"
+          >
+            less
+          </button>
+        )}
+      </div>
     </>
   );
 }

@@ -3,10 +3,23 @@ import { type Bindings, getUserId, uuid } from "../db";
 
 export const labels = new Hono<{ Bindings: Bindings }>();
 
+// Each label with how many OPEN tasks carry it.
+//
+// The count is what makes a long label list usable: 68 labels sorted
+// alphabetically is a wall, and 28 of them have no open task at all, so a third
+// of that wall leads nowhere. Sorted by weight, the handful she actually uses
+// come first. Open tasks only, deliberately: a label that only survives on
+// finished work is not a place you want to navigate to.
 labels.get("/", async (c) => {
   const userId = await getUserId(c);
   const { results } = await c.env.DB.prepare(
-    "SELECT id, name, color FROM labels WHERE user_id = ? ORDER BY name"
+    `SELECT l.id, l.name, l.color,
+            (SELECT COUNT(*) FROM task_labels tl
+               JOIN tasks t ON t.id = tl.task_id
+              WHERE tl.label_id = l.id AND t.status != 'done') AS open_count
+       FROM labels l
+      WHERE l.user_id = ?
+      ORDER BY l.name`
   )
     .bind(userId)
     .all();

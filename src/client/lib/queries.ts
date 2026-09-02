@@ -612,6 +612,43 @@ export function useViewPrefs() {
   };
   const isHidden = (viewKey: string) => prefs.hiddenViews.includes(viewKey);
 
+  // Sidebar ORDER. `viewOrder` has been in the prefs type and persisted by the
+  // route since it was introduced, and nothing ever read it: hiding a view
+  // worked, moving one did not. These close that.
+  //
+  // The stored list is partial on purpose. It names only the views that have
+  // been moved; anything absent keeps its position in the code's own order,
+  // which means a view added to the app later appears where the app puts it
+  // rather than silently landing at the end of a list written months ago.
+  const orderViews = <T extends { to: string }>(items: T[]): T[] => {
+    const order = prefs.viewOrder ?? [];
+    if (!order.length) return items;
+    const rank = (v: T) => {
+      const i = order.indexOf(v.to);
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    // Stable: equal ranks (both unmoved) keep their original relative order.
+    return items
+      .map((v, i) => ({ v, i }))
+      .sort((a, b) => rank(a.v) - rank(b.v) || a.i - b.i)
+      .map((x) => x.v);
+  };
+
+  // Move a view one place within the list it is shown in. The whole list is
+  // written back, not just the moved key: a partial order is only meaningful
+  // relative to the neighbours it was computed against.
+  const moveView = (viewKey: string, dir: -1 | 1, within: string[]) => {
+    const i = within.indexOf(viewKey);
+    const j = i + dir;
+    if (i === -1 || j < 0 || j >= within.length) return;
+    const next = [...within];
+    [next[i], next[j]] = [next[j], next[i]];
+    // Keep any ordering already recorded for OTHER sections; this call only
+    // speaks for the list it was given.
+    const others = (prefs.viewOrder ?? []).filter((v) => !within.includes(v));
+    save.mutate({ ...prefs, viewOrder: [...others, ...next] });
+  };
+
   // The Home dashboard's layout. Undefined = never customised (the page
   // renders its default); [] = user removed everything, honoured as-is.
   const dashboard = prefs.dashboard;
@@ -683,6 +720,8 @@ export function useViewPrefs() {
     hide,
     show,
     isHidden,
+    orderViews,
+    moveView,
     dashboard,
     setDashboard,
     cadenceSections,

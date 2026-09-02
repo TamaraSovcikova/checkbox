@@ -47,6 +47,9 @@ export interface Label {
   id: string;
   name: string;
   color: string | null;
+  // Open tasks carrying this label. Absent on the label objects hydrated onto a
+  // task (those answer "which labels", not "how big is this label").
+  open_count?: number;
 }
 
 // A cadence tracker: something where the question is "how long since?" rather
