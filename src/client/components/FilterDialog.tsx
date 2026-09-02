@@ -12,6 +12,7 @@ import { useAreas, useLabels, useProjects } from "../lib/queries";
 import { useCreateFilter, useUpdateFilter } from "../lib/queries";
 import { Button, Input } from "./ui";
 import { CloseIcon } from "../lib/icons";
+import { cn } from "@/lib/utils";
 
 // Build / edit a saved filter. On create it navigates to the new filter view.
 export function FilterDialog({
@@ -61,6 +62,7 @@ export function FilterDialog({
       if (q.due_from) clean.due_from = q.due_from;
       if (q.due_to) clean.due_to = q.due_to;
     }
+    if (q.dates === "any") clean.dates = "any";
     if (q.planned === "range") {
       if (q.planned_from) clean.planned_from = q.planned_from;
       if (q.planned_to) clean.planned_to = q.planned_to;
@@ -161,6 +163,42 @@ export function FilterDialog({
                 />
               )}
             </div>
+
+            {/* How the two dates combine. Shown only when BOTH are actually
+                asking something: with one date condition the join changes
+                nothing, and a control that reads as a choice while doing
+                nothing is worse than no control.
+
+                Her case is "planned in the next week OR due in the next week".
+                Note this groups ONLY the dates: everything else in the filter
+                stays ANDed, because a real filter is usually "in this area AND
+                (due soon OR planned soon)", and a whole-filter OR would drag
+                the area into the OR and match nearly everything. */}
+            {q.due && q.due !== "any" && q.planned && q.planned !== "any" && (
+              <div className="flex items-center gap-2 text-xs text-muted">
+                <span>Match</span>
+                {(
+                  [
+                    ["all", "both dates"],
+                    ["any", "either date"],
+                  ] as const
+                ).map(([v, label]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => set({ dates: v })}
+                    className={cn(
+                      "rounded-md border px-2 py-1 transition-colors",
+                      (q.dates ?? "all") === v
+                        ? "border-primary bg-primary/15 text-foreground"
+                        : "border-border hover:bg-surface-2"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* The second date. Same vocabulary as Due so the two cannot mean
                 different spans of days, but labelled for what a PLANNED date in

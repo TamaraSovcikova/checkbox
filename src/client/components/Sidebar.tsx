@@ -14,6 +14,7 @@ import {
   useOnlineStatus,
   useViewPrefs,
   useSavedFilters,
+  useReorderFilters,
   useView,
 } from "../lib/queries";
 import { FilterDialog } from "./FilterDialog";
@@ -223,6 +224,16 @@ function NavItem({
       )}
     </div>
   );
+}
+
+// Move item `i` one place. Returns a new array; the caller sends the whole list,
+// since positions are only meaningful relative to their neighbours.
+function swapAt<T>(items: T[], i: number, dir: -1 | 1): T[] {
+  const j = i + dir;
+  if (j < 0 || j >= items.length) return items;
+  const next = [...items];
+  [next[i], next[j]] = [next[j], next[i]];
+  return next;
 }
 
 // The rows of one nav section.
@@ -545,6 +556,7 @@ function SidebarInner() {
   const { data: allProjects = [] } = useProjects();
   const { data: labels = [] } = useLabels();
   const { data: savedFilters = [] } = useSavedFilters();
+  const reorderFilters = useReorderFilters();
   const { data: overdue = [] } = useView("overdue");
   // The hand-picked current shortlist; stars are set from a project's ... menu.
   const starred = allProjects.filter((p) => !!p.starred && p.status === "active");
@@ -810,23 +822,50 @@ function SidebarInner() {
                   }
                 />
                 <nav className="space-y-0.5">
-                  {savedFilters.map((f) => (
-                    <NavLink
-                      key={f.id}
-                      to={`/filter/${f.id}`}
-                      onClick={closeNav}
-                      className={({ isActive }) =>
-                        cn(
-                          "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                          isActive
-                            ? "bg-surface-2 text-foreground"
-                            : "text-muted hover:bg-surface-2/60 hover:text-foreground"
-                        )
-                      }
-                    >
-                      <FilterIcon className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{f.name}</span>
-                    </NavLink>
+                  {savedFilters.map((f, i) => (
+                    <div key={f.id} className="flex items-center">
+                      <NavLink
+                        to={`/filter/${f.id}`}
+                        onClick={closeNav}
+                        className={({ isActive }) =>
+                          cn(
+                            "flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                            isActive
+                              ? "bg-surface-2 text-foreground"
+                              : "text-muted hover:bg-surface-2/60 hover:text-foreground"
+                          )
+                        }
+                      >
+                        <FilterIcon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{f.name}</span>
+                      </NavLink>
+                      {/* Saved filters carry a `position` column that only the
+                          server ever set. Same up/down treatment as the views
+                          and the sections, in the same edit mode, so "reorder my
+                          sidebar" means one gesture everywhere. */}
+                      {manage && (
+                        <>
+                          <button
+                            title={`Move ${f.name} up`}
+                            aria-label={`Move ${f.name} up`}
+                            disabled={i === 0}
+                            onClick={() => reorderFilters.mutate(swapAt(savedFilters, i, -1))}
+                            className="h-6 w-5 shrink-0 rounded text-subtle hover:text-foreground disabled:opacity-30"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            title={`Move ${f.name} down`}
+                            aria-label={`Move ${f.name} down`}
+                            disabled={i === savedFilters.length - 1}
+                            onClick={() => reorderFilters.mutate(swapAt(savedFilters, i, 1))}
+                            className="h-6 w-5 shrink-0 rounded text-subtle hover:text-foreground disabled:opacity-30"
+                          >
+                            ↓
+                          </button>
+                        </>
+                      )}
+                    </div>
                   ))}
                   {savedFilters.length === 0 && (
                     <p className="px-2 text-xs text-subtle">No filters yet. Click +</p>

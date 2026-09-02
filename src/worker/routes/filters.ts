@@ -14,6 +14,8 @@ export const filters = new Hono<{ Bindings: Bindings }>();
 //   planned     same vocabulary, over planned_date (the day I mean to work on it)
 //   <col>_from / <col>_to
 //               inclusive bounds, read only when that column's mode is "range"
+//   dates       all | any: how the two DATE conditions combine with EACH OTHER.
+//               Everything else in the query stays ANDed.
 //   status      open | done | any   (default open)
 //   whenever / optional / recurring / blocked
 //               any | yes | no
@@ -39,6 +41,7 @@ type FilterQuery = {
   planned?: DateFilter;
   planned_from?: string;
   planned_to?: string;
+  dates?: "all" | "any";
   status?: "open" | "done" | "any";
   whenever?: TriState;
   optional?: TriState;
@@ -96,6 +99,22 @@ filters.post("/", async (c) => {
     .bind(id)
     .first();
   return c.json(rowToFilter(row as Record<string, unknown>), 201);
+});
+
+// Persist a new order for the sidebar's saved filters. Same shape as
+// /projects/reorder: one round trip for the whole list, every row scoped to the
+// user so a foreign id in the payload updates nothing. Registered BEFORE /:id so
+// "reorder" is not read as a filter id.
+filters.post("/reorder", async (c) => {
+  const userId = await getUserId(c);
+  const items = await c.req.json<{ id: string; position: number }[]>();
+  const stmts = (Array.isArray(items) ? items : []).map((it) =>
+    c.env.DB.prepare(
+      "UPDATE saved_filters SET position = ? WHERE id = ? AND user_id = ?"
+    ).bind(it.position, it.id, userId)
+  );
+  if (stmts.length) await c.env.DB.batch(stmts);
+  return c.json({ ok: true });
 });
 
 filters.patch("/:id", async (c) => {
@@ -178,47 +197,60 @@ filters.get("/:id/tasks", async (c) => {
 
   // One clause builder for BOTH date columns, so "due this week" and "planned
   // this week" can never drift into meaning different spans of days.
-  const dateWhere = (
+  // Builds ONE self-contained clause per date column, rather than pushing
+  // straight into `where`. That is what lets the two be combined with OR: an
+  // OR-ed group has to be parenthesised as a unit, and clauses scattered into a
+  // flat AND list cannot be.
+  const dateClause = (
     col: string,
     mode: DateFilter | undefined,
     from?: string,
     to?: string
-  ) => {
-    if (!mode || mode === "any") return;
-    if (mode === "none") {
-      where.push(`t.${col} IS NULL`);
-    } else if (mode === "overdue") {
+  ): { sql: string; binds: unknown[] } | null => {
+    if (!mode || mode === "any") return null;
+    if (mode === "none") return { sql: `t.${col} IS NULL`, binds: [] };
+    if (mode === "overdue")
       // Strictly before today, and NOT-NULL is implicit in SQL comparison, which
       // is what we want: an undated task is not late, it is undated.
-      where.push(`t.${col} < ?`);
-      binds.push(today);
-    } else if (mode === "today") {
-      where.push(`t.${col} = ?`);
-      binds.push(today);
-    } else if (mode === "week" || mode === "month") {
+      return { sql: `t.${col} < ?`, binds: [today] };
+    if (mode === "today") return { sql: `t.${col} = ?`, binds: [today] };
+    if (mode === "week" || mode === "month")
       // Both are ROLLING windows from today, not calendar weeks or months. A
       // saved filter is read on an arbitrary day, and "the next 30 days" answers
       // the same question every time you open it, while "September" stops being
       // the question the moment September ends.
-      where.push(`t.${col} >= ? AND t.${col} <= ?`);
-      binds.push(today, addDaysStr(today, mode === "week" ? 7 : 30));
-    } else if (mode === "range") {
-      // Inclusive, and each end independently optional. Neither given means
-      // "has a date at all", which is the literal reading of an unbounded range
-      // and a filter worth having on its own.
-      where.push(`t.${col} IS NOT NULL`);
-      if (from) {
-        where.push(`t.${col} >= ?`);
-        binds.push(from);
-      }
-      if (to) {
-        where.push(`t.${col} <= ?`);
-        binds.push(to);
-      }
+      return {
+        sql: `(t.${col} >= ? AND t.${col} <= ?)`,
+        binds: [today, addDaysStr(today, mode === "week" ? 7 : 30)],
+      };
+    // range: inclusive, each end independently optional. Neither given means
+    // "has a date at all", the literal reading of an unbounded range.
+    const parts = [`t.${col} IS NOT NULL`];
+    const b: unknown[] = [];
+    if (from) {
+      parts.push(`t.${col} >= ?`);
+      b.push(from);
     }
+    if (to) {
+      parts.push(`t.${col} <= ?`);
+      b.push(to);
+    }
+    return { sql: `(${parts.join(" AND ")})`, binds: b };
   };
-  dateWhere("due_date", query.due, query.due_from, query.due_to);
-  dateWhere("planned_date", query.planned, query.planned_from, query.planned_to);
+
+  const dateParts = [
+    dateClause("due_date", query.due, query.due_from, query.due_to),
+    dateClause("planned_date", query.planned, query.planned_from, query.planned_to),
+  ].filter((x): x is { sql: string; binds: unknown[] } => x !== null);
+
+  if (dateParts.length) {
+    // OR only means something with two sides. With one date condition the join
+    // is irrelevant, and "any" must not be allowed to read as "ignore this".
+    const join = query.dates === "any" && dateParts.length > 1 ? " OR " : " AND ";
+    where.push(`(${dateParts.map((p) => p.sql).join(join)})`);
+    binds.push(...dateParts.flatMap((p) => p.binds));
+  }
+
 
   // 0/1 columns. `yes` and `no` are both real answers; absent means "do not ask".
   const flagWhere = (col: string, mode: TriState | undefined) => {

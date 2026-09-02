@@ -216,6 +216,15 @@ export interface FilterQuery {
   planned?: DateFilter;
   planned_from?: string;
   planned_to?: string;
+  // How the TWO DATE conditions combine with each other. Everything else in a
+  // filter is still ANDed; this groups only the dates.
+  //
+  // "any" is what makes "anything I need to touch next week" expressible: due in
+  // the next 7 days OR planned in the next 7 days. A whole-filter OR would not
+  // have served that, because a real filter is usually "in this area AND (due
+  // soon OR planned soon)", and ORing the area in as well matches nearly
+  // everything. Default "all", so existing filters keep their meaning.
+  dates?: "all" | "any";
   status?: "open" | "done" | "any";
   // The "what kind of task is this" axes. None of these had a filter at all,
   // so a flag you could set was a flag you could not then find by.

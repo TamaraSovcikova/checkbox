@@ -1215,20 +1215,31 @@ export function LabelPage() {
 export function FilterPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
-  const { open } = useTaskUI();
   const { data: filters = [] } = useSavedFilters();
   const { data: tasks = [], isLoading } = useFilterTasks(id);
   const del = useDeleteFilter();
   const [editOpen, setEditOpen] = useState(false);
 
   const filter = filters.find((f) => f.id === id);
-  const controls = useTaskSelection(tasks, open, true);
+  // The same collection machinery every other task page uses. This page was the
+  // odd one out: it went straight to TaskSelection + TaskList, so it had
+  // multi-select but no sort, no grouping and no in-view filter, and a saved
+  // filter is exactly the kind of long list you want to sort. Keyed per filter,
+  // so each one remembers how it likes to be read.
+  const { controls, body, sortMenu, groupMenu, filterMenu } = useTaskCollection(
+    `filter:${id}`,
+    tasks,
+    "No tasks match this filter."
+  );
 
   return (
     <div>
       <Header
         title={filter?.name ?? "Filter"}
         icon={<FilterIcon className={ICON_SIZE} />}
+        sort={sortMenu}
+        group={groupMenu}
+        filter={filterMenu}
         menu={[
           { label: "Edit filter", onSelect: () => setEditOpen(true) },
           {
@@ -1242,11 +1253,7 @@ export function FilterPage() {
           },
         ]}
       />
-      {isLoading ? (
-        <p className="px-2 text-sm text-subtle">Loading…</p>
-      ) : (
-        <TaskList tasks={tasks} empty="No tasks match this filter." controls={controls} />
-      )}
+      {isLoading ? <p className="px-2 text-sm text-subtle">Loading…</p> : body}
       <BulkActionBar controls={controls} />
       <FilterDialog open={editOpen} onOpenChange={setEditOpen} existing={filter} />
     </div>

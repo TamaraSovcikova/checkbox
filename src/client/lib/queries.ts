@@ -8,6 +8,7 @@ import { format, addDays, parseISO } from "date-fns";
 import { api } from "./api";
 import type {
   FilterQuery,
+  SavedFilter,
   Task,
   UserPrefs,
   ViewDefault,
@@ -443,6 +444,30 @@ export function useUpdateFilter() {
       qc.invalidateQueries({ queryKey: ["filters"] });
       qc.invalidateQueries({ queryKey: ["filter-tasks", id] });
     },
+  });
+}
+
+// Reorder the sidebar's saved filters. Optimistic, because the arrows are held
+// down repeatedly to walk a filter up a list and a round trip between each press
+// would make the row appear to lag behind the clicks.
+export function useReorderFilters() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (items: SavedFilter[]) =>
+      api.reorderFilters(items.map((f, i) => ({ id: f.id, position: i }))),
+    onMutate: async (items) => {
+      await qc.cancelQueries({ queryKey: ["filters"] });
+      const prev = qc.getQueryData<SavedFilter[]>(["filters"]);
+      qc.setQueryData(
+        ["filters"],
+        items.map((f, i) => ({ ...f, position: i }))
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["filters"], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["filters"] }),
   });
 }
 

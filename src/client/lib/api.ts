@@ -214,6 +214,8 @@ export const api = {
     }),
   deleteFilter: (id: string) =>
     http(`/api/saved-filters/${id}`, { method: "DELETE" }),
+  reorderFilters: (items: { id: string; position: number }[]) =>
+    httpMutate("POST", "/api/saved-filters/reorder", items),
   filterTasks: (id: string) =>
     http<Task[]>(`/api/saved-filters/${id}/tasks`),
 

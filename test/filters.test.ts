@@ -266,6 +266,111 @@ describe("filter by blocked, as the rest of the app defines it", () => {
   });
 });
 
+// Her report: "currently the filters have a default AND, meaning I can't set
+// e.g. a filter for tasks that are planned in the next week OR due in the next
+// week."
+describe("how the two dates combine", () => {
+  beforeEach(() => {
+    task("due-soon", { due: IN_3 });
+    task("planned-soon", { planned: IN_3 });
+    task("both-soon", { due: IN_3, planned: IN_3 });
+    task("neither", { due: brussels(60) });
+  });
+
+  it("ANDs by default, which is what every existing saved filter means", async () => {
+    await expect(run({ due: "week", planned: "week" })).resolves.toEqual(["both-soon"]);
+  });
+
+  it("ORs on request: anything I need to touch next week", async () => {
+    await expect(
+      run({ due: "week", planned: "week", dates: "any" })
+    ).resolves.toEqual(["both-soon", "due-soon", "planned-soon"]);
+  });
+
+  it("keeps the OR to the DATES: everything else still narrows", async () => {
+    // The reason this is not a whole-filter OR. A real filter is "in this area
+    // AND (due soon OR planned soon)"; ORing the area in as well would match
+    // nearly everything.
+    raw.prepare("UPDATE tasks SET optional = 1 WHERE id = 'due-soon'").run();
+    await expect(
+      run({ due: "week", planned: "week", dates: "any", optional: "no" })
+    ).resolves.toEqual(["both-soon", "planned-soon"]);
+  });
+
+  it("ignores the join when only one date is being asked about", async () => {
+    // "any" over a single condition must not read as "ignore this condition".
+    await expect(run({ due: "week", dates: "any" })).resolves.toEqual([
+      "both-soon",
+      "due-soon",
+    ]);
+  });
+
+  it("ORs two DIFFERENT windows, not just two copies of one", async () => {
+    task("late", { due: YESTERDAY });
+    await expect(
+      run({ due: "overdue", planned: "week", dates: "any" })
+    ).resolves.toEqual(["both-soon", "late", "planned-soon"]);
+  });
+});
+
+describe("saved filter order", () => {
+  const reorder = (items: { id: string; position: number }[]) =>
+    app.request(
+      "/reorder",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TOKEN}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(items),
+      },
+      { DB: d1 } as any
+    );
+
+  const names = () =>
+    (
+      raw
+        .prepare("SELECT name FROM saved_filters ORDER BY position, name")
+        .all() as { name: string }[]
+    ).map((r) => r.name);
+
+  beforeEach(() => {
+    raw.exec(`
+      INSERT INTO saved_filters (id, user_id, name, query, position) VALUES ('a', '${USER}', 'A', '{}', 0);
+      INSERT INTO saved_filters (id, user_id, name, query, position) VALUES ('b', '${USER}', 'B', '{}', 1);
+      INSERT INTO saved_filters (id, user_id, name, query, position) VALUES ('c', '${USER}', 'C', '{}', 2);
+    `);
+  });
+
+  it("persists a new order", async () => {
+    await reorder([
+      { id: "c", position: 0 },
+      { id: "a", position: 1 },
+      { id: "b", position: 2 },
+    ]);
+    expect(names()).toEqual(["C", "A", "B"]);
+  });
+
+  it("cannot reorder another user's filters", async () => {
+    raw.exec(`
+      INSERT INTO users (id, email) VALUES ('user-b', 'b@example.com');
+      INSERT INTO saved_filters (id, user_id, name, query, position) VALUES ('x', 'user-b', 'Theirs', '{}', 0);
+    `);
+    await reorder([{ id: "x", position: 9 }]);
+    const row = raw
+      .prepare("SELECT position FROM saved_filters WHERE id = 'x'")
+      .get() as { position: number };
+    expect(row.position).toBe(0);
+  });
+
+  it("shrugs at an empty payload rather than erroring", async () => {
+    const res = await reorder([]);
+    expect(res.status).toBe(200);
+    expect(names()).toEqual(["A", "B", "C"]);
+  });
+});
+
 describe("the old filters still work beside the new ones", () => {
   it("ANDs everything together", async () => {
     task("hit", { planned: TODAY, optional: 0 });
