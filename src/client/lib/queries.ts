@@ -577,6 +577,40 @@ export function useOnlineStatus() {
 
 const EMPTY_PREFS: UserPrefs = { hiddenViews: [], viewOrder: [], viewDefaults: {} };
 
+// A stored order that names only what has been MOVED.
+//
+// Everything it does not mention keeps the position the code gave it, which is
+// the property that matters: a view or a section added to the app later appears
+// where the app puts it, instead of being ranked by a list written before it
+// existed. Stable, so two unmoved entries keep their relative order.
+function applyPartialOrder<T>(
+  items: T[],
+  key: (x: T) => string,
+  order: string[]
+): T[] {
+  if (!order.length) return items;
+  const rank = (x: T) => {
+    const i = order.indexOf(key(x));
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  return items
+    .map((v, i) => ({ v, i }))
+    .sort((a, b) => rank(a.v) - rank(b.v) || a.i - b.i)
+    .map((x) => x.v);
+}
+
+// Move one key one place within the list it is shown in. Returns null at either
+// end rather than wrapping: wrapping from top to bottom on a nav list reads as a
+// misclick, not as a feature.
+function swap(within: string[], key: string, dir: -1 | 1): string[] | null {
+  const i = within.indexOf(key);
+  const j = i + dir;
+  if (i === -1 || j < 0 || j >= within.length) return null;
+  const next = [...within];
+  [next[i], next[j]] = [next[j], next[i]];
+  return next;
+}
+
 export function useViewPrefs() {
   const qc = useQueryClient();
   const { data: prefs = EMPTY_PREFS } = useQuery({
@@ -620,29 +654,28 @@ export function useViewPrefs() {
   // been moved; anything absent keeps its position in the code's own order,
   // which means a view added to the app later appears where the app puts it
   // rather than silently landing at the end of a list written months ago.
-  const orderViews = <T extends { to: string }>(items: T[]): T[] => {
-    const order = prefs.viewOrder ?? [];
-    if (!order.length) return items;
-    const rank = (v: T) => {
-      const i = order.indexOf(v.to);
-      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
-    };
-    // Stable: equal ranks (both unmoved) keep their original relative order.
-    return items
-      .map((v, i) => ({ v, i }))
-      .sort((a, b) => rank(a.v) - rank(b.v) || a.i - b.i)
-      .map((x) => x.v);
+  const orderViews = <T extends { to: string }>(items: T[]): T[] =>
+    applyPartialOrder(items, (v) => v.to, prefs.viewOrder ?? []);
+
+  // The sidebar's SECTIONS (Tasks, Plan, Areas, Labels...), same rules as the
+  // views inside them: partial, stable, and blind to sections that are not
+  // currently showing.
+  const orderSections = (ids: string[]): string[] =>
+    applyPartialOrder(ids, (x) => x, prefs.sectionOrder ?? []);
+
+  const moveSection = (id: string, dir: -1 | 1, within: string[]) => {
+    const next = swap(within, id, dir);
+    if (!next) return;
+    const others = (prefs.sectionOrder ?? []).filter((v) => !within.includes(v));
+    save.mutate({ ...prefs, sectionOrder: [...others, ...next] });
   };
 
   // Move a view one place within the list it is shown in. The whole list is
   // written back, not just the moved key: a partial order is only meaningful
   // relative to the neighbours it was computed against.
   const moveView = (viewKey: string, dir: -1 | 1, within: string[]) => {
-    const i = within.indexOf(viewKey);
-    const j = i + dir;
-    if (i === -1 || j < 0 || j >= within.length) return;
-    const next = [...within];
-    [next[i], next[j]] = [next[j], next[i]];
+    const next = swap(within, viewKey, dir);
+    if (!next) return;
     // Keep any ordering already recorded for OTHER sections; this call only
     // speaks for the list it was given.
     const others = (prefs.viewOrder ?? []).filter((v) => !within.includes(v));
@@ -722,6 +755,8 @@ export function useViewPrefs() {
     isHidden,
     orderViews,
     moveView,
+    orderSections,
+    moveSection,
     dashboard,
     setDashboard,
     cadenceSections,

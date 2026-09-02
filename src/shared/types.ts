@@ -315,7 +315,11 @@ export interface DashboardItem {
 
 export interface UserPrefs {
   hiddenViews: string[]; // view keys the user has hidden from the sidebar
-  viewOrder: string[]; // optional custom ordering of view keys
+  viewOrder: string[]; // optional custom ordering of view keys WITHIN a section
+  // Optional custom ordering of the sidebar's SECTIONS themselves (Tasks, Plan,
+  // Areas, Labels...). Partial, like viewOrder: it names only what has been
+  // moved, so a section added later appears where the app puts it.
+  sectionOrder?: string[];
   viewDefaults?: Record<string, ViewDefault>; // per-view grid/sort/group memory
   // The Home dashboard's composition, in render order. Undefined = the default
   // starter layout (the client owns that default, not the server).

@@ -3,8 +3,7 @@ import {
   useContext,
   useState,
   useEffect,
-  type ComponentType,
-} from "react";
+  type ComponentType, type ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useDroppable } from "@dnd-kit/core";
 import type { Area, Label } from "../../shared/types";
@@ -100,6 +99,20 @@ const MORE_VIEWS: NavDef[] = [
   { to: "/cadences", label: "Cadences", icon: CadenceIcon },
 ];
 const ALL_VIEWS = [...TASK_VIEWS, ...PLAN_VIEWS, ...REVIEW_VIEWS, ...MORE_VIEWS];
+
+// Section ids are stable keys (they are what gets persisted); this is what a
+// person should read in a tooltip instead.
+const SECTION_LABEL: Record<string, string> = {
+  tasks: "Tasks",
+  plan: "Plan",
+  review: "Review",
+  more: "More",
+  starred: "Starred",
+  areas: "Areas",
+  templates: "Templates",
+  filters: "Filters",
+  labels: "Labels",
+};
 
 // Wraps a sidebar node as a drop target for tasks being dragged.
 type DropSpec = { id: string; data: Record<string, unknown> };
@@ -391,17 +404,65 @@ function ProjectItem({
 function SectionHeader({
   title,
   action,
+  onMove,
 }: {
   title: string;
   action?: React.ReactNode;
+  // Manage mode only: move this whole SECTION up or down past its neighbours.
+  onMove?: (dir: -1 | 1) => void;
 }) {
   return (
     <div className="mb-1 flex items-center justify-between px-2">
       <span className="text-xs font-medium uppercase tracking-wide text-subtle">
         {title}
       </span>
-      {action}
+      <div className="flex items-center gap-0.5">
+        {onMove && <SectionMove onMove={onMove} title={title} />}
+        {action}
+      </div>
     </div>
+  );
+}
+
+// The section-level arrows. Their own component because the More section draws
+// its header as a collapse toggle rather than through SectionHeader, and both
+// need the identical control.
+function SectionMove({
+  onMove,
+  title,
+}: {
+  onMove: (dir: -1 | 1) => void;
+  title: string;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        title={`Move the ${title} section up`}
+        aria-label={`Move the ${title} section up`}
+        onClick={(e) => {
+          // The More header IS a button (the collapse toggle), so without this
+          // moving that section would also collapse it.
+          e.stopPropagation();
+          onMove(-1);
+        }}
+        className="h-5 w-4 rounded text-subtle hover:text-foreground"
+      >
+        ↑
+      </button>
+      <button
+        type="button"
+        title={`Move the ${title} section down`}
+        aria-label={`Move the ${title} section down`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onMove(1);
+        }}
+        className="h-5 w-4 rounded text-subtle hover:text-foreground"
+      >
+        ↓
+      </button>
+    </>
   );
 }
 
@@ -488,7 +549,8 @@ function SidebarInner() {
   // The hand-picked current shortlist; stars are set from a project's ... menu.
   const starred = allProjects.filter((p) => !!p.starred && p.status === "active");
   const { online, pending } = useOnlineStatus();
-  const { hide, show, isHidden, orderViews, moveView } = useViewPrefs();
+  const { hide, show, isHidden, orderViews, moveView, orderSections, moveSection } =
+    useViewPrefs();
   // Collapsed "More" group, remembered per browser. Default closed: these are
   // occasional management pages, not daily nav.
   const [moreOpen, setMoreOpen] = useState(
@@ -532,218 +594,298 @@ function SidebarInner() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {/* Tasks */}
-        <SectionHeader
-          title="Tasks"
-          action={
-            <button
-              onClick={() => setManage((m) => !m)}
-              title="Manage views"
-              className="text-[11px] text-subtle hover:text-foreground"
-            >
-              {manage ? "done" : "edit"}
-            </button>
-          }
-        />
-        <nav className="space-y-0.5">
-          <NavItems
-            items={visible(TASK_VIEWS)
-              // Overdue only earns a slot when something is actually overdue
-              // (unless you're in manage mode, where every view stays visible to
-              // toggle).
-              .filter((s) => s.to !== "/overdue" || manage || overdueCount > 0)}
-            manage={manage}
-            onHide={hide}
-            onMove={moveView}
-            extra={(s) => ({
-              alert: s.to === "/overdue" && overdueCount > 0,
-              count: s.to === "/overdue" ? overdueCount : undefined,
-            })}
-          />
-        </nav>
+        {/* ── The sidebar's sections, in HER order ─────────────────────────
+            Every block below used to be written out in a fixed sequence. They
+            are a keyed record now, rendered in whatever order she has chosen,
+            because "order which sections show before which" cannot be a sort
+            over hardcoded JSX.
 
-        {/* Plan */}
-        {visible(PLAN_VIEWS).length > 0 && (
-          <>
-            <div className="mt-5" />
-            <SectionHeader title="Plan" />
-            <nav className="space-y-0.5">
-              <NavItems
-                  items={visible(PLAN_VIEWS)}
-                  manage={manage}
-                  onHide={hide}
-                  onMove={moveView}
+            Each entry returns its own header and body, and takes a `move` node
+            it drops beside its title. Sections that would render nothing are
+            left out of the list entirely, so the arrows step over them rather
+            than moving a section past something invisible. */}
+        {/* space-y-5 on the CONTAINER, not a top margin on each section. The
+            gap belongs between sections, and Tasks used to carry none because it
+            was always first; now that it can be moved into the middle, spacing
+            that depends on position would go wrong the moment she moved it. */}
+        <div className="space-y-5">
+        {(() => {
+          const parts: { id: string; render: (move: ReactNode) => ReactNode }[] = [];
+
+          parts.push({
+            id: "tasks",
+            render: (move) => (
+              <div key="tasks">
+                <SectionHeader
+                  title="Tasks"
+                  action={
+                    <div className="flex items-center gap-0.5">
+                      {move}
+                      <button
+                        onClick={() => setManage((m) => !m)}
+                        className="rounded px-1 text-[11px] text-subtle hover:text-foreground"
+                      >
+                        {manage ? "done" : "edit"}
+                      </button>
+                    </div>
+                  }
                 />
-            </nav>
-          </>
-        )}
+                <nav className="space-y-0.5">
+                  <NavItems
+                    items={visible(TASK_VIEWS)
+                      // Overdue only earns a slot when something is actually
+                      // overdue (unless you're in manage mode, where every view
+                      // stays visible to toggle).
+                      .filter((v) => v.to !== "/overdue" || manage || overdueCount > 0)}
+                    manage={manage}
+                    onHide={hide}
+                    onMove={moveView}
+                    extra={(v) => ({
+                      alert: v.to === "/overdue" && overdueCount > 0,
+                      count: v.to === "/overdue" ? overdueCount : undefined,
+                    })}
+                  />
+                </nav>
+              </div>
+            ),
+          });
 
-        {/* Review: the "did anything slip" rituals. */}
-        {visible(REVIEW_VIEWS).length > 0 && (
-          <>
-            <div className="mt-5" />
-            <SectionHeader title="Review" />
-            <nav className="space-y-0.5">
-              <NavItems
-                  items={visible(REVIEW_VIEWS)}
-                  manage={manage}
-                  onHide={hide}
-                  onMove={moveView}
+          if (visible(PLAN_VIEWS).length > 0)
+            parts.push({
+              id: "plan",
+              render: (move) => (
+                <div key="plan">
+                  <SectionHeader title="Plan" action={move} />
+                  <nav className="space-y-0.5">
+                    <NavItems
+                      items={visible(PLAN_VIEWS)}
+                      manage={manage}
+                      onHide={hide}
+                      onMove={moveView}
+                    />
+                  </nav>
+                </div>
+              ),
+            });
+
+          if (visible(REVIEW_VIEWS).length > 0)
+            parts.push({
+              id: "review",
+              render: (move) => (
+                <div key="review">
+                  <SectionHeader title="Review" action={move} />
+                  <nav className="space-y-0.5">
+                    <NavItems
+                      items={visible(REVIEW_VIEWS)}
+                      manage={manage}
+                      onHide={hide}
+                      onMove={moveView}
+                    />
+                  </nav>
+                </div>
+              ),
+            });
+
+          if (visible(MORE_VIEWS).length > 0)
+            parts.push({
+              id: "more",
+              render: (move) => (
+                <div key="more">
+                  {/* This header is the collapse toggle, so the arrows sit
+                      OUTSIDE the button: nested buttons are invalid, and a click
+                      on an arrow must not also collapse the section. */}
+                  <div className="mb-1 flex items-center justify-between px-2">
+                    <button
+                      type="button"
+                      onClick={() => setMoreOpen((o) => !o)}
+                      className="flex flex-1 items-center gap-1 text-xs font-medium uppercase tracking-wide text-subtle transition-colors hover:text-foreground"
+                    >
+                      {moreOpen || manage ? (
+                        <ChevronDownIcon className="h-3 w-3" />
+                      ) : (
+                        <ChevronRightIcon className="h-3 w-3" />
+                      )}
+                      More
+                    </button>
+                    {move}
+                  </div>
+                  {(moreOpen || manage) && (
+                    <nav className="space-y-0.5">
+                      <NavItems
+                        items={visible(MORE_VIEWS)}
+                        manage={manage}
+                        onHide={hide}
+                        onMove={moveView}
+                      />
+                    </nav>
+                  )}
+                </div>
+              ),
+            });
+
+          if (starred.length > 0)
+            parts.push({
+              id: "starred",
+              render: (move) => (
+                <div key="starred">
+                  <SectionHeader title="Starred" action={move} />
+                  <div className="space-y-0.5">
+                    {starred.map((pr) => {
+                      const area = areas.find((a) => a.id === pr.area_id);
+                      return (
+                        <StarredLink
+                          key={pr.id}
+                          project={pr}
+                          color={areaColorVar(area?.color)}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              ),
+            });
+
+          parts.push({
+            id: "areas",
+            render: (move) => (
+              <div key="areas">
+                <SectionHeader
+                  title="Areas"
+                  action={
+                    <div className="flex items-center gap-0.5">
+                      {move}
+                      <button
+                        onClick={() => setAreaDialog(true)}
+                        title="New area"
+                        className="grid h-5 w-5 place-items-center rounded text-subtle hover:bg-surface-2 hover:text-foreground"
+                      >
+                        <AddIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  }
                 />
-            </nav>
-          </>
-        )}
+                <div className="space-y-0.5">
+                  {areas.map((a) => (
+                    <AreaNode key={a.id} area={a} />
+                  ))}
+                  {areas.length === 0 && (
+                    <button
+                      onClick={() => setAreaDialog(true)}
+                      className="w-full rounded-md border border-dashed border-border px-2 py-1.5 text-left text-xs text-subtle hover:border-primary/50 hover:text-foreground"
+                    >
+                      + Add your first area (e.g. Work, Health)
+                    </button>
+                  )}
+                </div>
+              </div>
+            ),
+          });
 
-        {/* More: occasional management pages, collapsed by default. The header
-            itself is the toggle. Manage mode forces it open so the hide
-            buttons stay reachable. */}
-        {visible(MORE_VIEWS).length > 0 && (
-          <>
-            <div className="mt-5" />
-            <button
-              type="button"
-              onClick={() => setMoreOpen((o) => !o)}
-              className="mb-1 flex w-full items-center gap-1 px-2 text-xs font-medium uppercase tracking-wide text-subtle transition-colors hover:text-foreground"
-            >
-              {moreOpen || manage ? (
-                <ChevronDownIcon className="h-3 w-3" />
-              ) : (
-                <ChevronRightIcon className="h-3 w-3" />
-              )}
-              More
-            </button>
-            {(moreOpen || manage) && (
-              <nav className="space-y-0.5">
-                <NavItems
-                  items={visible(MORE_VIEWS)}
-                  manage={manage}
-                  onHide={hide}
-                  onMove={moveView}
+          parts.push({
+            id: "templates",
+            render: (move) => (
+              <div key="templates">
+                <TemplatesSection move={move} />
+              </div>
+            ),
+          });
+
+          parts.push({
+            id: "filters",
+            render: (move) => (
+              <div key="filters">
+                <SectionHeader
+                  title="Filters"
+                  action={
+                    <div className="flex items-center gap-0.5">
+                      {move}
+                      <button
+                        onClick={() => setFilterDialog(true)}
+                        title="New filter"
+                        className="grid h-5 w-5 place-items-center rounded text-subtle hover:bg-surface-2 hover:text-foreground"
+                      >
+                        <AddIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  }
                 />
-              </nav>
-            )}
-          </>
-        )}
+                <nav className="space-y-0.5">
+                  {savedFilters.map((f) => (
+                    <NavLink
+                      key={f.id}
+                      to={`/filter/${f.id}`}
+                      onClick={closeNav}
+                      className={({ isActive }) =>
+                        cn(
+                          "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                          isActive
+                            ? "bg-surface-2 text-foreground"
+                            : "text-muted hover:bg-surface-2/60 hover:text-foreground"
+                        )
+                      }
+                    >
+                      <FilterIcon className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{f.name}</span>
+                    </NavLink>
+                  ))}
+                  {savedFilters.length === 0 && (
+                    <p className="px-2 text-xs text-subtle">No filters yet. Click +</p>
+                  )}
+                </nav>
+              </div>
+            ),
+          });
 
-        {/* Hidden (manage mode) */}
+          if (labels.length > 0)
+            parts.push({
+              id: "labels",
+              render: (move) => (
+                <div key="labels">
+                  <LabelStrip labels={labels} onNavigate={closeNav} move={move} />
+                </div>
+              ),
+            });
+
+          const order = orderSections(parts.map((x) => x.id));
+          const byId = new Map(parts.map((x) => [x.id, x]));
+          return order.map((id) => {
+            const part = byId.get(id)!;
+            return part.render(
+              manage ? (
+                <SectionMove
+                  title={SECTION_LABEL[id] ?? id}
+                  onMove={(d) => moveSection(id, d, order)}
+                />
+              ) : null
+            );
+          });
+        })()}
+        </div>
+
+        {/* Hidden views (manage mode). Pinned below the sections rather than
+            being one of them: it is an affordance for editing the sidebar, not
+            a part of the sidebar. */}
         {manage && hiddenViews.length > 0 && (
           <div className="mt-2 rounded-md border border-border p-2">
             <div className="mb-1 px-1 text-xs uppercase tracking-wide text-subtle">
               Hidden
             </div>
-            {hiddenViews.map((s) => {
-              const Icon = s.icon;
+            {hiddenViews.map((v) => {
+              const Icon = v.icon;
               return (
                 <button
-                  key={s.to}
-                  onClick={() => show(s.to)}
+                  key={v.to}
+                  onClick={() => show(v.to)}
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm text-subtle transition-colors hover:bg-surface-2/60 hover:text-foreground"
                 >
                   <Icon className="h-4 w-4 shrink-0" />
-                  <span className="flex-1 truncate">{s.label}</span>
+                  <span className="flex-1 truncate">{v.label}</span>
                   <span className="text-[11px] text-primary">show</span>
                 </button>
               );
             })}
           </div>
         )}
-
-        {/* Starred projects: the current shortlist, one click from anywhere.
-            Renders only when at least one star exists, so the sidebar spends
-            no height on an empty concept. */}
-        {starred.length > 0 && (
-          <>
-            <div className="mt-5" />
-            <SectionHeader title="Starred" />
-            <div className="space-y-0.5">
-              {starred.map((p) => {
-                const area = areas.find((a) => a.id === p.area_id);
-                return (
-                  <StarredLink key={p.id} project={p} color={areaColorVar(area?.color)} />
-                );
-              })}
-            </div>
-          </>
-        )}
-
-        {/* Areas */}
-        <div className="mt-5" />
-        <SectionHeader
-          title="Areas"
-          action={
-            <button
-              onClick={() => setAreaDialog(true)}
-              title="New area"
-              className="grid h-5 w-5 place-items-center rounded text-subtle hover:bg-surface-2 hover:text-foreground"
-            >
-              <AddIcon className="h-3.5 w-3.5" />
-            </button>
-          }
-        />
-        <div className="space-y-0.5">
-          {areas.map((a) => (
-            <AreaNode key={a.id} area={a} />
-          ))}
-          {areas.length === 0 && (
-            <button
-              onClick={() => setAreaDialog(true)}
-              className="w-full rounded-md border border-dashed border-border px-2 py-1.5 text-left text-xs text-subtle hover:border-primary/50 hover:text-foreground"
-            >
-              + Add your first area (e.g. Work, Health)
-            </button>
-          )}
-        </div>
-
-        {/* Templates */}
-        <TemplatesSection />
-
-        {/* Filters */}
-        <div className="mt-5" />
-        <SectionHeader
-          title="Filters"
-          action={
-            <button
-              onClick={() => setFilterDialog(true)}
-              title="New filter"
-              className="grid h-5 w-5 place-items-center rounded text-subtle hover:bg-surface-2 hover:text-foreground"
-            >
-              <AddIcon className="h-3.5 w-3.5" />
-            </button>
-          }
-        />
-        <nav className="space-y-0.5">
-          {savedFilters.map((f) => (
-            <NavLink
-              key={f.id}
-              to={`/filter/${f.id}`}
-              onClick={closeNav}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  isActive
-                    ? "bg-surface-2 text-foreground"
-                    : "text-muted hover:bg-surface-2/60 hover:text-foreground"
-                )
-              }
-            >
-              <FilterIcon className="h-4 w-4 shrink-0" />
-              <span className="truncate">{f.name}</span>
-            </NavLink>
-          ))}
-          {savedFilters.length === 0 && (
-            <p className="px-2 text-xs text-subtle">No filters yet. Click +</p>
-          )}
-        </nav>
-
-        {/* Labels. Her report: "now that I have a lot of labels it's very
-            crowded." Measured before changing anything: 68 labels, 28 of them
-            with NO open task, and the top ten carrying most of the weight. So a
-            third of that wall led nowhere and the rest was ordered by nothing
-            useful (alphabetically).
-
-            Now: the ones with open work, heaviest first, capped at a handful,
-            with everything else one click away. Nothing becomes unreachable,
-            it just stops being permanently in the way. */}
-        {labels.length > 0 && <LabelStrip labels={labels} onNavigate={closeNav} />}
       </div>
 
       <ProfileCard />
@@ -764,9 +906,11 @@ const LABEL_PEEK = 8;
 function LabelStrip({
   labels,
   onNavigate,
+  move,
 }: {
   labels: Label[];
   onNavigate: () => void;
+  move?: ReactNode;
 }) {
   const [all, setAll] = useState(false);
   // Heaviest first. A label with no open task is not offered by default: there
@@ -782,8 +926,7 @@ function LabelStrip({
 
   return (
     <>
-      <div className="mt-5" />
-      <SectionHeader title="Labels" />
+      <SectionHeader title="Labels" action={move} />
       <div className="flex flex-wrap gap-1 px-1">
         {shown.map((l) => (
           <NavLink

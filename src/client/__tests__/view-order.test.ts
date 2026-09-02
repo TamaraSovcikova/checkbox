@@ -119,3 +119,37 @@ describe("moveView", () => {
     ]);
   });
 });
+
+// Sections use the SAME primitive as the views inside them, so the properties
+// that matter are the ones already pinned above. What is worth pinning
+// separately is that a move only ever speaks for the list it was shown, since
+// the sidebar hides whole sections when they are empty (no starred projects, no
+// labels) and the arrows must step over those rather than through them.
+describe("section ordering", () => {
+  const withKey = (ids: string[]) => ids.map((to) => ({ to }));
+
+  it("moves a section past its visible neighbour, not past a hidden one", () => {
+    // "starred" is absent because she has no starred projects: the list handed
+    // to the mover is what is on screen.
+    const onScreen = ["tasks", "plan", "areas", "labels"];
+    expect(moveView("areas", -1, onScreen, [])).toEqual([
+      "tasks",
+      "areas",
+      "plan",
+      "labels",
+    ]);
+  });
+
+  it("a section that reappears later slots back in where the app puts it", () => {
+    // She ordered the sidebar while "starred" was empty. Starring a project
+    // must not shove it to the bottom of a list that never mentioned it.
+    const stored = ["labels", "tasks"];
+    const nowVisible = withKey(["tasks", "plan", "starred", "labels"]);
+    expect(ids(orderViews(nowVisible, stored))).toEqual([
+      "labels",
+      "tasks",
+      "plan",
+      "starred",
+    ]);
+  });
+});

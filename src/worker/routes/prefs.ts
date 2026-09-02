@@ -82,6 +82,7 @@ function parsePrefs(raw: unknown): UserPrefs {
     return {
       hiddenViews: Array.isArray(p.hiddenViews) ? p.hiddenViews : [],
       viewOrder: Array.isArray(p.viewOrder) ? p.viewOrder : [],
+      sectionOrder: Array.isArray(p.sectionOrder) ? p.sectionOrder : undefined,
       viewDefaults: cleanViewDefaults(p.viewDefaults),
       triageFallbackAreaId: cleanFallback(p.triageFallbackAreaId),
       dimDistantTasks: cleanDim(p.dimDistantTasks),
@@ -112,6 +113,7 @@ prefs.put("/", async (c) => {
   const clean: UserPrefs = {
     hiddenViews: Array.isArray(body.hiddenViews) ? body.hiddenViews : [],
     viewOrder: Array.isArray(body.viewOrder) ? body.viewOrder : [],
+    sectionOrder: Array.isArray(body.sectionOrder) ? body.sectionOrder : undefined,
     viewDefaults: cleanViewDefaults(body.viewDefaults),
     triageFallbackAreaId: cleanFallback(body.triageFallbackAreaId),
     dimDistantTasks: cleanDim(body.dimDistantTasks),

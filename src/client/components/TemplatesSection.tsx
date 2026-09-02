@@ -12,20 +12,32 @@ import {
   DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
 
-function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
+function SectionHeader({
+  title,
+  action,
+  onMove,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  // Section reordering, passed down from the sidebar (see Sidebar SectionMove).
+  onMove?: React.ReactNode;
+}) {
   return (
     <div className="mb-1 flex items-center justify-between px-2">
       <span className="text-xs font-medium uppercase tracking-wide text-subtle">
         {title}
       </span>
-      {action}
+      <div className="flex items-center gap-0.5">
+        {onMove}
+        {action}
+      </div>
     </div>
   );
 }
 
 // Sidebar "Templates" section. Click a template to expand it into tasks anchored
 // to today; the ⋯ menu edits or deletes. Add opens the builder dialog.
-export function TemplatesSection() {
+export function TemplatesSection({ move }: { move?: React.ReactNode }) {
   const { data: templates = [] } = useTemplates();
   const apply = useApplyTemplate();
   const del = useDeleteTemplate();
@@ -43,6 +55,7 @@ export function TemplatesSection() {
       <div className="mt-5" />
       <SectionHeader
         title="Templates"
+        onMove={move}
         action={
           <button
             onClick={() => {
