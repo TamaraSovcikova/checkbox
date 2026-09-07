@@ -18,6 +18,7 @@ import { RECURRENCE_PRESETS, recurrenceLabel } from "../../shared/recurrence";
 import { Markdown } from "../lib/markdown";
 import { safeFormat, safeParse } from "../lib/safe-date";
 import { earliestStartAfterBlockers } from "../lib/blocked";
+import { parkedAgo } from "../lib/due";
 import { completedMessage } from "../lib/completion";
 import { parseDatePhrase, parseCapture } from "../lib/nlp";
 import { PRIORITY_VAR, shouldPill } from "../lib/colors";
@@ -55,6 +56,7 @@ import {
   PlanIcon,
   TimerIcon,
   AttachIcon,
+  ParkIcon,
   CheckIcon,
   NavigateIcon,
 } from "../lib/icons";
@@ -555,6 +557,7 @@ export function TaskSheet({
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [optional, setOptional] = useState(false);
   const [whenever, setWhenever] = useState(false);
+  const [parkReason, setParkReason] = useState("");
   // Which half of the sheet is showing. Always opens on Task: More is where you
   // go deliberately, and a sheet that remembered the other tab would greet the
   // next task with its repeat settings.
@@ -580,6 +583,7 @@ export function TaskSheet({
     setAddingSub(false);
     setOptional(!!task.optional);
     setWhenever(!!task.whenever);
+    setParkReason(task.park_reason ?? "");
     // Keyed on the task's ID, not the task object: `task` is now a live cache
     // read, so it gets a new identity on every refetch, and depending on the
     // object would reset these fields (blowing away half-typed text) each time
@@ -675,6 +679,10 @@ export function TaskSheet({
         task.recurrence && {
           label: recurrenceLabel(task.recurrence),
           Icon: RepeatIcon,
+        },
+        task.parked_at && {
+          label: "parked",
+          Icon: ParkIcon,
         },
         task.snoozed_until && {
           label: `snoozed to ${task.snoozed_until}`,
@@ -1599,6 +1607,55 @@ export function TaskSheet({
               <span className="text-xs text-subtle">
                 {task.time_spent_min > 0 ? `${task.time_spent_min}m spent` : "no time logged"}
               </span>
+            </div>
+
+            {/* Parking. On More because it is a rare, deliberate decision, and
+                because a control that removes a task from every list should not
+                sit a thumb's width from the priority buttons.
+
+                The REASON is the feature, not the flag: her one hand-rolled
+                parked task carried "(reopens only if the author path is ruled an
+                income path)" in its TITLE, because there was nowhere else to put
+                it. If parking took no reason, she would keep doing that. */}
+            <div className="space-y-2 border-t border-border pt-3">
+              {task.parked_at ? (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 text-xs text-muted">
+                      <ParkIcon className="h-3.5 w-3.5" />
+                      Parked {parkedAgo(task.parked_at, todayStr())}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => save({ parked_at: null, park_reason: null })}
+                      className="rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+                    >
+                      Un-park
+                    </button>
+                  </div>
+                  <textarea
+                    value={parkReason}
+                    onChange={(e) => setParkReason(e.target.value)}
+                    onBlur={() =>
+                      parkReason !== (task.park_reason ?? "") &&
+                      save({ park_reason: parkReason.trim() || null })
+                    }
+                    rows={2}
+                    placeholder="What would restart this?"
+                    className="w-full resize-none rounded-md border border-input bg-surface px-2 py-1.5 text-xs text-foreground outline-none placeholder:text-subtle focus:border-primary"
+                  />
+                </>
+              ) : (
+                <button
+                  type="button"
+                  title="Set this aside indefinitely. It leaves every list and only appears in Parked, until you bring it back."
+                  onClick={() => save({ parked_at: new Date().toISOString() })}
+                  className="inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed border-input px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:border-primary/50 hover:bg-surface-2"
+                >
+                  <ParkIcon className="h-4 w-4" />
+                  Park this
+                </button>
+              )}
             </div>
 
             {/* Files and the note this task came from. */}

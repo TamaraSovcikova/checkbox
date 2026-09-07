@@ -7,7 +7,7 @@ import { cn, todayStr, monthAheadStr } from "@/lib/utils";
 import { inTodayView, subtasksDueBy, hasCheckpointDue } from "../lib/today";
 import { isDormant } from "../lib/recurring";
 import { openUnlocks } from "../../shared/flow";
-import { dueLabel, isOverdue } from "../lib/due";
+import { dueLabel, isOverdue, parkedAgo } from "../lib/due";
 import { useToggleToday } from "../lib/use-toggle-today";
 import { isBlocked, blockedLabel, waitingChip } from "../lib/blocked";
 import {
@@ -21,6 +21,7 @@ import {
   CheckpointIcon,
   FlowIcon,
   LinkIcon,
+  ParkIcon,
 } from "../lib/icons";
 
 // ── The one description of what a task looks like ────────────────────────────
@@ -164,6 +165,21 @@ export function TaskMeta({
     <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-subtle">
       {shouldPill(task.priority) && <PriorityPill priority={task.priority} />}
       {/* Coerce: D1 stores 0/1, and a bare `0 &&` would render a literal 0. */}
+      {/* Set aside deliberately. It reaches almost no list, but where it does
+          (the Parked view, a search result, a link chip) it has to say why it is
+          not in the places you would expect it. */}
+      {task.parked_at && !done && (
+        <span
+          className="inline-flex items-center gap-0.5 rounded border border-dashed border-input px-1 py-0.5 text-subtle"
+          title={
+            `Parked ${parkedAgo(task.parked_at, today)}` +
+            (task.park_reason ? ` · ${task.park_reason}` : "")
+          }
+        >
+          <ParkIcon className="h-3 w-3" />
+          parked
+        </span>
+      )}
       {/* No deadline, ever, on purpose. Says so, because the useful thing to
           know when scanning a list is which entries are asking for nothing. */}
       {!!task.whenever && !done && (

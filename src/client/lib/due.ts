@@ -36,3 +36,21 @@ export function dueLabel(due: string, today: string): string {
 
 // Overdue is a state worth seeing without doing the comparison yourself.
 export const isOverdue = (due: string, today: string) => due < today;
+
+// "Parked 4 months ago". The AGE is the point of showing a parked task: the
+// question in a review is not what day you parked it, it is how long it has sat
+// there unexamined, and a raw date makes you do that subtraction yourself.
+export function parkedAgo(parkedAt: string, today: string): string {
+  const day = parkedAt.slice(0, 10);
+  if (day === today) return "today";
+  const [py, pm, pd] = day.split("-").map(Number);
+  const [ty, tm, td] = today.split("-").map(Number);
+  const days = Math.round(
+    (Date.UTC(ty, tm - 1, td) - Date.UTC(py, pm - 1, pd)) / 86_400_000
+  );
+  if (days < 0) return "just now";
+  if (days === 1) return "yesterday";
+  if (days < 14) return `${days} days ago`;
+  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
+  return `${Math.round(days / 30)} months ago`;
+}

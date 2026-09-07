@@ -26,7 +26,7 @@ review.get("/", async (c) => {
   const weekAgo = addDaysStr(today, -7);
   const weekAhead = addDaysStr(today, 7);
 
-  const [completedRes, slippedRes, upcomingRes, createdRes, byAreaRes] =
+  const [completedRes, slippedRes, upcomingRes, createdRes, byAreaRes, parkedRes] =
     await Promise.all([
       c.env.DB.prepare(
         `SELECT id, title, status, completed_at FROM tasks
@@ -66,6 +66,15 @@ review.get("/", async (c) => {
       )
         .bind(userId, weekAgo + "T00:00:00.000Z")
         .all<{ area: string; completed: number }>(),
+      // Parked: not part of the week, deliberately. Everything else here is
+      // "what happened in the last seven days"; this is the standing pile of
+      // decisions that no view will ever show you again on its own.
+      c.env.DB.prepare(
+        `SELECT COUNT(*) AS cnt, MIN(parked_at) AS oldest FROM tasks
+          WHERE user_id = ? AND status != 'done' AND parked_at IS NOT NULL`
+      )
+        .bind(userId)
+        .first<{ cnt: number; oldest: string | null }>(),
     ]);
 
   return c.json({
@@ -75,6 +84,14 @@ review.get("/", async (c) => {
       slipped: slippedRes.results.length,
       upcoming: upcomingRes.results.length,
       created: createdRes?.cnt ?? 0,
+      // Parked tasks appear in no list and nothing brings them back, so the one
+      // moment they can honestly be reconsidered is the moment you are already
+      // reconsidering things. A count, not the tasks: the review is for noticing
+      // that six decisions are sitting unexamined, not for re-reading them here.
+      parked: parkedRes?.cnt ?? 0,
+      // ...and how long the oldest has sat, because "6 parked" is a fact and
+      // "6 parked, oldest 8 months" is a prompt.
+      parked_oldest: parkedRes?.oldest ?? null,
     },
     completed_tasks: completedRes.results,
     slipped_tasks: slippedRes.results,

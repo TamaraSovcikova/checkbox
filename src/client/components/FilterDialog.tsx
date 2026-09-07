@@ -72,6 +72,10 @@ export function FilterDialog({
       const v = q[k];
       if (v && v !== "any") clean[k] = v;
     }
+    // Parked is the one field whose DEFAULT is not "any" (a filter is a working
+    // list, so set-aside work stays out unless asked for). So the value worth
+    // storing is anything that is not "no", the mirror image of the loop above.
+    if (q.parked && q.parked !== "no") clean.parked = q.parked;
 
     if (existing) {
       await update.mutateAsync({ id: existing.id, body: { name: name.trim(), query: clean } });
@@ -316,6 +320,17 @@ export function FilterDialog({
             </div>
 
             <div className="grid grid-cols-2 gap-3">
+              <Field label="Parked">
+                <Select
+                  value={q.parked ?? "no"}
+                  onChange={(v) => set({ parked: v as TriState })}
+                  options={[
+                    ["no", "Exclude parked"],
+                    ["yes", "Only parked"],
+                    ["any", "Include parked"],
+                  ]}
+                />
+              </Field>
               <Field label="Optional">
                 <Select
                   value={q.optional ?? "any"}

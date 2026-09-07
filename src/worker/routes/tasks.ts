@@ -50,6 +50,8 @@ const WRITABLE = [
   "blocked_until",
   "optional",
   "whenever",
+  "parked_at",
+  "park_reason",
   "gcal_hidden",
   "checkpoint_days",
   "checkpoint_next",
@@ -136,6 +138,16 @@ tasks.get("/", async (c) => {
   } else if (q.ids == null) {
     sql += " AND status != 'done'";
   }
+  // Parked tasks leave every list. That is what parking IS: her one hand-rolled
+  // parked task was sitting in a normal area list with "PARKED:" shouting at the
+  // top of it, and a flag that did not remove it would have changed nothing.
+  //
+  // `ids=` is exempt: asking for a task by id is asking for THAT task, and the
+  // sheet reads itself back that way, so a parked task must still answer. Search
+  // is exempt for the same reason (see /search below): typing a name is explicit
+  // intent, and linking or blocking on a parked task is legitimate.
+  if (q.ids == null && q.parked !== "1") sql += " AND parked_at IS NULL";
+  if (q.parked === "1") sql += " AND parked_at IS NOT NULL";
   sql += " ORDER BY position, priority, created_at";
   const { results } = await c.env.DB.prepare(sql)
     .bind(...binds)

@@ -69,6 +69,9 @@ export {
   Flag as CheckpointIcon,
   // The Flow tab draws the project as connected stations; so does this glyph.
   Waypoints as FlowIcon,
+  // Parked: set aside deliberately, until something changes. A pause bar, since
+  // that is what it is: stopped, not finished and not thrown away.
+  CirclePause as ParkIcon,
   // "Whenever I have the chance": no deadline, done when there is room. A
   // coffee cup reads as unhurried, which is the whole claim.
   Coffee as WheneverIcon,

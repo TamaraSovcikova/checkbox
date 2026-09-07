@@ -30,6 +30,7 @@ import {
   OverdueIcon,
   BacklogIcon,
   WheneverIcon,
+  ParkIcon,
   LogbookIcon,
   CalendarIcon,
   FlowIcon,
@@ -98,6 +99,10 @@ const REVIEW_VIEWS: NavDef[] = [
 const MORE_VIEWS: NavDef[] = [
   { to: "/pins", label: "Cards", icon: PinsIcon },
   { to: "/cadences", label: "Cadences", icon: CadenceIcon },
+  // Under More on purpose: a parked task is one you have decided not to think
+  // about, so its list is somewhere you go deliberately, a few times a year.
+  // The Weekly review carries the count, which is what actually brings you here.
+  { to: "/parked", label: "Parked", icon: ParkIcon },
 ];
 const ALL_VIEWS = [...TASK_VIEWS, ...PLAN_VIEWS, ...REVIEW_VIEWS, ...MORE_VIEWS];
 

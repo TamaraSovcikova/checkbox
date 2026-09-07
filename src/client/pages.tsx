@@ -56,6 +56,7 @@ import {
   OverdueIcon,
   BacklogIcon,
   WheneverIcon,
+  ParkIcon,
   LogbookIcon,
   ChevronRightIcon,
   BackIcon,
@@ -112,6 +113,12 @@ const VIEW_META: Record<
   upcoming: { title: "Upcoming", empty: "Nothing upcoming.", icon: UpcomingIcon },
   overdue: { title: "Overdue", empty: "Nothing overdue. Nice.", icon: OverdueIcon },
   backlog: { title: "Backlog", empty: "Backlog is empty.", icon: BacklogIcon },
+  parked: {
+    title: "Parked",
+    empty:
+      "Nothing parked. Park a task to set it aside indefinitely: it leaves every list until you bring it back.",
+    icon: ParkIcon,
+  },
   whenever: {
     title: "Whenever",
     empty:

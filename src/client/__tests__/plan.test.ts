@@ -29,6 +29,8 @@ function task(id: string, over: Partial<Task> = {}): Task {
     gcal_hidden: 0,
     optional: false,
     whenever: false,
+    parked_at: null,
+    park_reason: null,
     planned_date: null,
     scheduled_start: null,
     scheduled_end: null,

@@ -127,6 +127,13 @@ export interface Task {
   // date. Distinct from optional (which says I might not do it at all) and from
   // priority 4 (which ranks a commitment last). See migration 0036.
   whenever: boolean;
+  // Parked: deliberately set aside with no date, until something changes. The
+  // TIMESTAMP is the flag (parked = not null) and is what lets the Parked view
+  // say "parked four months ago", which is the sentence that makes you decide.
+  parked_at: string | null;
+  // What would restart it ("reopens only if the author path is ruled an income
+  // path"). See migration 0037: the reason is the feature.
+  park_reason: string | null;
   planned_date: string | null; // YYYY-MM-DD; "I intend to work on this today" (not a deadline)
   scheduled_start: string | null;
   scheduled_end: string | null;
@@ -234,6 +241,11 @@ export interface FilterQuery {
   // Blocked as the rest of the app defines it (client/lib/blocked): an open
   // task blocker OR a blocked-until date still in the future.
   blocked?: TriState;
+  // Parked tasks are excluded from every view, so a filter that could not ask
+  // about them could never reach one. Default (absent) means "not parked", NOT
+  // "any": a saved filter is a working list, and silently including set-aside
+  // work in one would undo the point of parking.
+  parked?: TriState;
 }
 
 export interface SavedFilter {
@@ -513,7 +525,15 @@ export interface DayPlan {
 // ── Weekly review ──────────────────────────────────────────────────────────
 export interface WeeklyReview {
   period: { from: string; to: string };
-  stats: { completed: number; slipped: number; upcoming: number; created: number };
+  stats: {
+    completed: number;
+    slipped: number;
+    upcoming: number;
+    created: number;
+    // The standing pile of parked decisions, not part of the week's activity.
+    parked?: number;
+    parked_oldest?: string | null;
+  };
   completed_tasks: TaskRef[];
   slipped_tasks: (TaskRef & { due_date: string | null })[];
   upcoming_tasks: (TaskRef & { due_date: string | null })[];

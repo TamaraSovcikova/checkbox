@@ -313,6 +313,31 @@ describe("how the two dates combine", () => {
   });
 });
 
+// Parked is the one filter field whose default is not "any": a saved filter is a
+// working list, and quietly including set-aside work in one would undo the point
+// of parking.
+describe("filters and parked tasks", () => {
+  beforeEach(() => {
+    raw
+      .prepare(
+        "INSERT INTO tasks (id, user_id, title, status, parked_at) VALUES ('p', ?, 'p', 'todo', '2026-05-01T00:00:00.000Z')"
+      )
+      .run(USER);
+    task("live");
+  });
+
+  it("excludes parked by DEFAULT, with nothing said about it", () =>
+    expect(run({})).resolves.toEqual(["live"]));
+
+  it("still excludes it when the filter asks about something else entirely", () =>
+    expect(run({ status: "open" })).resolves.toEqual(["live"]));
+
+  it("reaches them when asked explicitly", async () => {
+    await expect(run({ parked: "yes" })).resolves.toEqual(["p"]);
+    await expect(run({ parked: "any" })).resolves.toEqual(["live", "p"]);
+  });
+});
+
 describe("saved filter order", () => {
   const reorder = (items: { id: string; position: number }[]) =>
     app.request(

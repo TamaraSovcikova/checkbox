@@ -69,6 +69,7 @@ views.get("/today", async (c) => {
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
+       AND parked_at IS NULL
        AND (due_date = ? OR due_date < ? OR substr(scheduled_start,1,10) = ? OR planned_date <= ?
             OR (checkpoint_next IS NOT NULL AND checkpoint_next <= ?)
             OR EXISTS (SELECT 1 FROM subtasks s
@@ -100,6 +101,7 @@ views.get("/upcoming", async (c) => {
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
+       AND parked_at IS NULL
        AND (due_date > ? OR (due_date IS NULL AND planned_date > ?))
        ${NOT_SNOOZED}
      ORDER BY COALESCE(due_date, planned_date), due_time IS NULL, due_time, priority`,
@@ -116,6 +118,7 @@ views.get("/overdue", async (c) => {
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
+       AND parked_at IS NULL
        AND (due_date < ?
             OR EXISTS (SELECT 1 FROM subtasks s
                         WHERE s.task_id = tasks.id AND s.done = 0
@@ -136,6 +139,7 @@ views.get("/backlog", async (c) => {
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
+       AND parked_at IS NULL
        AND area_id IS NULL AND project_id IS NULL
        AND (planned_date IS NULL OR planned_date <> ?)
        -- A "whenever" task is not waiting to be filed, it is already where it
@@ -161,10 +165,30 @@ views.get("/whenever", async (c) => {
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
-       AND whenever = 1
+       AND whenever = 1 AND parked_at IS NULL
        ${NOT_SNOOZED}
      ORDER BY created_at DESC`,
     [userId, today]
+  );
+});
+
+// Parked: deliberately set aside with no date, until something changes.
+//
+// This view is not a convenience on top of the flag, it IS the feature. A parked
+// task leaves every other list and nothing brings it back on its own, so without
+// somewhere to go and look, parking would be deletion with extra admin.
+//
+// Most recently parked first: the freshest decision is the one you are most
+// likely to be revisiting, and the oldest are the ones the weekly review nags
+// about by count rather than by making you scroll to them.
+views.get("/parked", async (c) => {
+  const userId = await getUserId(c);
+  return run(
+    c,
+    `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
+       AND parked_at IS NOT NULL
+     ORDER BY parked_at DESC`,
+    [userId]
   );
 });
 

@@ -159,6 +159,7 @@ const TASK_WRITABLE = [
   // date the connector takes.
   "snoozed_until", "blocked_until", "waiting_on", "waiting_expected",
   "recurrence_until", "recurrence_count",
+  "parked_at", "park_reason",
 ] as const;
 
 // Insert one task from a create-shaped args object and attach any label_names.
@@ -201,7 +202,15 @@ const TOOLS = [
       properties: {
         view: {
           type: "string",
-          enum: ["today", "upcoming", "overdue", "backlog", "logbook", "whenever"],
+          enum: [
+            "today",
+            "upcoming",
+            "overdue",
+            "backlog",
+            "logbook",
+            "whenever",
+            "parked",
+          ],
           description:
             "Smart view filter. `whenever` is the no-deadline-ever pool (hobby goals, things to read): browse it when there is spare time, never schedule from it.",
         },
@@ -332,6 +341,16 @@ const TOOLS = [
         waiting_expected: {
           type: ["string", "null"],
           description: "YYYY-MM-DD, or null: when the waiting_on thing is expected.",
+        },
+        parked_at: {
+          type: ["string", "null"],
+          description:
+            "ISO timestamp, or null to un-park. PARKING sets a task aside deliberately and indefinitely: it leaves every list and nothing brings it back, so it is only seen in the Parked view. Use it for work that has been STOPPED pending some change, not for a short deferral (snoozed_until) and not for a wishlist item (whenever + optional). Set it to now to park.",
+        },
+        park_reason: {
+          type: ["string", "null"],
+          description:
+            "One line: what would restart this ('reopens only if the author path is ruled an income path'). Always set it alongside parked_at; a parked task with no reason is one you cannot judge later.",
         },
         recurrence_until: {
           type: ["string", "null"],
@@ -1052,32 +1071,42 @@ async function handleTool(
         // snoozed tasks. planned_date is how "add to Today" works, so a plan set
         // via update_task(planned_date) must be visible here.
         sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
+               AND parked_at IS NULL
                AND (due_date = ? OR due_date < ? OR substr(scheduled_start,1,10) = ? OR planned_date = ?)
                AND (snoozed_until IS NULL OR snoozed_until <= ?)
                ORDER BY priority, position`;
         binds.push(today, today, today, today, today);
       } else if (args.view === "upcoming") {
         sql = `SELECT * FROM tasks WHERE user_id = ? AND due_date > ? AND status != 'done'
-               ORDER BY due_date, priority`;
+               AND parked_at IS NULL ORDER BY due_date, priority`;
         binds.push(today);
       } else if (args.view === "overdue") {
         sql = `SELECT * FROM tasks WHERE user_id = ? AND due_date < ? AND status != 'done'
-               ORDER BY due_date, priority`;
+               AND parked_at IS NULL ORDER BY due_date, priority`;
         binds.push(today);
       } else if (args.view === "backlog") {
         // Mirrors routes/views: a "whenever" task is not waiting to be filed,
         // it already lives where it belongs.
         sql = `SELECT * FROM tasks WHERE user_id = ? AND area_id IS NULL AND project_id IS NULL
-               AND status != 'done' AND whenever = 0 ORDER BY priority, position`;
+               AND status != 'done' AND whenever = 0 AND parked_at IS NULL
+               ORDER BY priority, position`;
       } else if (args.view === "whenever") {
         sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
-               AND parent_task_id IS NULL AND whenever = 1
+               AND parent_task_id IS NULL AND whenever = 1 AND parked_at IS NULL
                ORDER BY created_at DESC`;
+      } else if (args.view === "parked") {
+        sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
+               AND parent_task_id IS NULL AND parked_at IS NOT NULL
+               ORDER BY parked_at DESC`;
       } else if (args.view === "logbook") {
         sql = `SELECT * FROM tasks WHERE user_id = ? AND status = 'done'
                ORDER BY completed_at DESC LIMIT 100`;
       } else {
-        sql = `SELECT * FROM tasks WHERE user_id = ? AND parent_task_id IS NULL`;
+        // Parked tasks are out of every list here as well. Asking for a
+        // specific task by id still finds one (get_task), and view "parked" is
+        // how you reach the pile on purpose.
+        sql = `SELECT * FROM tasks WHERE user_id = ? AND parent_task_id IS NULL
+               AND parked_at IS NULL`;
         if (args.project_id) {
           sql += " AND project_id = ?";
           binds.push(args.project_id);

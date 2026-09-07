@@ -93,6 +93,7 @@ export default function App() {
               <Route path="overdue" element={<ViewPage name="overdue" />} />
               <Route path="backlog" element={<ViewPage name="backlog" />} />
               <Route path="whenever" element={<ViewPage name="whenever" />} />
+              <Route path="parked" element={<ViewPage name="parked" />} />
               <Route path="logbook" element={<ViewPage name="logbook" />} />
               <Route path="snoozed" element={<ViewPage name="snoozed" />} />
               <Route path="review" element={<ReviewPage />} />

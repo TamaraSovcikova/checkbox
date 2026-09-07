@@ -47,6 +47,7 @@ type FilterQuery = {
   optional?: TriState;
   recurring?: TriState;
   blocked?: TriState;
+  parked?: TriState;
 };
 
 function todayStr(tz = "Europe/Brussels") {
@@ -260,6 +261,13 @@ filters.get("/:id/tasks", async (c) => {
   };
   flagWhere("whenever", query.whenever);
   flagWhere("optional", query.optional);
+
+  // Parked defaults to EXCLUDED rather than to "any", unlike every other filter
+  // field. A saved filter is a working list, and parking exists to keep set-aside
+  // work out of those; a filter that quietly included it would undo the feature.
+  // Asking explicitly still reaches them.
+  if (query.parked === "yes") where.push("t.parked_at IS NOT NULL");
+  else if (query.parked !== "any") where.push("t.parked_at IS NULL");
 
   // Recurring is not a flag column: it is "has a recurrence rule". Empty string
   // counts as none, because that is how the sheet clears it.

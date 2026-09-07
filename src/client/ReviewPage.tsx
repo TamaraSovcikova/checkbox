@@ -1,4 +1,6 @@
 import { safeFormat } from "./lib/safe-date";
+import { parkedAgo } from "./lib/due";
+import { Link } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useReview, useAreas } from "./lib/queries";
 import { StatsWidget } from "./components/StatsWidget";
@@ -37,6 +39,34 @@ export function ReviewPage() {
             <ReviewStat value={data.stats.upcoming} label="Next 7 days" tone="primary" />
             <ReviewStat value={data.stats.created} label="Created" tone="muted" />
           </div>
+
+          {/* Parked. Deliberately NOT a headline number beside the four above:
+              those are all "what happened this week" and this is a standing pile
+              that has nothing to do with the week. It is here because the review
+              is the one moment parked tasks can honestly be reconsidered, since
+              no view will ever surface them on its own.
+
+              The AGE is what makes it a prompt rather than a fact: "6 parked" is
+              trivia, "6 parked, oldest 8 months ago" is a question. */}
+          {!!data.stats.parked && (
+            <ReviewCard title="Parked">
+              <Link
+                to="/parked"
+                className="flex items-baseline gap-2 text-sm text-muted transition-colors hover:text-foreground"
+              >
+                <span className="text-lg font-semibold text-foreground">
+                  {data.stats.parked}
+                </span>
+                <span>
+                  set aside
+                  {data.stats.parked_oldest
+                    ? `, oldest ${parkedAgo(data.stats.parked_oldest, todayStr())}`
+                    : ""}
+                  . Still the right call?
+                </span>
+              </Link>
+            </ReviewCard>
+          )}
 
           <ReviewCard title="Progress">
             <StatsWidget />
