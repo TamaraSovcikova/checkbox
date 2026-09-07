@@ -27,6 +27,7 @@ import {
   DATES_THAT_UNFLAG,
 } from "../../shared/dates";
 import { planNewlyUnblocked } from "../lib/unblock";
+import { runFilterQuery } from "./filters";
 import { parseVaultLine, renderVaultLine, pullDecision } from "../../shared/vault";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { enforceProjectArea } from "../lib/section";
@@ -210,6 +211,7 @@ const TOOLS = [
             "logbook",
             "whenever",
             "parked",
+            "snoozed",
           ],
           description:
             "Smart view filter. `whenever` is the no-deadline-ever pool (hobby goals, things to read): browse it when there is spare time, never schedule from it.",
@@ -914,6 +916,103 @@ const TOOLS = [
   // Things measured by "how long since", not "due when". Answering "when did I
   // last call mum?" and logging it afterwards are the two things worth doing
   // from a chat, which is why these three exist and nothing more.
+  // ── Saved filters ─────────────────────────────────────────────────────────
+  // The filter query language is the richest thing in the app and the connector
+  // could not see it at all: not to run one, not to build one. An agent asked
+  // "what is in my Week filter" had no way to answer.
+  {
+    name: "list_filters",
+    description:
+      "List her saved filters with their queries. Use run_filter to see what one currently matches.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "run_filter",
+    description:
+      "Return the tasks a saved filter currently matches. Identify it by id OR by name (case-insensitive).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string", description: "Alternative to id." },
+      },
+    },
+  },
+  {
+    name: "save_filter",
+    description:
+      "Create a saved filter, or update one by passing its id. The query is ANDed across fields, EXCEPT the two dates, which combine according to `dates`. Everything is optional; an empty query matches every open task.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Omit to create, pass to update." },
+        name: { type: "string" },
+        query: {
+          type: "object",
+          description: "The filter itself. All fields optional and ANDed together.",
+          properties: {
+            text: { type: "string", description: "Substring of the title or notes." },
+            priority_max: {
+              type: "number",
+              enum: [1, 2, 3, 4],
+              description: "Tasks at or above this priority (priority <= N).",
+            },
+            label: { type: "string", description: "Label NAME." },
+            area_id: { type: "string" },
+            project_id: { type: "string" },
+            status: { type: "string", enum: ["open", "done", "any"] },
+            due: {
+              type: "string",
+              enum: ["any", "overdue", "today", "week", "month", "range", "none"],
+              description:
+                "week/month are ROLLING windows from today (next 7 / next 30 days), not calendar weeks or months. `range` reads due_from/due_to.",
+            },
+            due_from: { type: "string", description: "YYYY-MM-DD, inclusive. Range mode only." },
+            due_to: { type: "string", description: "YYYY-MM-DD, inclusive. Range mode only." },
+            planned: {
+              type: "string",
+              enum: ["any", "overdue", "today", "week", "month", "range", "none"],
+              description:
+                "Same vocabulary over planned_date (the day she means to work on it). `overdue` here means a plan she did not get to, not a missed deadline.",
+            },
+            planned_from: { type: "string" },
+            planned_to: { type: "string" },
+            dates: {
+              type: "string",
+              enum: ["all", "any"],
+              description:
+                "How the two DATE conditions combine with each other; everything else stays ANDed. 'any' is what expresses 'due next week OR planned next week'. Default 'all'.",
+            },
+            whenever: { type: "string", enum: ["any", "yes", "no"] },
+            optional: { type: "string", enum: ["any", "yes", "no"] },
+            recurring: { type: "string", enum: ["any", "yes", "no"] },
+            blocked: {
+              type: "string",
+              enum: ["any", "yes", "no"],
+              description:
+                "Blocked = an OPEN task blocker, or a blocked_until date still ahead.",
+            },
+            parked: {
+              type: "string",
+              enum: ["any", "yes", "no"],
+              description:
+                "Defaults to 'no' when omitted, unlike every other field here: a filter is a working list and parked work stays out of one unless asked for.",
+            },
+          },
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "delete_filter",
+    description: "Delete a saved filter. The tasks it matched are untouched.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
   {
     name: "list_trackers",
     description:
@@ -927,6 +1026,35 @@ const TOOLS = [
           description: "Only those at or past their target cadence, or never logged.",
         },
       },
+    },
+  },
+  {
+    name: "update_tracker",
+    description:
+      "Update a cadence tracker: rename it, change or clear its target cadence, move it to a section, or turn its auto-task on and off. Only the fields you pass change.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        target_days: {
+          type: ["number", "null"],
+          description: "Desired interval in days, or null to just count with no target.",
+        },
+        area_id: { type: ["string", "null"] },
+        section: { type: ["string", "null"], description: "Section heading on the Cadences page." },
+        auto_task: {
+          type: "boolean",
+          description:
+            "true = put a task on her Today page when this goes past its cadence. Needs a target_days to mean anything.",
+        },
+        task_title: {
+          type: ["string", "null"],
+          description: "Template for the emitted task. {name} interpolates the tracker's name.",
+        },
+        archived: { type: "boolean", description: "true retires it without deleting its history." },
+      },
+      required: ["id"],
     },
   },
   {
@@ -1035,6 +1163,40 @@ async function calendarWarning(
   return "";
 }
 
+// A saved filter's stored query is JSON text written by the app. Parsed
+// defensively: a filter whose query somehow will not parse should read as an
+// empty filter rather than take the whole call down.
+function safeQuery(raw: unknown): Record<string, unknown> {
+  try {
+    return JSON.parse(String(raw ?? "{}"));
+  } catch {
+    return {};
+  }
+}
+
+// Filters are addressable by id OR by name, because in a chat she says "run my
+// Week filter", not a uuid. Name match is case-insensitive and exact: a
+// substring match would silently run the wrong filter.
+async function findFilter(
+  db: D1Database,
+  userId: string,
+  args: Record<string, unknown>
+): Promise<{ id: string; name: string; query: string } | null> {
+  if (args.id)
+    return db
+      .prepare("SELECT id, name, query FROM saved_filters WHERE id = ? AND user_id = ?")
+      .bind(args.id, userId)
+      .first();
+  if (args.name)
+    return db
+      .prepare(
+        "SELECT id, name, query FROM saved_filters WHERE user_id = ? AND lower(name) = lower(?)"
+      )
+      .bind(userId, args.name)
+      .first();
+  return null;
+}
+
 async function handleTool(
   name: string,
   args: Record<string, unknown>,
@@ -1094,6 +1256,11 @@ async function handleTool(
         sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
                AND parent_task_id IS NULL AND whenever = 1 AND parked_at IS NULL
                ORDER BY created_at DESC`;
+      } else if (args.view === "snoozed") {
+        sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
+               AND parent_task_id IS NULL AND snoozed_until > ?
+               ORDER BY snoozed_until`;
+        binds.push(today);
       } else if (args.view === "parked") {
         sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
                AND parent_task_id IS NULL AND parked_at IS NOT NULL
@@ -2059,6 +2226,97 @@ async function handleTool(
     }
 
     // ── Cadence trackers ─────────────────────────────────────────────────────
+
+    // ── Saved filters ────────────────────────────────────────────────────────
+    case "list_filters": {
+      const { results } = await db
+        .prepare(
+          "SELECT id, name, query, position FROM saved_filters WHERE user_id = ? ORDER BY position, name"
+        )
+        .bind(userId)
+        .all();
+      return json({
+        filters: (results as Record<string, unknown>[]).map((r) => ({
+          id: r.id,
+          name: r.name,
+          query: safeQuery(r.query),
+        })),
+      });
+    }
+
+    case "run_filter": {
+      const row = await findFilter(db, userId, args);
+      if (!row) return text("Filter not found.");
+      // Shares the app's executor rather than re-implementing the query
+      // language (routes/filters runFilterQuery). Two copies of THIS would be
+      // the worst place in the codebase to have them.
+      const rows = await runFilterQuery(db, userId, safeQuery(row.query));
+      const hydrated = await hydrateTasks(db, rows);
+      return json({ filter: row.name, count: hydrated.length, tasks: hydrated });
+    }
+
+    case "save_filter": {
+      const name = String(args.name ?? "").trim();
+      if (!name) return text("name required.");
+      const query = JSON.stringify(args.query ?? {});
+      const id = args.id as string | undefined;
+      if (id) {
+        const res = await db
+          .prepare(
+            "UPDATE saved_filters SET name = ?, query = ? WHERE id = ? AND user_id = ?"
+          )
+          .bind(name, query, id, userId)
+          .run();
+        if (!res.meta.changes) return text(`Filter ${id} not found.`);
+        return text(`Updated filter "${name}".`);
+      }
+      const newId = uuid();
+      await db
+        .prepare(
+          `INSERT INTO saved_filters (id, user_id, name, query, position)
+           VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(position)+1,0) FROM saved_filters WHERE user_id = ?))`
+        )
+        .bind(newId, userId, name, query, userId)
+        .run();
+      return text(`Created filter "${name}" (id: ${newId}).`);
+    }
+
+    case "delete_filter": {
+      const res = await db
+        .prepare("DELETE FROM saved_filters WHERE id = ? AND user_id = ?")
+        .bind(args.id, userId)
+        .run();
+      if (!res.meta.changes) return text(`Filter ${args.id} not found.`);
+      return text(`Deleted filter ${args.id}.`);
+    }
+
+    // ── update_tracker ───────────────────────────────────────────────────────
+    case "update_tracker": {
+      const id = args.id as string;
+      const sets: string[] = [];
+      const binds: unknown[] = [];
+      // `in args` and not truthiness: null is a real value on several of these
+      // (clear the target, take it out of a section).
+      for (const f of ["name", "target_days", "area_id", "section", "task_title"]) {
+        if (f in args) {
+          sets.push(`${f} = ?`);
+          binds.push(args[f] ?? null);
+        }
+      }
+      for (const f of ["auto_task", "archived"]) {
+        if (f in args) {
+          sets.push(`${f} = ?`);
+          binds.push(flagOn(args[f]) ? 1 : 0);
+        }
+      }
+      if (!sets.length) return text("No fields to update.");
+      const res = await db
+        .prepare(`UPDATE trackers SET ${sets.join(", ")} WHERE id = ? AND user_id = ?`)
+        .bind(...binds, id, userId)
+        .run();
+      if (!res.meta.changes) return text(`Tracker ${id} not found.`);
+      return text(`Updated tracker ${id}.`);
+    }
 
     case "list_trackers": {
       const binds: unknown[] = [userId];

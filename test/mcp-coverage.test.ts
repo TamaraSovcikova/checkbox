@@ -106,3 +106,101 @@ describe("MCP subtask coverage", () => {
     expect(update).not.toContain("if (args.due_date)");
   });
 });
+
+// Whole FEATURES, not just task fields.
+//
+// The field-level test above catches a column the connector cannot write. It
+// does not catch an entire feature the connector cannot see, which is what had
+// happened with saved filters: a rich query language, five sessions of work, and
+// no tool to list, run or build one. An agent asked "what is in my Week filter"
+// had no way to answer and no way to say why.
+//
+// So this walks the app's route groups and asks, for each, whether the connector
+// has any tool for it. The exceptions are listed WITH REASONS rather than as a
+// count, because the next person adding a route needs to know whether theirs is
+// like attachments (genuinely not a chat concern) or like saved filters (an
+// oversight that lasted months).
+describe("MCP feature coverage", () => {
+  const mcpSrc = src("mcp.ts");
+  const toolNames = [...mcpSrc.matchAll(/^    name: "([a-z_]+)"/gm)].map((m) => m[1]);
+
+  // route group -> a tool name that covers it
+  const COVERED: Record<string, string> = {
+    areas: "list_areas",
+    projects: "list_projects",
+    tasks: "list_tasks",
+    labels: "list_labels",
+    views: "list_tasks",
+    calendar: "get_calendar",
+    triage: "triage_backlog",
+    "saved-filters": "list_filters",
+    review: "weekly_review",
+    plans: "plan_my_day",
+    notes: "scan_notes_for_tasks",
+    mail: "add_mail_candidates",
+    trackers: "list_trackers",
+  };
+
+  // Deliberately absent, each for a reason that would not change on a new
+  // feature:
+  //   auth / push / prefs   browser-side setup, nothing to ask an agent for.
+  //   attachments           file upload is not something a chat does.
+  //   stats                 weekly_review already carries the numbers.
+  //   export                a download, not a conversation.
+  //   gmail                 OAuth handshake; the mail TOOLS are add_mail_candidates.
+  //   templates             not yet worth it, and named here so the next person
+  //                         knows it was a decision rather than a miss.
+  //   pins                  cards are a layout surface; an agent writing one has
+  //                         no way to know where it should sit.
+  const OUT_OF_SCOPE = [
+    "auth",
+    "prefs",
+    "push",
+    "attachments",
+    "stats",
+    "export",
+    "gmail",
+    "templates",
+    "pins",
+  ];
+
+  it("has a tool for every route group that is not deliberately out of scope", () => {
+    const index = readFileSync(
+      join(__dirname, "..", "src", "worker", "index.ts"),
+      "utf8"
+    );
+    const groups = [...index.matchAll(/app\.route\("\/api\/([a-z-]+)"/g)].map(
+      (m) => m[1]
+    );
+    const uncovered = groups.filter(
+      (g) => !COVERED[g] && !OUT_OF_SCOPE.includes(g)
+    );
+    expect(uncovered, "route groups with no MCP tool and no stated reason").toEqual([]);
+  });
+
+  it("the tools named as covering a group actually exist", () => {
+    for (const [group, tool] of Object.entries(COVERED))
+      expect(toolNames, `${group} claims ${tool}`).toContain(tool);
+  });
+
+  it("can run AND build a saved filter, not merely list them", () => {
+    // Listing without running would have been a worse answer than nothing: it
+    // would look like coverage.
+    for (const t of ["list_filters", "run_filter", "save_filter", "delete_filter"])
+      expect(toolNames).toContain(t);
+  });
+
+  it("can EDIT a tracker, not only create and log one", () => {
+    expect(toolNames).toContain("update_tracker");
+  });
+
+  it("offers every view the app has, including the ones added late", () => {
+    // list_tasks' enum is how an agent discovers these at all.
+    const enumBlock = mcpSrc.slice(
+      mcpSrc.indexOf('enum: [\n            "today"'),
+      mcpSrc.indexOf('description:', mcpSrc.indexOf('enum: [\n            "today"'))
+    );
+    for (const v of ["today", "upcoming", "overdue", "backlog", "logbook", "whenever", "parked", "snoozed"])
+      expect(enumBlock, `view ${v}`).toContain(`"${v}"`);
+  });
+});

@@ -151,17 +151,18 @@ filters.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-// Execute a saved filter and return its matching tasks.
-filters.get("/:id/tasks", async (c) => {
-  const userId = await getUserId(c);
-  const row = await c.env.DB.prepare(
-    "SELECT * FROM saved_filters WHERE id = ? AND user_id = ?"
-  )
-    .bind(c.req.param("id"), userId)
-    .first();
-  if (!row) return c.json({ error: "not found" }, 404);
-  const { query } = rowToFilter(row as Record<string, unknown>);
-
+// Run a filter query and return the matching task rows.
+//
+// EXPORTED and shared, deliberately. The MCP dispatch writes its own SQL for
+// most things, and that duplication has already cost once: parking patched the
+// app's view queries and left the connector's copies leaking. A filter's query
+// language is the most intricate thing in this app, so there is exactly one
+// implementation of it and both callers use it.
+export async function runFilterQuery(
+  db: D1Database,
+  userId: string,
+  query: FilterQuery
+): Promise<Record<string, unknown>[]> {
   let sql = "SELECT t.* FROM tasks t";
   const binds: unknown[] = [userId];
   const where = ["t.user_id = ?", "t.parent_task_id IS NULL"];
@@ -293,8 +294,20 @@ filters.get("/:id/tasks", async (c) => {
   }
 
   sql += ` WHERE ${where.join(" AND ")} ORDER BY t.priority, t.due_date IS NULL, t.due_date, t.position`;
-  const { results } = await c.env.DB.prepare(sql)
-    .bind(...binds)
-    .all();
+  const { results } = await db.prepare(sql).bind(...binds).all();
+  return results as Record<string, unknown>[];
+}
+
+// Execute a saved filter and return its matching tasks.
+filters.get("/:id/tasks", async (c) => {
+  const userId = await getUserId(c);
+  const row = await c.env.DB.prepare(
+    "SELECT * FROM saved_filters WHERE id = ? AND user_id = ?"
+  )
+    .bind(c.req.param("id"), userId)
+    .first();
+  if (!row) return c.json({ error: "not found" }, 404);
+  const { query } = rowToFilter(row as Record<string, unknown>);
+  const results = await runFilterQuery(c.env.DB, userId, query);
   return c.json(await hydrateTasks(c.env.DB, results as Record<string, unknown>[]));
 });

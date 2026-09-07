@@ -24,8 +24,9 @@ Personal task manager. This is the operational file that lives with the code. Na
   fallback. Checkbox-owned events tagged via `extendedProperties.private.checkbox_task_id`.
 - Push: VAPID (RFC 8292) data-less push. Service worker wakes, fetches `/api/push/brief-data`.
   Morning brief cron at 06:00 Brussels (0 6 * * *). Resend email digest gated on RESEND_API_KEY.
-- MCP: JSON-RPC 2.0 over HTTP at `/mcp`. Bearer token auth. 35 tools (read + full
-  write: task/area/project/subtask CRUD, dependencies, recurrence, batch create).
+- MCP: JSON-RPC 2.0 over HTTP at `/mcp`. Bearer token auth. 46 tools (read + full
+  write: task/area/project/subtask CRUD, dependencies, links, recurrence, batch
+  create, saved filters, cadence trackers).
 
 ## Current state (2026-09-01)
 
@@ -36,7 +37,7 @@ installable/auto-updating PWA. Deployed at https://checkbox.tamara-sovcik.worker
 ```
 Health: GET /api/health → { ok: true, phase: 8 }
 Version: GET /api/version → the deployed client bundle (deploy-freshness gate)
-MCP:    /mcp → 43 tools, bearer auth (field parity with the app is tested) (per-user tokens in mcp_tokens)
+MCP:    /mcp → 46 tools, bearer auth (field AND feature parity are tested) (per-user tokens in mcp_tokens)
 D1:     migrations 0001-0036 applied local + remote
 ```
 
@@ -69,11 +70,20 @@ before changing this.
 (`flagOn` / `normalizeFlags` in shared/dates). Never compare `=== 1` against a
 value that came from a client: that exact mistake is in docs/MISTAKES.md twice.
 
-The MCP's writable field set is pinned against the REST one by
-test/mcp-coverage.test.ts, with the deliberate exceptions listed and reasoned.
-Add a task field to `WRITABLE` and that test tells you to add it to
-`TASK_WRITABLE` and to the tool schema too: a field the handler accepts but the
-schema never mentions is a field no agent will ever pass.
+test/mcp-coverage.test.ts pins the connector against the app TWICE: field by
+field (add one to `WRITABLE` and it tells you to add it to `TASK_WRITABLE` and to
+the tool schema, since a field the handler takes but the schema omits is one no
+agent will ever pass), and FEATURE by feature (every `/api/*` route group needs a
+tool or a stated reason not to). The second check exists because saved filters
+went months with a rich query language and no way for the connector to see it.
+
+The connector writes its OWN SQL for the list views, so a rule about what a view
+shows has to be applied in routes/views AND in mcp.ts. That has leaked once
+already (parked tasks stayed visible to agents after leaving every page), which
+is why test/mcp-parked.test.ts pins the connector's behaviour separately. The
+filter query language is the exception: routes/filters exports `runFilterQuery`
+and the connector calls it, because two copies of THAT would be the worst place
+in the codebase for a divergence.
 
 Saved filters can ask about planned date, whenever, optional, recurring and
 blocked as well as the older fields (routes/filters.ts, one shared clause builder
