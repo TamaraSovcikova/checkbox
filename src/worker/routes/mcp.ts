@@ -28,7 +28,12 @@ import {
 } from "../../shared/dates";
 import { planNewlyUnblocked } from "../lib/unblock";
 import { runFilterQuery } from "./filters";
-import { taskCode, parseTaskCode, looksLikeTaskCode } from "../../shared/taskCode";
+import {
+  taskCode,
+  parseTaskCode,
+  looksLikeTaskCode,
+  looksLikeIdPrefix,
+} from "../../shared/taskCode";
 import { parseVaultLine, renderVaultLine, pullDecision } from "../../shared/vault";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { enforceProjectArea } from "../lib/section";
@@ -1201,12 +1206,24 @@ async function resolveTaskId(
   const raw = typeof ref === "string" ? ref.trim() : "";
   if (!raw) return null;
   const seq = parseTaskCode(raw);
-  if (seq == null) return raw; // a uuid, or something that will simply not match
-  const row = await db
-    .prepare("SELECT id FROM tasks WHERE user_id = ? AND seq = ?")
-    .bind(userId, seq)
-    .first<{ id: string }>();
-  return row?.id ?? null;
+  if (seq != null) {
+    const row = await db
+      .prepare("SELECT id FROM tasks WHERE user_id = ? AND seq = ?")
+      .bind(userId, seq)
+      .first<{ id: string }>();
+    return row?.id ?? null;
+  }
+  // A uuid fragment, which is what an older agent quotes and what she may paste
+  // back at one. Ambiguous prefixes resolve to nothing rather than to a guess:
+  // acting on the wrong task is worse than saying the reference was unclear.
+  if (raw.length < 36 && looksLikeIdPrefix(raw)) {
+    const { results } = await db
+      .prepare("SELECT id FROM tasks WHERE user_id = ? AND id LIKE ? LIMIT 2")
+      .bind(userId, `${raw.toLowerCase()}%`)
+      .all<{ id: string }>();
+    return results?.length === 1 ? results[0].id : null;
+  }
+  return raw; // a full uuid, or something that will simply not match
 }
 
 // A saved filter's stored query is JSON text written by the app. Parsed
@@ -1291,13 +1308,16 @@ async function handleTool(
     "get_task", "update_task", "complete_task", "delete_task", "reschedule_task",
     "set_task_checkpoint", "schedule_block",
   ]);
+  const refLike = (v: unknown) =>
+    typeof v === "string" &&
+    (looksLikeTaskCode(v) || (v.length < 36 && looksLikeIdPrefix(v)));
   for (const field of ["task_id", "linked_id", "depends_on_id", "parent_task_id"])
-    if (typeof args[field] === "string" && looksLikeTaskCode(args[field] as string)) {
+    if (refLike(args[field])) {
       const resolved = await resolveTaskId(db, userId, args[field]);
       if (!resolved) return text(`No task ${args[field]}.`);
       args = { ...args, [field]: resolved };
     }
-  if (TASK_ID_TOOLS.has(name) && typeof args.id === "string" && looksLikeTaskCode(args.id)) {
+  if (TASK_ID_TOOLS.has(name) && refLike(args.id)) {
     const resolved = await resolveTaskId(db, userId, args.id);
     if (!resolved) return text(`No task ${args.id}.`);
     args = { ...args, id: resolved };

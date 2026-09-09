@@ -15,7 +15,7 @@ import {
   DATES_THAT_UNFLAG,
 } from "../../shared/dates";
 import { planNewlyUnblocked } from "../lib/unblock";
-import { parseTaskCode } from "../../shared/taskCode";
+import { parseTaskCode, looksLikeIdPrefix } from "../../shared/taskCode";
 
 export const tasks = new Hono<{ Bindings: Bindings }>();
 
@@ -171,14 +171,35 @@ tasks.get("/search", async (c) => {
   // A code match does NOT replace the text search, it leads it: "CB-9" is
   // unambiguous, but a bare "9" might genuinely have been meant as text.
   const seq = parseTaskCode(q);
+  // A uuid, or the front of one. Agents quote `d801b76c` and will keep doing so:
+  // old chat history is full of them and a client with stale context has no code
+  // to offer instead. Search takes what she can paste out of a conversation.
+  //
+  // DONE tasks are searchable by id or code, unlike by text: pasting an exact
+  // identifier is asking for one specific task, and answering "no results"
+  // because it was finished is unhelpful when what she wants is to look at it.
+  const idPrefix = looksLikeIdPrefix(q) ? `${q.toLowerCase()}%` : null;
   const { results } = await c.env.DB.prepare(
     `SELECT * FROM tasks
-       WHERE user_id = ? AND parent_task_id IS NULL AND status != 'done'
-         AND (seq = ? OR title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
-     ORDER BY (seq = ?) DESC, (title LIKE ? ESCAPE '\\') DESC, priority, due_date
+       WHERE user_id = ? AND parent_task_id IS NULL
+         AND (
+           seq = ?
+           OR (? IS NOT NULL AND id LIKE ?)
+           OR (status != 'done' AND (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\'))
+         )
+     ORDER BY (seq = ?) DESC, (? IS NOT NULL AND id LIKE ?) DESC,
+              (title LIKE ? ESCAPE '\\') DESC, priority, due_date
      LIMIT 20`
   )
-    .bind(userId, seq, like, like, seq, like)
+    .bind(
+      userId,
+      seq,
+      idPrefix, idPrefix,
+      like, like,
+      seq,
+      idPrefix, idPrefix,
+      like
+    )
     .all();
   return c.json(await hydrateTasks(c.env.DB, results as Record<string, unknown>[]));
 });
@@ -197,6 +218,26 @@ tasks.get("/code/:seq", async (c) => {
     .first();
   if (!row) return c.json({ error: "not found" }, 404);
   const [task] = await hydrateTasks(c.env.DB, [row as Record<string, unknown>]);
+  return c.json(task);
+});
+
+// Resolve a uuid PREFIX to a task, for a fragment pasted out of a chat.
+// Registered before /:id, like /code and /search.
+tasks.get("/ref/:prefix", async (c) => {
+  const userId = await getUserId(c);
+  const prefix = (c.req.param("prefix") ?? "").toLowerCase();
+  if (!looksLikeIdPrefix(prefix)) return c.json({ error: "not found" }, 404);
+  const { results } = await c.env.DB.prepare(
+    "SELECT * FROM tasks WHERE user_id = ? AND id LIKE ? LIMIT 2"
+  )
+    .bind(userId, `${prefix}%`)
+    .all();
+  // Two matches means the fragment is too short to name one task. Saying so
+  // beats opening whichever came back first, which is how you edit the wrong
+  // thing without noticing.
+  if (results.length !== 1)
+    return c.json({ error: results.length ? "ambiguous" : "not found" }, 404);
+  const [task] = await hydrateTasks(c.env.DB, results as Record<string, unknown>[]);
   return c.json(task);
 });
 

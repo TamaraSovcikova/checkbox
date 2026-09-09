@@ -28,7 +28,15 @@ export function TaskLinkPage() {
     (async () => {
       try {
         const code = parseTaskCode(ref);
-        const task = code != null ? await api.taskByCode(code) : await api.getTask(ref);
+        const task =
+          code != null
+            ? await api.taskByCode(code)
+            : // A full uuid resolves directly; a fragment (what an agent quotes)
+              // goes through the prefix lookup, which refuses an ambiguous one
+              // rather than opening whichever task came back first.
+              ref.length === 36
+              ? await api.getTask(ref)
+              : await api.taskByRef(ref);
         if (!live) return;
         // replace, not push: Back should return to wherever she came from, not
         // to a route that would immediately re-open the panel.

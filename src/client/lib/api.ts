@@ -218,6 +218,8 @@ export const api = {
     httpMutate("POST", "/api/saved-filters/reorder", items),
   // By CODE (CB-142) rather than by uuid, for the /task/:ref deep link.
   taskByCode: (seq: number) => http<Task>(`/api/tasks/code/${seq}`),
+  // By a uuid FRAGMENT, for one pasted out of a chat reply.
+  taskByRef: (prefix: string) => http<Task>(`/api/tasks/ref/${prefix}`),
   filterTasks: (id: string) =>
     http<Task[]>(`/api/saved-filters/${id}/tasks`),
 

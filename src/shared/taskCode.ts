@@ -34,3 +34,17 @@ export function parseTaskCode(input: string | null | undefined): number | null {
 // accepts either, so "142" resolves to a task and "buy milk" searches.
 export const looksLikeTaskCode = (input: string): boolean =>
   parseTaskCode(input) !== null;
+
+// Does this look like a uuid, or the front of one?
+//
+// Agents quote `d801b76c` — the first block of a uuid — and will keep doing so:
+// older chat history is full of them, and a client with stale context has no
+// code to use instead. Search has to accept what she can actually paste out of a
+// conversation, not only what the app would rather she used.
+//
+// Four hex characters minimum. Shorter than that and "cafe" or "dead" would
+// start resolving tasks out of a title search.
+export function looksLikeIdPrefix(input: string | null | undefined): boolean {
+  const s = String(input ?? "").trim();
+  return /^[0-9a-f]{4,}(-[0-9a-f]{1,})*$/i.test(s) && !/^\d+$/.test(s);
+}
