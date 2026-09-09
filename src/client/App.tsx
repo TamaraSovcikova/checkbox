@@ -15,6 +15,7 @@ import {
 } from "./pages";
 import { SettingsPage } from "./SettingsPage";
 import { ReviewPage } from "./ReviewPage";
+import { TaskLinkPage } from "./TaskLinkPage";
 import { SharePage } from "./SharePage";
 import { MailInboxPage } from "./components/MailInbox";
 import { PinsPage } from "./components/Pins";
@@ -94,6 +95,8 @@ export default function App() {
               <Route path="backlog" element={<ViewPage name="backlog" />} />
               <Route path="whenever" element={<ViewPage name="whenever" />} />
               <Route path="parked" element={<ViewPage name="parked" />} />
+              {/* Deep link to one task: /task/<uuid> or /task/CB-142. */}
+              <Route path="task/:ref" element={<TaskLinkPage />} />
               <Route path="logbook" element={<ViewPage name="logbook" />} />
               <Route path="snoozed" element={<ViewPage name="snoozed" />} />
               <Route path="review" element={<ReviewPage />} />

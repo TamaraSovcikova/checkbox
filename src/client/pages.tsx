@@ -74,12 +74,14 @@ function TaskList({
   controls,
   indexOffset = 0,
   tintArea = true,
+  showCode = false,
 }: {
   tasks: Task[];
   empty: string;
   controls?: TaskControls;
   indexOffset?: number;
   tintArea?: boolean;
+  showCode?: boolean;
 }) {
   const { open } = useTaskUI();
   if (tasks.length === 0)
@@ -99,6 +101,7 @@ function TaskList({
           onOpen={open}
           selection={controls?.rowFor(t, indexOffset + i)}
           tintArea={tintArea}
+          showCode={showCode}
         />
       ))}
     </div>
@@ -135,7 +138,7 @@ const VIEW_META: Record<
 
 // ── Client-side sort / group over the fetched task list ───────────────────────
 
-type SortKey = "manual" | "priority" | "due" | "title" | "created";
+type SortKey = "manual" | "priority" | "due" | "title" | "created" | "code";
 // "commitment" splits a list by whether each task is something you have taken
 // on or something you might never get to (the `optional` flag). It is the axis
 // the Whenever view needs and it is not specific to that view: any list can
@@ -149,6 +152,10 @@ const SORT_LABEL: Record<SortKey, string> = {
   due: "Due date",
   title: "Title",
   created: "Date created",
+  // Codes are handed out in creation order, so this is "oldest first" with a
+  // number you can read. Its own option because "sort by CB number" is what she
+  // will think when she is working from a list of codes an agent gave her.
+  code: "Code",
 };
 
 const GROUP_LABEL: Record<GroupKey, string> = {
@@ -189,6 +196,10 @@ function sortTasks(tasks: Task[], key: SortKey): Task[] {
       return arr.sort((a, b) => a.title.localeCompare(b.title));
     case "created":
       return arr.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    case "code":
+      // Ascending, unlike created: CB-1 first reads as counting up, and a list
+      // of codes to work through goes in the order they were given.
+      return arr.sort((a, b) => (a.seq ?? Infinity) - (b.seq ?? Infinity));
     default:
       return arr.sort((a, b) => a.position - b.position);
   }
@@ -331,6 +342,10 @@ function useTaskCollection(
         controls={controls}
         indexOffset={offset}
         tintArea={tintArea}
+        // The code earns a slot on the row exactly when it is what the list is
+        // ordered by. Everywhere else it would be a number on 400 rows that she
+        // is not currently using.
+        showCode={sort === "code"}
       />
     );
   }

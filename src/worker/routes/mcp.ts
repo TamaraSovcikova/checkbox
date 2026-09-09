@@ -28,6 +28,7 @@ import {
 } from "../../shared/dates";
 import { planNewlyUnblocked } from "../lib/unblock";
 import { runFilterQuery } from "./filters";
+import { taskCode, parseTaskCode, looksLikeTaskCode } from "../../shared/taskCode";
 import { parseVaultLine, renderVaultLine, pullDecision } from "../../shared/vault";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { enforceProjectArea } from "../lib/section";
@@ -1163,6 +1164,51 @@ async function calendarWarning(
   return "";
 }
 
+// Every task the connector hands back carries the two things a client needs to
+// NAME it: the short code, and a link that opens it.
+//
+// Applied centrally rather than at each return, because there are a dozen places
+// that return tasks and the whole complaint was that one of them handed over a
+// uuid. A decoration that has to be remembered is one that will be forgotten.
+function withRefs<T extends Record<string, unknown>>(
+  task: T,
+  base: string
+): T & { code: string | null; url: string | null } {
+  const code = taskCode(task.seq as number | null);
+  return {
+    ...task,
+    code,
+    // By CODE, not by uuid: the link and the thing she reads out are then the
+    // same string, and a link she can retype is worth more than a shorter one.
+    url: code ? `${base}/task/${code}` : null,
+  };
+}
+
+const decorate = (tasks: Record<string, unknown>[], base: string) =>
+  tasks.map((t) => withRefs(t, base));
+
+// Resolve whatever the client passed as a task id into a real one.
+//
+// The point of a short code is that she can SAY it: "close CB-142". If the tools
+// only took uuids, an agent hearing that would have to search by title first,
+// and the code would be decoration. A uuid passes straight through, so nothing
+// that worked before changes.
+async function resolveTaskId(
+  db: D1Database,
+  userId: string,
+  ref: unknown
+): Promise<string | null> {
+  const raw = typeof ref === "string" ? ref.trim() : "";
+  if (!raw) return null;
+  const seq = parseTaskCode(raw);
+  if (seq == null) return raw; // a uuid, or something that will simply not match
+  const row = await db
+    .prepare("SELECT id FROM tasks WHERE user_id = ? AND seq = ?")
+    .bind(userId, seq)
+    .first<{ id: string }>();
+  return row?.id ?? null;
+}
+
 // A saved filter's stored query is JSON text written by the app. Parsed
 // defensively: a filter whose query somehow will not parse should read as an
 // empty filter rather than take the whole call down.
@@ -1197,6 +1243,16 @@ async function findFilter(
   return null;
 }
 
+// What a client is told, once, at connect time.
+//
+// Kept short and concrete. An instruction block that explains the whole app gets
+// skimmed; three rules about how to name a task do not.
+const HOW_TO_TALK_ABOUT_TASKS = [
+  "Every task carries a short code (CB-142) and a url. When you mention a task to the user, write its TITLE as a markdown link to that url, and put the code after it: [Buy the tickets](https://.../task/CB-142) (CB-142).",
+  "NEVER quote a task's uuid to the user. It cannot be read aloud, searched for, or typed, and the user has said it makes a conversation about their own tasks impossible to follow up on. The uuid is for tool calls only.",
+  "Tools that take a task id also accept a code, so you can act on what the user says: 'close CB-142' works without a lookup.",
+].join("\n");
+
 async function handleTool(
   name: string,
   args: Record<string, unknown>,
@@ -1204,6 +1260,9 @@ async function handleTool(
   userId: string
 ): Promise<unknown> {
   const db = env.DB;
+  // Where her app lives, for the task links below. Trailing slash trimmed so
+  // `${base}/task/...` cannot come out doubled.
+  const base = (env.WORKER_URL ?? "").replace(/\/$/, "");
 
   // ── Every date-shaped argument, checked and normalised before any handler
   // sees it. THIS is where the "null" dates came from: reschedule_task typed
@@ -1219,6 +1278,30 @@ async function handleTool(
   const dated = checkDateFields(args);
   if (!dated.ok) return text(`Rejected: ${dated.error}`);
   args = dated.value;
+
+  // ── A short code works anywhere a task id does ───────────────────────────
+  //
+  // Resolved once, above the switch, for the same reason the dates are: the
+  // alternative is remembering it in each of the twenty handlers that take a
+  // task, and the one that gets forgotten is the one she uses.
+  //
+  // `id` is only treated as a task reference for tools whose `id` IS a task;
+  // update_area and delete_filter also take an `id` and it means something else.
+  const TASK_ID_TOOLS = new Set([
+    "get_task", "update_task", "complete_task", "delete_task", "reschedule_task",
+    "set_task_checkpoint", "schedule_block",
+  ]);
+  for (const field of ["task_id", "linked_id", "depends_on_id", "parent_task_id"])
+    if (typeof args[field] === "string" && looksLikeTaskCode(args[field] as string)) {
+      const resolved = await resolveTaskId(db, userId, args[field]);
+      if (!resolved) return text(`No task ${args[field]}.`);
+      args = { ...args, [field]: resolved };
+    }
+  if (TASK_ID_TOOLS.has(name) && typeof args.id === "string" && looksLikeTaskCode(args.id)) {
+    const resolved = await resolveTaskId(db, userId, args.id);
+    if (!resolved) return text(`No task ${args.id}.`);
+    args = { ...args, id: resolved };
+  }
 
   switch (name) {
     // ── list_tasks ──────────────────────────────────────────────────────────
@@ -1296,7 +1379,10 @@ async function handleTool(
       }
 
       const { results } = await db.prepare(sql).bind(...binds).all();
-      const tasks = await hydrateTasks(db, results as Record<string, unknown>[]);
+      const tasks = decorate(
+        await hydrateTasks(db, results as Record<string, unknown>[]),
+        base
+      );
       return json({ tasks, count: tasks.length });
     }
 
@@ -1337,7 +1423,7 @@ async function handleTool(
       ).bind(args.id, userId).first();
       if (!row) return text(`Task ${args.id} not found.`);
       const [task] = await hydrateTasks(db, [row as Record<string, unknown>]);
-      return json({ task });
+      return json({ task: withRefs(task as Record<string, unknown>, base) });
     }
 
     // ── update_task ─────────────────────────────────────────────────────────
@@ -2251,7 +2337,7 @@ async function handleTool(
       // language (routes/filters runFilterQuery). Two copies of THIS would be
       // the worst place in the codebase to have them.
       const rows = await runFilterQuery(db, userId, safeQuery(row.query));
-      const hydrated = await hydrateTasks(db, rows);
+      const hydrated = decorate(await hydrateTasks(db, rows), base);
       return json({ filter: row.name, count: hydrated.length, tasks: hydrated });
     }
 
@@ -2466,7 +2552,16 @@ mcp.post("/", async (c) => {
       ok(id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "checkbox", version: "3.1.0" },
+        serverInfo: { name: "checkbox", version: "3.2.0" },
+        // Server-level instructions: the client reads these once and they shape
+        // every reply it writes about her tasks.
+        //
+        // This exists because of a specific complaint: agents discussing her
+        // tasks quoted the uuid, since in the JSON the uuid was the only unique
+        // thing to quote, and a conversation full of them is one she cannot
+        // follow up on. Every task now carries a `code` and a `url`, and this is
+        // what tells a client to USE them.
+        instructions: HOW_TO_TALK_ABOUT_TASKS,
       })
     );
   }

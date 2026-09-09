@@ -19,6 +19,7 @@ import { Markdown } from "../lib/markdown";
 import { safeFormat, safeParse } from "../lib/safe-date";
 import { earliestStartAfterBlockers } from "../lib/blocked";
 import { parkedAgo } from "../lib/due";
+import { taskCode } from "../../shared/taskCode";
 import { completedMessage } from "../lib/completion";
 import { parseDatePhrase, parseCapture } from "../lib/nlp";
 import { PRIORITY_VAR, shouldPill } from "../lib/colors";
@@ -852,6 +853,22 @@ export function TaskSheet({
                   things every other surface could already do and the panel
                   could not. They sit on the breadcrumb line rather than beside
                   the title, so the title stays a single editable field. */}
+              {/* The short code, where she can read it and copy it. Quiet, and
+                  on the breadcrumb line rather than beside the title: it is how
+                  you REFER to the task, not part of what the task says. */}
+              {task.seq != null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(taskCode(task.seq)!);
+                    toast(`${taskCode(task.seq)} copied`);
+                  }}
+                  title="Copy this task's code. Agents and search both accept it."
+                  className="shrink-0 rounded px-1 font-mono text-[11px] text-subtle transition-colors hover:bg-surface-2 hover:text-foreground"
+                >
+                  {taskCode(task.seq)}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onNavigate}

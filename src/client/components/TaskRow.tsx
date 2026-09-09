@@ -40,6 +40,9 @@ export function TaskRow({
   task,
   onOpen,
   selection,
+  // Print the short code on this row. The list turns it on when sorted BY code,
+  // where the number is what you are reading down.
+  showCode = false,
   // Inside a single area or project every row would carry the SAME area colour,
   // which is just noise. Those pages pass false; mixed views (Today, Backlog,
   // Upcoming) keep it, which is where the colour actually tells you something.
@@ -48,6 +51,7 @@ export function TaskRow({
   task: Task;
   onOpen: (t: Task) => void;
   selection?: RowSelection;
+  showCode?: boolean;
   tintArea?: boolean;
 }) {
   const complete = useCompleteTask();
@@ -355,7 +359,7 @@ export function TaskRow({
             </ul>
             {/* The parent's context (project, area, its own due date), minus the
                 "N subtasks today" chip: the row IS those subtasks now. */}
-            <TaskMeta task={task} hideDueSubs />
+            <TaskMeta task={task} hideDueSubs showCode={showCode} />
           </div>
         ) : (
         <button
@@ -377,7 +381,7 @@ export function TaskRow({
           >
             {task.title}
           </div>
-          <TaskMeta task={task} />
+          <TaskMeta task={task} showCode={showCode} />
         </button>
         )}
 

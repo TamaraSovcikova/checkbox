@@ -15,6 +15,7 @@ import {
   DATES_THAT_UNFLAG,
 } from "../../shared/dates";
 import { planNewlyUnblocked } from "../lib/unblock";
+import { parseTaskCode } from "../../shared/taskCode";
 
 export const tasks = new Hono<{ Bindings: Bindings }>();
 
@@ -162,16 +163,41 @@ tasks.get("/search", async (c) => {
   const q = (c.req.query("q") ?? "").trim();
   if (!q) return c.json([]);
   const like = `%${q.replace(/[%_]/g, (m) => "\\" + m)}%`;
+  // A short code typed into the search box resolves to that task, and it wins.
+  // "142" is otherwise a substring of nothing useful, and typing a code is the
+  // most specific thing she can do: it should not come back ranked under three
+  // tasks whose notes happen to contain the digits.
+  //
+  // A code match does NOT replace the text search, it leads it: "CB-9" is
+  // unambiguous, but a bare "9" might genuinely have been meant as text.
+  const seq = parseTaskCode(q);
   const { results } = await c.env.DB.prepare(
     `SELECT * FROM tasks
        WHERE user_id = ? AND parent_task_id IS NULL AND status != 'done'
-         AND (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
-     ORDER BY (title LIKE ? ESCAPE '\\') DESC, priority, due_date
+         AND (seq = ? OR title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
+     ORDER BY (seq = ?) DESC, (title LIKE ? ESCAPE '\\') DESC, priority, due_date
      LIMIT 20`
   )
-    .bind(userId, like, like, like)
+    .bind(userId, seq, like, like, seq, like)
     .all();
   return c.json(await hydrateTasks(c.env.DB, results as Record<string, unknown>[]));
+});
+
+// Look a task up by its short code. Registered before /:id so "code" is not read
+// as a task id.
+tasks.get("/code/:seq", async (c) => {
+  const userId = await getUserId(c);
+  const seq = Number(c.req.param("seq"));
+  if (!Number.isSafeInteger(seq) || seq < 1)
+    return c.json({ error: "not found" }, 404);
+  const row = await c.env.DB.prepare(
+    "SELECT * FROM tasks WHERE user_id = ? AND seq = ?"
+  )
+    .bind(userId, seq)
+    .first();
+  if (!row) return c.json({ error: "not found" }, 404);
+  const [task] = await hydrateTasks(c.env.DB, [row as Record<string, unknown>]);
+  return c.json(task);
 });
 
 tasks.get("/:id", async (c) => {

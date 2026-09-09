@@ -216,6 +216,8 @@ export const api = {
     http(`/api/saved-filters/${id}`, { method: "DELETE" }),
   reorderFilters: (items: { id: string; position: number }[]) =>
     httpMutate("POST", "/api/saved-filters/reorder", items),
+  // By CODE (CB-142) rather than by uuid, for the /task/:ref deep link.
+  taskByCode: (seq: number) => http<Task>(`/api/tasks/code/${seq}`),
   filterTasks: (id: string) =>
     http<Task[]>(`/api/saved-filters/${id}/tasks`),
 

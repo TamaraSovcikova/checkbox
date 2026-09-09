@@ -53,6 +53,7 @@ const sample: Task = {
     gcal_hidden: 0,
   optional: false,
   whenever: false,
+  seq: 1,
   parked_at: null,
   park_reason: null,
   planned_date: null,

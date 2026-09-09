@@ -130,6 +130,9 @@ export interface Task {
   // Parked: deliberately set aside with no date, until something changes. The
   // TIMESTAMP is the flag (parked = not null) and is what lets the Parked view
   // say "parked four months ago", which is the sentence that makes you decide.
+  // The number behind the short code (CB-142). Assigned by the database on
+  // insert; see shared/taskCode and migration 0038.
+  seq: number | null;
   parked_at: string | null;
   // What would restart it ("reopens only if the author path is ruled an income
   // path"). See migration 0037: the reason is the feature.

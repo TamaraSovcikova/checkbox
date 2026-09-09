@@ -1,6 +1,7 @@
 import type { Task } from "../../shared/types";
 import { useAreas, useProjects, useViewPrefs } from "../lib/queries";
 import { recurrenceLabel } from "../../shared/recurrence";
+import { taskCode } from "../../shared/taskCode";
 import { areaColorVar, shouldPill } from "../lib/colors";
 import { PriorityPill } from "./ui";
 import { cn, todayStr, monthAheadStr } from "@/lib/utils";
@@ -132,10 +133,13 @@ export function TaskMeta({
   task,
   hideDoing = false,
   hideDueSubs = false,
+  showCode = false,
 }: {
   task: Task;
   hideDoing?: boolean;
   hideDueSubs?: boolean;
+  // Print the short code on this row. Off by default: see the chip below.
+  showCode?: boolean;
 }) {
   const { area, project } = useTaskArea(task);
   const done = task.status === "done";
@@ -165,6 +169,14 @@ export function TaskMeta({
     <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-subtle">
       {shouldPill(task.priority) && <PriorityPill priority={task.priority} />}
       {/* Coerce: D1 stores 0/1, and a bare `0 &&` would render a literal 0. */}
+      {/* The short code. Shown only when `showCode` is on (the code sort, and
+          search results), because on an ordinary list it would be 400 rows of a
+          number she is not currently using. The sheet always shows it. */}
+      {showCode && task.seq != null && (
+        <span className="font-mono text-subtle" title="Refer to this task by its code">
+          {taskCode(task.seq)}
+        </span>
+      )}
       {/* Set aside deliberately. It reaches almost no list, but where it does
           (the Parked view, a search result, a link chip) it has to say why it is
           not in the places you would expect it. */}
