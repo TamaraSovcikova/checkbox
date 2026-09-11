@@ -28,7 +28,7 @@ Personal task manager. This is the operational file that lives with the code. Na
   write: task/area/project/subtask CRUD, dependencies, links, recurrence, batch
   create, saved filters, cadence trackers).
 
-## Current state (2026-09-01)
+## Current state (2026-09-11)
 
 **Phases 0-4 + Tier 1 + Tier 2 + the Tier 4 moat (ambient planner #30, note
 extraction #31) are all live**, plus full activation (push, email, R2) and an
@@ -38,7 +38,7 @@ installable/auto-updating PWA. Deployed at https://checkbox.tamara-sovcik.worker
 Health: GET /api/health → { ok: true, phase: 8 }
 Version: GET /api/version → the deployed client bundle (deploy-freshness gate)
 MCP:    /mcp → 46 tools, bearer auth (field AND feature parity are tested) (per-user tokens in mcp_tokens)
-D1:     migrations 0001-0036 applied local + remote
+D1:     migrations 0001-0038 applied local + remote
 ```
 
 Surfaces beyond the task views: `/home` (composable widget dashboard, layout in
@@ -54,6 +54,19 @@ due/planned dates when the flag goes on, since the two claims contradict.
 `/whenever` splits into TWO TABS by `optional`: "Taking on" (actively picking it
 up) and "Someday" (might never). whenever + optional together = bucket list; the
 `commitment` grouping is the same split, available on any list.
+
+Every task has a short code, `CB-<seq>`, shown on the sheet and returned by the
+connector with a `/task/CB-142` deep link. `seq` is assigned by a database
+trigger from a per-user high-water counter (migration 0038): never MAX+1, which
+would hand a deleted task's code to the next one. Codes and uuid fragments (4+
+hex) are accepted by search, the `/task/:ref` route and every connector tool that
+takes a task id; an ambiguous fragment resolves to nothing, never to a guess.
+The connector tells clients at connect time to name tasks by title-as-link plus
+code and never quote a uuid.
+
+Parked tasks (`parked_at` not null) leave EVERY list: the five views in
+routes/views, the list endpoint, saved-filter defaults, and the connector's own
+copies of the view SQL in routes/mcp. Reachable by id, search and `/parked`.
 
 A task RENDERS as its due steps whenever it has one due or overdue
 (`isSubtaskLed`), not only when the step is its sole claim on today. Two separate
@@ -103,7 +116,9 @@ Migration index: 0001-0031 as before (init, calendar, push, auth, recurrence,
 tier2, day_plans, note_candidates, attachments, trackers, checkpoints, reminders,
 vault sync) · 0032 projects.starred · 0033 trackers.section · 0034 task_links
 (symmetric related-task links, both rows written per link) · 0035 date-shape
-triggers on tasks/subtasks/projects · 0036 tasks.whenever.
+triggers on tasks/subtasks/projects · 0036 tasks.whenever · 0037
+tasks.parked_at + park_reason · 0038 tasks.seq + the task_seq counter
+(short codes).
 
 A task carries TWO dates. `due_date` is when it is owed; `planned_date` is the day
 you mean to work on it, it shifts freely, and it is what "Add to Today" writes
