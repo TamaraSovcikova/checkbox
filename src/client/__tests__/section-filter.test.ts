@@ -1,8 +1,8 @@
 // The section picker's search.
 //
 // Pinned because the first cut shipped cmdk's default fuzzy scorer and, on her
-// real projects, answering "career" with VikingQA (Neocap SRO), Technical
-// Fluency (R-035/036/037) and Intimacy: every letter of "career" appears in each
+// real projects, answering "career" with a road-trip project, Technical
+// Fluency (R-035/036/037) and a health project: every letter of "career" appears in each
 // of those, in order, which is all a subsequence match asks for. A filter you
 // cannot trust is worse than none, because you have to read the whole list
 // anyway.
@@ -24,8 +24,8 @@ describe("section picker search", () => {
 
   it("does NOT match a scattered subsequence", () => {
     expect(hit("Technical Fluency (R-035/036/037) Learning proj:p2", "career")).toBe(false);
-    expect(hit("Intimacy Relationships proj:p3", "career")).toBe(false);
-    expect(hit("VikingQA (Neocap SRO) Brussels proj:p4", "career")).toBe(false);
+    expect(hit("Cardio Recovery Health proj:p3", "career")).toBe(false);
+    expect(hit("Canal Route Weekend Trip Travel proj:p4", "career")).toBe(false);
   });
 
   it("requires every term, so two words narrow rather than widen", () => {

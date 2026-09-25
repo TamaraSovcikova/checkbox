@@ -43,7 +43,7 @@ describe("reclassifyBulkPending", () => {
     seed("news", '"SME" <newsletter@mg.sme.sk>');
     seed("noreply", "Eventbrite <noreply@event.eventbrite.com>");
     seed("notif", "GitHub <notifications@github.com>");
-    seed("human", "Anouar <anouar@vikingqa.io>");
+    seed("human", "Alex <alex@example.org>");
     seed("nofrom", null);
     await reclassifyBulkPending(d1 as any, USER);
 

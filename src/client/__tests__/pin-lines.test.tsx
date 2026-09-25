@@ -11,7 +11,7 @@ import { PinLineText } from "../components/Pins";
 // it was simply not on screen, however wide or tall the card was made.
 
 const LONG =
-  "Ask Anouar for the reference or LinkedIn recommendation, in writing, before he leaves";
+  "Ask the landlord for the deposit back, in writing, before the end of the month";
 
 describe("PinLineText", () => {
   it("is a textarea, so the text can wrap instead of scrolling out of view", () => {

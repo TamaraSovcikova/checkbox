@@ -150,7 +150,7 @@ describe("isBulkMail — ingest classification", () => {
   });
 
   it("a human sender with no bulk signals is NOT bulk", () => {
-    expect(isBulkMail("Anouar <anouar@vikingqa.io>", null, null)).toBe(false);
+    expect(isBulkMail("Alex <alex@example.org>", null, null)).toBe(false);
     expect(isBulkMail(null, null, null)).toBe(false);
     expect(isBulkMail("Franz <franz@gmail.com>", "", null)).toBe(false);
   });
