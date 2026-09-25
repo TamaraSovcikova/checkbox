@@ -226,7 +226,7 @@ git config --local http.https://github.com.extraheader "Authorization: Basic $B6
      "mcpServers": {
        "checkbox": {
          "url": "https://checkbox.tamara-sovcik.workers.dev/mcp",
-         "headers": { "Authorization": "Bearer 6y06F6xDZsJXxi78Ri1Pxlq8u6CL8j2J" }
+         "headers": { "Authorization": "Bearer <per-user token from Settings > Integrations>" }
        }
      }
    }
@@ -261,6 +261,15 @@ logs; rotate via Settings > Integrations. The proper long-term hardening is OAut
 - Default timezone `Europe/Brussels`.
 - Free-tier only. Cloudflare Workers + D1, no paid services.
 - No em-dashes (this file, code comments, git messages). Commit without AI attribution.
+- The repo is public. Tests, comments and commit messages use made-up examples, never
+  real task titles, people's names or email addresses from the owner's data. Use
+  `@example.com` / `.org` / `.net` addresses. Never paste a token or secret value into
+  any file, including this one; refer to where it is set instead.
+- Pre-commit guard: `.githooks/pre-commit` scans the lines a commit adds and blocks
+  credential-shaped strings, email addresses outside the example domains, and any
+  pattern listed in `.git/info/private-patterns` (local to each clone, never committed).
+  Enable once per clone: `git config core.hooksPath .githooks`. A false positive can be
+  committed with `git commit --no-verify` after checking the flagged line.
 
 ## Known gaps / next features
 

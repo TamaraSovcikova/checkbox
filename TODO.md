@@ -16,7 +16,7 @@
 - [ ] Google Calendar OAuth needs Google Cloud Console setup (see `.dev.vars.example`). Phase 2 backend is built — just needs credentials.
 - [ ] MCP server deployed at https://checkbox.tamara-sovcik.workers.dev/mcp — add to Claude settings:
       URL: https://checkbox.tamara-sovcik.workers.dev/mcp
-      Header: Authorization: Bearer 6y06F6xDZsJXxi78Ri1Pxlq8u6CL8j2J
+      Header: Authorization: Bearer <per-user token from Settings > Integrations>
 - [ ] Resend email digest (Phase 4).
 
 ## Decided defaults to confirm later

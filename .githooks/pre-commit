@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Pre-commit guard for a public repo. Scans only the lines this commit ADDS, so
+# existing content never blocks an unrelated change.
+#
+# Blocks:
+#   1. credential-shaped strings (API keys, private keys, bearer tokens)
+#   2. email addresses outside the example domains
+#   3. any pattern in .git/info/private-patterns (one extended regex per line,
+#      matched case-insensitively; local to each clone and never committed)
+# Also runs `gitleaks protect --staged` when gitleaks is installed.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+# Override a checked false positive:  git commit --no-verify
+set -uo pipefail
+
+ADDED="$(git diff --cached -U0 --no-color --diff-filter=ACMR -- . ':(exclude)package-lock.json' \
+  | awk '/^\+\+\+ b\//{f=substr($0,7); next} /^\+/ && !/^\+\+\+/{print f ": " substr($0,2)}')"
+
+[ -z "$ADDED" ] && exit 0
+fail=0
+
+report() {
+  echo "pre-commit: $1" >&2
+  echo "$2" | sed 's/^/    /' >&2
+  fail=1
+}
+
+SECRETS='(GOCSPX-[A-Za-z0-9_-]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_-]{30,}|sk-(ant-)?[A-Za-z0-9_-]{20,}|re_[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|xox[abpr]-[A-Za-z0-9-]{10,}|BEGIN [A-Z ]*PRIVATE KEY|Bearer [A-Za-z0-9._~+/-]{20,}|[?&]token=[A-Za-z0-9._~-]{20,}|"d" *: *"[A-Za-z0-9_-]{40,}")'
+hits="$(echo "$ADDED" | grep -E "$SECRETS" || true)"
+[ -n "$hits" ] && report "credential-shaped string (move it to a wrangler secret or .dev.vars):" "$hits"
+
+ALLOWED_EMAIL='@example\.(com|org|net)\b|tamara\.sovcik@gmail\.com|tamara@local|^[^:]*: .*\b(no-?reply|do-not-reply|notifications|newsletter|news|unsub|onboarding)@'
+emails="$(echo "$ADDED" | grep -E '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z.]{2,}' \
+  | grep -v -E "$ALLOWED_EMAIL" || true)"
+[ -n "$emails" ] && report "real-looking email address (use @example.com / .org / .net):" "$emails"
+
+PRIVATE="$(git rev-parse --git-dir)/info/private-patterns"
+if [ -f "$PRIVATE" ]; then
+  pats="$(grep -v -E '^\s*(#|$)' "$PRIVATE" | paste -sd'|' -)"
+  if [ -n "$pats" ]; then
+    priv="$(echo "$ADDED" | grep -i -E "$pats" || true)"
+    [ -n "$priv" ] && report "private name or string (use a made-up example):" "$priv"
+  fi
+fi
+
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact --no-banner >/dev/null 2>&1 \
+    || report "gitleaks flagged the staged changes:" "run: gitleaks protect --staged --redact -v"
+fi
+
+if [ "$fail" = 1 ]; then
+  echo "pre-commit: commit blocked. Fix the lines above, or re-run with --no-verify if a line is a checked false positive." >&2
+  exit 1
+fi
+exit 0
