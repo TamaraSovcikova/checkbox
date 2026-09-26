@@ -8,8 +8,8 @@
 //
 // Pure: column building and the patch a drop produces, so both are testable.
 
-import type { Area, Pin } from "../../shared/types";
-import { isLoose, scopeLabel, PIN_VIEWS, scopeForView, scopeForArea } from "./pinScope";
+import type { Area, Pin, Project } from "../../shared/types";
+import { isLoose, scopeLabel, PIN_VIEWS, scopeForView, scopeForArea, scopeForProject } from "./pinScope";
 
 export const LOOSE = "loose";
 
@@ -22,12 +22,19 @@ const byPosition = (a: Pin, b: Pin) =>
   a.position - b.position || a.created_at.localeCompare(b.created_at);
 
 // Columns in a stable order: Loose, Today, the views, the areas in sidebar
-// order, then anything unrecognised (a deleted area) so no card can vanish.
+// order, the projects, then anything unrecognised (a deleted area) so no card
+// can vanish. Archived cards are on no column.
 // Loose and Today always show, as the two places a new card usually goes;
 // other places show when they hold a card or were opened with "Add a place".
-export function boardColumns(pins: Pin[], areas: Area[], opened: string[] = []): BoardColumn[] {
+export function boardColumns(
+  pins: Pin[],
+  areas: Area[],
+  opened: string[] = [],
+  projects: Project[] = []
+): BoardColumn[] {
   const groups = new Map<string, Pin[]>();
   for (const p of pins) {
+    if (p.archived_at) continue;
     const k = columnOf(p);
     groups.set(k, [...(groups.get(k) ?? []), p]);
   }
@@ -37,6 +44,7 @@ export function boardColumns(pins: Pin[], areas: Area[], opened: string[] = []):
     "today",
     ...PIN_VIEWS.filter((v) => v !== "today").map(scopeForView),
     ...areas.map((a) => scopeForArea(a.id)),
+    ...projects.map((p) => scopeForProject(p.id)),
   ];
   const keys = [
     ...order.filter((k) => wanted.has(k)),
@@ -44,13 +52,13 @@ export function boardColumns(pins: Pin[], areas: Area[], opened: string[] = []):
   ];
   return keys.map((key) => ({
     key,
-    label: key === LOOSE ? "Loose" : scopeLabel(key, areas),
+    label: key === LOOSE ? "Loose" : scopeLabel(key, areas, projects),
     pins: [...(groups.get(key) ?? [])].sort(byPosition),
   }));
 }
 
 // Places not yet on the board, for the "Add a place" menu.
-export function missingPlaces(columns: BoardColumn[], areas: Area[]) {
+export function missingPlaces(columns: BoardColumn[], areas: Area[], projects: Project[] = []) {
   const shown = new Set(columns.map((c) => c.key));
   return [
     ...PIN_VIEWS.filter((v) => v !== "today").map((v) => ({
@@ -58,6 +66,9 @@ export function missingPlaces(columns: BoardColumn[], areas: Area[]) {
       label: v.charAt(0).toUpperCase() + v.slice(1),
     })),
     ...areas.map((a) => ({ key: scopeForArea(a.id), label: a.name })),
+    ...projects
+      .filter((p) => p.status === "active")
+      .map((p) => ({ key: scopeForProject(p.id), label: p.name })),
   ].filter((o) => !shown.has(o.key));
 }
 

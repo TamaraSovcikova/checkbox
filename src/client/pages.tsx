@@ -25,7 +25,7 @@ import { SuggestToday } from "./components/SuggestToday";
 import { CapacityLine } from "./components/CapacityLine";
 import { RenegotiateLink } from "./components/RenegotiateLink";
 import { PinsStrip, PinsSide, useAddPin, useSidePins } from "./components/Pins";
-import { scopeForView, scopeForArea } from "./lib/pinScope";
+import { scopeForView, scopeForArea, scopeForProject } from "./lib/pinScope";
 import { CheatSheet } from "./components/CheatSheet";
 import { StalePlanNudge } from "./components/StalePlanNudge";
 import { NotesInbox } from "./components/NotesInbox";
@@ -1064,9 +1064,9 @@ export function AreaPage() {
           { label: "Edit area", onSelect: () => setEditArea(true) },
           // Scoped to this area already: making a pin here should not mean a trip
           // to the Pins page to re-pick the area you are standing in.
-          { label: "New list pin", onSelect: addPin.addList },
-          { label: "New text pin", onSelect: addPin.addNote },
-          { label: "New cadence pin", onSelect: addPin.addTracker },
+          { label: "New list card", onSelect: addPin.addList },
+          { label: "New text card", onSelect: addPin.addNote },
+          { label: "New cadence card", onSelect: addPin.addTracker },
         ]}
       />
       {area && (
@@ -1157,6 +1157,8 @@ export function ProjectPage() {
   const filter = (vd.filter as FilterKey) ?? "all";
   const setView = (m: ViewMode) => setViewDefault(`project:${id}`, { mode: m });
   const [edit, setEdit] = useState(false);
+  // Cards on a project page (#4), same as an area's.
+  const addPin = useAddPin(scopeForProject(id));
   // The List tab runs on the same machinery as every view page (#2): it used to
   // be a bare list of rows with no selection, no keyboard and no bulk bar, so a
   // project was the one place several tasks could not be changed at once.
@@ -1190,6 +1192,8 @@ export function ProjectPage() {
         group={view === "list" ? groupMenu : undefined}
         menu={[
           { label: "Edit project", onSelect: () => setEdit(true) },
+          { label: "New list card", onSelect: addPin.addList },
+          { label: "New text card", onSelect: addPin.addNote },
           {
             // A star is the manual "this is current" flag: the sidebar's
             // Starred section and the future dashboard widget read it.
@@ -1219,6 +1223,9 @@ export function ProjectPage() {
         }
       />
       <ProjectDialog open={edit} onOpenChange={setEdit} existing={project} />
+      <div className="lg:flex lg:gap-5">
+      <div className="min-w-0 lg:flex-1">
+      <PinsStrip scope={scopeForProject(id)} />
       {view === "flow" ? (
         <ProjectFlow project={project} />
       ) : view === "list" ? (
@@ -1234,6 +1241,9 @@ export function ProjectPage() {
           transform={(ts) => sortTasks(filterTasks(ts, filter), sort)}
         />
       )}
+      </div>
+      <PinsSide scope={scopeForProject(id)} />
+      </div>
     </div>
   );
 }

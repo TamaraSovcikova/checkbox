@@ -101,6 +101,7 @@ const WRITABLE = [
   "scope",
   "span",
   "height",
+  "archived_at",
 ] as const;
 
 pins.patch("/:id", async (c) => {
@@ -118,6 +119,8 @@ pins.patch("/:id", async (c) => {
   // break the grid, and a bad height could make a pin unclickably small or huge.
   if ("span" in b)
     b.span = Math.max(1, Math.min(4, Math.round(Number(b.span) || 2)));
+  // Archive is a flag from the client's point of view; the server owns the time.
+  if ("archived_at" in b) b.archived_at = b.archived_at ? now() : null;
   if ("height" in b)
     b.height =
       b.height == null

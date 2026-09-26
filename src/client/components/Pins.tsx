@@ -169,6 +169,8 @@ function PinMenu({
   onDelete,
   moveOptions,
   onMove,
+  onArchive,
+  archived,
 }: {
   placement: Placement;
   showPlacement: boolean;
@@ -178,6 +180,9 @@ function PinMenu({
   // the drag handle cannot be dragged.
   moveOptions?: { key: string; label: string }[];
   onMove?: (key: string) => void;
+  // Archive rather than delete (#4). `archived` flips the item to Restore.
+  onArchive?: () => void;
+  archived?: boolean;
 }) {
   return (
     <DropdownMenu>
@@ -216,6 +221,11 @@ function PinMenu({
             ))}
             <DropdownMenuSeparator />
           </>
+        )}
+        {onArchive && (
+          <DropdownMenuItem onSelect={onArchive}>
+            {archived ? "Restore card" : "Archive card"}
+          </DropdownMenuItem>
         )}
         <DropdownMenuItem className="text-danger" onSelect={onDelete}>
           Delete card
@@ -752,7 +762,7 @@ function PinCard({
           style={{ background: badgeTint, color: accent }}
           // The icon is the handle: dragging from anywhere else would fight
           // text selection in the title and the lines.
-          draggable={!!board}
+          draggable={!!board && !pin.archived_at}
           title={board ? "Drag to move or reorder" : undefined}
           onDragStart={
             board
@@ -837,8 +847,12 @@ function PinCard({
             showPlacement={!!compact}
             onSet={(p) => update.mutate({ id: pin.id, body: { placement: p } })}
             onDelete={() => del.mutate(pin.id)}
-            moveOptions={board?.moveOptions}
+            moveOptions={pin.archived_at ? undefined : board?.moveOptions}
             onMove={board?.onMove}
+            archived={!!pin.archived_at}
+            onArchive={() =>
+              update.mutate({ id: pin.id, body: { archived_at: pin.archived_at ? null : "now" } })
+            }
           />
         </div>
       </div>
@@ -858,7 +872,7 @@ function PinCard({
           content, and at the top it pushed every card's content down a row. */}
       {/* On the board the column is the location, so all that is left to say is
           WHERE on that page: the top strip or the side column. */}
-      {board && !isLoose(pin) && (
+      {board && !isLoose(pin) && !pin.archived_at && (
         <div className="order-last mt-2 flex items-center gap-1 text-[11px]">
           <span className="text-subtle">Shows in</span>
           {(["top", "side"] as const).map((p) => (
@@ -1154,8 +1168,10 @@ function pinMatches(pin: Pin, q: string): boolean {
 export function PinsPage() {
   const { data: pins = [] } = usePins();
   const { data: areas = [] } = useAreas();
+  const { data: projects = [] } = useProjects();
   const create = useCreatePin();
   const update = useUpdatePin();
+  const [showArchived, setShowArchived] = useState(false);
   const sweepEmpties = useSweepEmpties();
   const [q, setQ] = useState("");
   // Places opened with "Add a place" that hold no card yet, so there is
@@ -1165,10 +1181,12 @@ export function PinsPage() {
   const [dropAt, setDropAt] = useState<{ col: string; index: number } | null>(null);
 
   const found = pins.filter((p) => pinMatches(p, q));
-  const columns = boardColumns(found, areas, opened);
-  const allColumns = boardColumns(pins, areas, opened);
-  const addable = missingPlaces(allColumns, areas);
-  const loose = pins.filter(isLoose).length;
+  const columns = boardColumns(found, areas, opened, projects);
+  const allColumns = boardColumns(pins, areas, opened, projects);
+  const addable = missingPlaces(allColumns, areas, projects);
+  const live = pins.filter((p) => !p.archived_at);
+  const archived = found.filter((p) => !!p.archived_at);
+  const loose = live.filter(isLoose).length;
 
   function newCard(kind: "list" | "note", col: string) {
     sweepEmpties();
@@ -1207,9 +1225,9 @@ export function PinsPage() {
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <PinsIcon className="h-5 w-5 text-primary" />
         <h1 className="text-xl font-bold tracking-tight text-foreground">Cards</h1>
-        {pins.length > 0 && (
+        {live.length > 0 && (
           <span className="whitespace-nowrap text-xs text-subtle">
-            {pins.length} card{pins.length === 1 ? "" : "s"}
+            {live.length} card{live.length === 1 ? "" : "s"}
             {loose > 0 && ` · ${loose} loose`}
           </span>
         )}
@@ -1323,6 +1341,38 @@ export function PinsPage() {
           );
         })}
 
+        {/* Archived cards: off every page, one click from coming back. */}
+        {showArchived && (
+          <section
+            aria-label="Archived"
+            className="flex w-[19rem] shrink-0 flex-col rounded-xl border border-dashed border-border p-2 opacity-80"
+          >
+            <header className="mb-2 flex items-center gap-2 px-1">
+              <h2 className="text-sm font-semibold text-foreground">Archived</h2>
+              <span className="text-xs tabular-nums text-subtle">{archived.length}</span>
+              <button
+                onClick={() => setShowArchived(false)}
+                aria-label="Hide archived"
+                className="ml-auto grid h-6 w-6 place-items-center rounded text-subtle hover:bg-surface-2 hover:text-foreground"
+              >
+                <ChevronRightIcon className="h-4 w-4 rotate-180" />
+              </button>
+            </header>
+            <div className="flex flex-col gap-2">
+              {archived.map((p) => (
+                <PinCard
+                  key={p.id}
+                  pin={p}
+                  board={{ moveOptions: [], onMove: () => {}, onDragStart: () => {}, onDragEnd: () => {} }}
+                />
+              ))}
+              {archived.length === 0 && (
+                <p className="px-3 py-4 text-center text-xs text-subtle">Nothing archived.</p>
+              )}
+            </div>
+          </section>
+        )}
+
         {/* Put a page on the board that has no cards yet, so there is somewhere
             to drag one to. */}
         {addable.length > 0 && (
@@ -1341,8 +1391,23 @@ export function PinsPage() {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+        {!showArchived && (
+          <ArchivedToggle count={pins.filter((p) => !!p.archived_at).length} onShow={() => setShowArchived(true)} />
+        )}
       </div>
     </div>
+  );
+}
+
+function ArchivedToggle({ count, onShow }: { count: number; onShow: () => void }) {
+  if (count === 0) return null;
+  return (
+    <button
+      onClick={onShow}
+      className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-xs text-subtle transition-colors hover:text-foreground"
+    >
+      Archived {count}
+    </button>
   );
 }
 

@@ -1,7 +1,7 @@
 // The Cards board (#4): which column a card sits in, the column order, and
 // what a drop writes.
 import { describe, it, expect } from "vitest";
-import type { Area, Pin } from "../../shared/types";
+import type { Area, Pin, Project } from "../../shared/types";
 import { boardColumns, columnOf, dropPatch, missingPlaces, LOOSE } from "../lib/pinBoard";
 
 const areas = [
@@ -89,5 +89,29 @@ describe("dropPatch", () => {
   });
   it("keeps a placed card's spot when it moves page", () => {
     expect(dropPatch(pin({ placement: "side" }), "area:a1", [], 0).placement).toBe("side");
+  });
+});
+
+describe("projects and the archive", () => {
+  const projects = [
+    { id: "p1", name: "Launch", status: "active" },
+    { id: "p2", name: "Old thing", status: "done" },
+  ] as Project[];
+
+  it("gives a project with cards its own column, after the areas", () => {
+    const cols = boardColumns([pin({ scope: "project:p1" }), pin({ scope: "area:a1" })], areas, [], projects);
+    expect(cols.map((c) => c.label)).toEqual(["Loose", "Today", "Home", "Launch"]);
+  });
+
+  it("offers active projects only as new places", () => {
+    const cols = boardColumns([], areas, [], projects);
+    const labels = missingPlaces(cols, areas, projects).map((o) => o.label);
+    expect(labels).toContain("Launch");
+    expect(labels).not.toContain("Old thing");
+  });
+
+  it("keeps archived cards off every column", () => {
+    const cols = boardColumns([pin({ archived_at: "2026-09-01T00:00:00Z" })], areas);
+    expect(cols.flatMap((c) => c.pins)).toEqual([]);
   });
 });

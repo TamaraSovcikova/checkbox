@@ -1,4 +1,4 @@
-import type { Area, Pin } from "../../shared/types";
+import type { Area, Pin, Project } from "../../shared/types";
 
 // A pin's scope says which PAGE it belongs to; `placement` says where on that page.
 // Stored as one string (see migration 0021):
@@ -12,13 +12,16 @@ export const PIN_VIEWS = ["today", "upcoming", "overdue", "backlog", "snoozed"] 
 export const scopeForView = (name: string) =>
   name === "today" ? "today" : `view:${name}`;
 export const scopeForArea = (areaId: string) => `area:${areaId}`;
+// Cards on a project page (#4).
+export const scopeForProject = (projectId: string) => `project:${projectId}`;
 
+// Archived cards are on no page (#4).
 export function pinsForScope(pins: Pin[], scope: string): Pin[] {
-  return pins.filter((p) => (p.scope || "today") === scope);
+  return pins.filter((p) => !p.archived_at && (p.scope || "today") === scope);
 }
 
 // Human label for a scope, for the Pins page grouping + the picker.
-export function scopeLabel(scope: string, areas: Area[]): string {
+export function scopeLabel(scope: string, areas: Area[], projects: Project[] = []): string {
   const s = scope || "today";
   if (s === "today") return "Today";
   if (s.startsWith("view:")) {
@@ -29,6 +32,10 @@ export function scopeLabel(scope: string, areas: Area[]): string {
     const a = areas.find((x) => x.id === s.slice(5));
     // An area that has since been deleted: say so rather than showing a raw id.
     return a ? a.name : "Deleted area";
+  }
+  if (s.startsWith("project:")) {
+    const p = projects.find((x) => x.id === s.slice(8));
+    return p ? p.name : "Deleted project";
   }
   return "Today";
 }

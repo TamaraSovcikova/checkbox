@@ -488,6 +488,8 @@ export interface Pin {
   position: number;
   created_at: string;
   updated_at: string;
+  // Archived instead of deleted (#4): off every page and the board, restorable.
+  archived_at?: string | null;
 }
 
 // ── Gmail coverage (Phase A) ────────────────────────────────────────────────
