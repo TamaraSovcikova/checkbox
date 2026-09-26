@@ -19,6 +19,7 @@ import {
   taskToGCalEvent,
   TASK_ID_PROP,
 } from "./gcal";
+import { CHANNEL_PREFIX, channelTokenFor } from "./channel-token";
 
 export type CalendarAccount = {
   id: string;
@@ -771,21 +772,26 @@ export async function renewWatchChannel(
   const account = await getCalendarAccount(env, userId);
   if (!account || !env.WORKER_URL) return;
 
-  if (account.watch_expiry) {
+  // A channel from before channel tokens (#11) is replaced now, not at expiry:
+  // its notifications are ignored until then.
+  const legacy = !!account.watch_channel_id && !account.watch_channel_id.startsWith(CHANNEL_PREFIX);
+  if (account.watch_expiry && !legacy) {
     const expiry = new Date(account.watch_expiry).getTime();
     if (Date.now() < expiry - 86_400_000) return; // still good for > 24 h
   }
+  if (!env.CALENDAR_ENCRYPTION_KEY) return;
 
   const accessToken = await getValidAccessToken(env, account);
   const calendarId = account.primary_calendar_id ?? "primary";
-  const channelId = uuid();
+  const channelId = `${CHANNEL_PREFIX}${uuid()}`;
 
   try {
     const ch = await watchCalendar(
       accessToken,
       calendarId,
       channelId,
-      `${env.WORKER_URL}/api/calendar/webhook`
+      `${env.WORKER_URL}/api/calendar/webhook`,
+      await channelTokenFor(env.CALENDAR_ENCRYPTION_KEY, channelId)
     );
     await env.DB.prepare(
       "UPDATE calendar_accounts SET watch_channel_id = ?, watch_expiry = ? WHERE id = ?"

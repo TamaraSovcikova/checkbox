@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Bindings } from "../db";
 import { getUserId } from "../db";
 import { buildAuthUrl } from "../lib/gcal";
+import { channelTokenValid } from "../lib/channel-token";
 import {
   issueConnectState,
   consumeConnectState,
@@ -113,6 +114,12 @@ calendar.post("/webhook", async (c) => {
   const channelId = c.req.header("x-goog-channel-id");
   const state = c.req.header("x-goog-resource-state");
   if (!channelId || state === "sync") return c.json({ ok: true });
+  // Only notifications carrying the token we minted for this channel (#11).
+  // Anything else gets a quiet 200 and no sync: Google does not retry, and a
+  // caller probing ids learns nothing.
+  const token = c.req.header("x-goog-channel-token");
+  if (!(await channelTokenValid(c.env.CALENDAR_ENCRYPTION_KEY, channelId, token)))
+    return c.json({ ok: true });
 
   // Find the user whose watch channel this is.
   const row = await c.env.DB.prepare(

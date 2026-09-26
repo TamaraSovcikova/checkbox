@@ -292,7 +292,8 @@ export async function watchCalendar(
   accessToken: string,
   calendarId: string,
   channelId: string,
-  webhookUrl: string
+  webhookUrl: string,
+  token?: string
 ): Promise<{ id: string; expiration: string }> {
   const res = await fetch(
     `${GCAL_BASE}/calendars/${encodeURIComponent(calendarId)}/events/watch`,
@@ -306,6 +307,7 @@ export async function watchCalendar(
         id: channelId,
         type: "web_hook",
         address: webhookUrl,
+        ...(token ? { token } : {}),
       }),
     }
   );
