@@ -4,7 +4,8 @@ import type { Project, Task } from "../../shared/types";
 import { useTasks, useToggleSubtask } from "../lib/queries";
 import { TaskRow } from "./TaskRow";
 import { areaTintBg } from "../lib/colors";
-import { SubtaskIcon, ChevronDownIcon, ChevronRightIcon } from "../lib/icons";
+import { SubtaskIcon, ChevronDownIcon, ChevronRightIcon, CheckIcon } from "../lib/icons";
+import { type RowSelection, type TaskControls, BulkActionBar, useTaskSelection } from "./TaskListControls";
 import {
   TaskMeta,
   TodayToggle,
@@ -26,7 +27,18 @@ import { isSubtaskLed, leadingSubtasks } from "../lib/today";
 // list rows use, so a card in a project board carries the same signals as the
 // same task in a list. It used to render its own four-chip subset, which is why
 // `optional` and Today were invisible on any board.
-export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
+export function BoardCard({
+  task,
+  onOpen,
+  selection,
+}: {
+  task: Task;
+  onOpen: (t: Task) => void;
+  // Multi-select on boards (#2), the same selection the lists use: Ctrl/Cmd-
+  // click toggles, Shift-click selects a range, and once anything is selected a
+  // plain click extends the selection instead of opening.
+  selection?: RowSelection;
+}) {
   // Subtasks unfold ON the card: a board where every step needs a trip through
   // the sheet hides half the work. Full titles wrap; the toggle is dnd-safe
   // (pointer-down stopped, same trick as the Today toggle).
@@ -66,9 +78,11 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
           : {}),
         ...(tint ? { backgroundColor: tint } : {}),
       }}
-      onClick={() => onOpen(task)}
+      onClick={(e) => (selection ? selection.onRowClick(e) : onOpen(task))}
+      aria-selected={selection ? selection.selected : undefined}
       className={cn(
         "group touch-none rounded-md border border-border bg-surface p-2 transition-colors hover:border-primary/40",
+        selection?.selected && "border-primary ring-2 ring-primary/60",
         isDragging ? "cursor-grabbing opacity-50" : "cursor-grab",
         !isDragging && distant,
         !isDragging && dormantTone(task, todayStr()),
@@ -81,6 +95,32 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
     >
       {card}
       <div className="flex items-start gap-1.5">
+        {selection && (
+          // The way into selection without a keyboard: shown on hover, always
+          // once something is selected, always on touch screens.
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={selection.selected}
+            aria-label={`Select ${task.title}`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              selection.onToggle();
+            }}
+            className={cn(
+              "mt-0.5 h-4 w-4 shrink-0 place-items-center rounded border transition-colors",
+              selection.selected
+                ? "grid border-primary bg-primary text-[var(--primary-foreground)]"
+                : cn(
+                    "border-subtle/70 hover:border-primary",
+                    selection.active ? "grid" : "hidden group-hover:grid max-md:grid"
+                  )
+            )}
+          >
+            {selection.selected && <CheckIcon className="h-3 w-3" strokeWidth={3} />}
+          </button>
+        )}
         {stepLed ? (
           <div className="min-w-0 flex-1">
             <div
@@ -177,18 +217,40 @@ export function BoardCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => v
   );
 }
 
+// Selection for a board: the list's selection hook over the cards in on-screen
+// order (column by column), so Shift-click ranges run the way the eye reads.
+// Keyboard navigation stays off: j/k have no obvious meaning across columns.
+export function useBoardSelection(ordered: Task[], onOpen: (t: Task) => void) {
+  const controls = useTaskSelection(ordered, onOpen, false);
+  const index = new Map(ordered.map((t, i) => [t.id, i]));
+  const selectionFor = (t: Task) => controls.rowFor(t, index.get(t.id) ?? 0);
+  return { controls, selectionFor };
+}
+
+// The bulk bar and the complete-guard dialog for a board.
+export function BoardSelectionChrome({ controls }: { controls: TaskControls }) {
+  return (
+    <>
+      <BulkActionBar controls={controls} />
+      {controls.dialog}
+    </>
+  );
+}
+
 function Column({
   projectId,
   name,
   done,
   tasks,
   onOpen,
+  selectionFor,
 }: {
   projectId: string;
   name: string;
   done: boolean;
   tasks: Task[];
   onOpen: (t: Task) => void;
+  selectionFor: (t: Task) => RowSelection;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `col:${projectId}:${name}`,
@@ -211,7 +273,7 @@ function Column({
         {name} <span className="text-subtle">{tasks.length}</span>
       </h2>
       {tasks.map((t) => (
-        <BoardCard key={t.id} task={t} onOpen={onOpen} />
+        <BoardCard key={t.id} task={t} onOpen={onOpen} selection={selectionFor(t)} />
       ))}
     </div>
   );
@@ -242,6 +304,8 @@ export function ProjectBoard({
       ? t.board_column
       : columns[0];
   }
+  const byColumn = columns.map((col) => tasks.filter((t) => colOf(t) === col));
+  const { controls, selectionFor } = useBoardSelection(byColumn.flat(), onOpen);
 
   if (view === "list") {
     return (
@@ -263,10 +327,12 @@ export function ProjectBoard({
           projectId={project.id}
           name={col}
           done={i === columns.length - 1}
-          tasks={tasks.filter((t) => colOf(t) === col)}
+          tasks={byColumn[i]}
           onOpen={onOpen}
+          selectionFor={selectionFor}
         />
       ))}
+      <BoardSelectionChrome controls={controls} />
     </div>
   );
 }

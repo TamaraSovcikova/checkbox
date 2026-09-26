@@ -291,7 +291,11 @@ function useTaskCollection(
   empty: string,
   // Area/project pages set this false: every row there shares one area colour, so
   // tinting them all says nothing and just makes the list heavy.
-  tintArea = true
+  tintArea = true,
+  // Whether this list is the one on screen, for pages whose own tab decides it
+  // (a project opens on its board). Keyboard selection only runs for a visible
+  // list. Defaults to this hook's own stored view mode.
+  listShown?: boolean
 ) {
   const { data: areas = [] } = useAreas();
   const { data: projects = [] } = useProjects();
@@ -332,7 +336,7 @@ function useTaskCollection(
   // Selection + keyboard nav run over the flattened, grouped order. The running
   // offset keeps each group's rows in one continuous cursor sequence.
   const flat = groups.flatMap((g) => g.tasks);
-  const controls = useTaskSelection(flat, open, view === "list");
+  const controls = useTaskSelection(flat, open, listShown ?? view === "list");
 
   function renderBody(list: Task[], offset: number) {
     return (
@@ -1149,20 +1153,25 @@ export function ProjectPage() {
   const filter = (vd.filter as FilterKey) ?? "all";
   const setView = (m: ViewMode) => setViewDefault(`project:${id}`, { mode: m });
   const [edit, setEdit] = useState(false);
+  // The List tab runs on the same machinery as every view page (#2): it used to
+  // be a bare list of rows with no selection, no keyboard and no bulk bar, so a
+  // project was the one place several tasks could not be changed at once.
+  // Called before the loading return, since hooks cannot be conditional.
+  const { data: projectTasks = [] } = useTasks({ project_id: id });
+  const list = useTaskCollection(
+    `project:${id}`,
+    projectTasks,
+    "No tasks in this project yet.",
+    false,
+    view === "list"
+  );
   const project = projects.find((p) => p.id === id);
   if (!project) return <p className="text-subtle">Loading project...</p>;
   const parentArea = areas.find((a) => a.id === project.area_id);
 
-  const sortMenu: MenuChoice[] = (Object.keys(SORT_LABEL) as SortKey[]).map((k) => ({
-    label: SORT_LABEL[k],
-    active: sort === k,
-    onSelect: () => setViewDefault(`project:${id}`, { sort: k }),
-  }));
-  const filterMenu: MenuChoice[] = (Object.keys(FILTER_LABEL) as FilterKey[]).map((k) => ({
-    label: FILTER_LABEL[k],
-    active: filter === k,
-    onSelect: () => setViewDefault(`project:${id}`, { filter: k }),
-  }));
+  // Same stored prefs as before (sort / filter / group under project:<id>), now
+  // read through the collection so the board and the list stay in step.
+  const { sortMenu, filterMenu, groupMenu } = list;
 
   return (
     <div>
@@ -1173,6 +1182,8 @@ export function ProjectPage() {
         onTab={setView}
         sort={sortMenu}
         filter={filterMenu}
+        // Grouping only means something as a list; the board groups by column.
+        group={view === "list" ? groupMenu : undefined}
         menu={[
           { label: "Edit project", onSelect: () => setEdit(true) },
           {
@@ -1206,10 +1217,15 @@ export function ProjectPage() {
       <ProjectDialog open={edit} onOpenChange={setEdit} existing={project} />
       {view === "flow" ? (
         <ProjectFlow project={project} />
+      ) : view === "list" ? (
+        <div className="max-w-2xl">
+          {list.body}
+          <BulkActionBar controls={list.controls} />
+        </div>
       ) : (
         <ProjectBoard
           project={project}
-          view={view === "list" ? "list" : "board"}
+          view="board"
           onOpen={open}
           transform={(ts) => sortTasks(filterTasks(ts, filter), sort)}
         />

@@ -2,7 +2,8 @@ import { useDroppable } from "@dnd-kit/core";
 import type { Task, TaskStatus } from "../../shared/types";
 import { useTaskUI } from "../lib/ui-context";
 import { cn } from "@/lib/utils";
-import { BoardCard } from "./ProjectBoard";
+import { BoardCard, useBoardSelection, BoardSelectionChrome } from "./ProjectBoard";
+import type { RowSelection } from "./TaskListControls";
 
 // The three stages of the Today board. Each maps straight to task.status, so
 // dragging a card between columns is just a status change (Done routes through
@@ -18,11 +19,13 @@ function StageColumn({
   label,
   tasks,
   onOpen,
+  selectionFor,
 }: {
   stage: TaskStatus;
   label: string;
   tasks: Task[];
   onOpen: (t: Task) => void;
+  selectionFor: (t: Task) => RowSelection;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `stage:${stage}`,
@@ -46,7 +49,7 @@ function StageColumn({
         {label} <span className="text-subtle">{tasks.length}</span>
       </h2>
       {tasks.map((t) => (
-        <BoardCard key={t.id} task={t} onOpen={onOpen} />
+        <BoardCard key={t.id} task={t} onOpen={onOpen} selection={selectionFor(t)} />
       ))}
       {tasks.length === 0 && (
         <p className="px-1 py-6 text-center text-[11px] text-subtle">
@@ -68,6 +71,10 @@ export function TodayBoard({ open, done }: { open: Task[]; done: Task[] }) {
     doing: open.filter((t) => t.status === "doing"),
     done,
   };
+  const { controls, selectionFor } = useBoardSelection(
+    STAGES.flatMap(({ stage }) => byStage[stage]),
+    openTask
+  );
   return (
     <div className="flex gap-3 overflow-x-auto pb-2">
       {STAGES.map(({ stage, label }) => (
@@ -77,8 +84,10 @@ export function TodayBoard({ open, done }: { open: Task[]; done: Task[] }) {
           label={label}
           tasks={byStage[stage]}
           onOpen={openTask}
+          selectionFor={selectionFor}
         />
       ))}
+      <BoardSelectionChrome controls={controls} />
     </div>
   );
 }
