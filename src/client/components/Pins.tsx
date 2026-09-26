@@ -23,8 +23,6 @@ import { AREA_COLORS, areaColorVar, areaTintBg } from "../lib/colors";
 import { Markdown } from "../lib/markdown";
 import {
   pinsForScope,
-  scopeLabel,
-  scopeOptions,
   isLoose,
   spotOptions,
   spotValueOf,
@@ -32,8 +30,8 @@ import {
   decodeSpot,
 } from "../lib/pinScope";
 import { CadenceStrip } from "./Cadences";
+import { boardColumns, columnOf, dropPatch, missingPlaces, LOOSE } from "../lib/pinBoard";
 import { cn } from "@/lib/utils";
-import { Button } from "./ui/button";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -169,11 +167,17 @@ function PinMenu({
   showPlacement,
   onSet,
   onDelete,
+  moveOptions,
+  onMove,
 }: {
   placement: Placement;
   showPlacement: boolean;
   onSet: (p: Placement) => void;
   onDelete: () => void;
+  // The board's other columns. The menu route exists for touch screens, where
+  // the drag handle cannot be dragged.
+  moveOptions?: { key: string; label: string }[];
+  onMove?: (key: string) => void;
 }) {
   return (
     <DropdownMenu>
@@ -200,6 +204,17 @@ function PinMenu({
             >
               Show in side column
             </DropdownMenuCheckboxItem>
+          </>
+        )}
+        {moveOptions && moveOptions.length > 0 && onMove && (
+          <>
+            <DropdownMenuLabel>Move to</DropdownMenuLabel>
+            {moveOptions.map((o) => (
+              <DropdownMenuItem key={o.key} onSelect={() => onMove(o.key)}>
+                {o.label}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
           </>
         )}
         <DropdownMenuItem className="text-danger" onSelect={onDelete}>
@@ -564,10 +579,20 @@ function PinCard({
   pin,
   compact,
   resize = "none",
+  board,
 }: {
   pin: Pin;
   compact?: boolean;
   resize?: ResizeMode;
+  // On the Cards board: the column says where the card lives, so the card drops
+  // its location chip, shows a short preview, and its icon becomes the handle
+  // you drag it by.
+  board?: {
+    moveOptions: { key: string; label: string }[];
+    onMove: (key: string) => void;
+    onDragStart: (id: string) => void;
+    onDragEnd: () => void;
+  };
 }) {
   const update = useUpdatePin();
   const del = useDeletePin();
@@ -677,7 +702,7 @@ function PinCard({
   const [showDone, setShowDone] = useState(false);
   const openItems = items.filter((i) => !isItemDone(i));
   const doneItems = items.filter(isItemDone);
-  const cap = compact || showAll ? Infinity : OPEN_LINES_SHOWN;
+  const cap = compact || showAll ? Infinity : board ? 3 : OPEN_LINES_SHOWN;
   const visibleOpen = openItems.slice(0, cap);
   const hiddenOpen = openItems.length - visibleOpen.length;
   // Titles are optional and take NO space when absent: show the input only when
@@ -695,7 +720,7 @@ function PinCard({
         // as a stack of boxes rather than a set of notes.
         "group relative flex flex-col rounded-xl border border-border/70 bg-surface p-3 shadow-sm transition-shadow hover:shadow-md",
         // Masonry on the Cards page: CSS columns, so a card must not split.
-        !compact && "mb-3 break-inside-avoid",
+        !compact && !board && "mb-3 break-inside-avoid",
         drag && "select-none"
       )}
       style={{
@@ -720,8 +745,26 @@ function PinCard({
           first line rather than centred against three. */}
       <div className="mb-2 flex shrink-0 items-start gap-2">
         <span
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-md"
+          className={cn(
+            "grid h-6 w-6 shrink-0 place-items-center rounded-md",
+            board && "cursor-grab active:cursor-grabbing"
+          )}
           style={{ background: badgeTint, color: accent }}
+          // The icon is the handle: dragging from anywhere else would fight
+          // text selection in the title and the lines.
+          draggable={!!board}
+          title={board ? "Drag to move or reorder" : undefined}
+          onDragStart={
+            board
+              ? (e) => {
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", pin.id);
+                  if (cardRef.current) e.dataTransfer.setDragImage(cardRef.current, 16, 16);
+                  board.onDragStart(pin.id);
+                }
+              : undefined
+          }
+          onDragEnd={board ? () => board.onDragEnd() : undefined}
         >
           {pin.kind === "tracker" ? (
             <CadenceIcon className="h-3.5 w-3.5" />
@@ -794,6 +837,8 @@ function PinCard({
             showPlacement={!!compact}
             onSet={(p) => update.mutate({ id: pin.id, body: { placement: p } })}
             onDelete={() => del.mutate(pin.id)}
+            moveOptions={board?.moveOptions}
+            onMove={board?.onMove}
           />
         </div>
       </div>
@@ -811,7 +856,30 @@ function PinCard({
       {/* Where this card shows, as one chip (scope + placement together). Only
           on the Cards page. It sits in the FOOTER now: it is a setting, not
           content, and at the top it pushed every card's content down a row. */}
-      {!compact && (
+      {/* On the board the column is the location, so all that is left to say is
+          WHERE on that page: the top strip or the side column. */}
+      {board && !isLoose(pin) && (
+        <div className="order-last mt-2 flex items-center gap-1 text-[11px]">
+          <span className="text-subtle">Shows in</span>
+          {(["top", "side"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              aria-pressed={pin.placement === p}
+              onClick={() => update.mutate({ id: pin.id, body: { placement: p } })}
+              className={cn(
+                "rounded px-1.5 py-0.5 transition-colors",
+                pin.placement === p
+                  ? "bg-surface-2 font-medium text-foreground"
+                  : "text-subtle hover:text-foreground"
+              )}
+            >
+              {p === "top" ? "top strip" : "side column"}
+            </button>
+          ))}
+        </div>
+      )}
+      {!compact && !board && (
         <div className="order-last mt-2 flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -887,7 +955,16 @@ function PinCard({
               Show {hiddenOpen} more
             </button>
           )}
-          <div className="flex items-center gap-2 pt-0.5 opacity-70 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+          <div
+            className={cn(
+              "items-center gap-2 pt-0.5",
+              // On the board a card at rest is a preview: the add row appears on
+              // hover and stays while typing, always on touch screens.
+              board
+                ? "hidden focus-within:flex group-hover:flex max-md:flex"
+                : "flex opacity-70 transition-opacity focus-within:opacity-100 group-hover:opacity-100"
+            )}
+          >
             <AddIcon className="h-4 w-4 shrink-0 text-subtle" />
             <input
               value={newLine}
@@ -1072,158 +1149,203 @@ function pinMatches(pin: Pin, q: string): boolean {
   return hay.includes(q.toLowerCase());
 }
 
-// The Pins management page (sidebar → Pins).
+// The Cards page (sidebar → Cards): a board with one column per place a card
+// lives (#4). See lib/pinBoard for why a board rather than a filtered wall.
 export function PinsPage() {
   const { data: pins = [] } = usePins();
   const { data: areas = [] } = useAreas();
   const create = useCreatePin();
+  const update = useUpdatePin();
   const sweepEmpties = useSweepEmpties();
   const [q, setQ] = useState("");
-  // Which chip is active: "all", "loose", or a page scope. Filtering, not
-  // collapsible sections: sections hid every card behind bare header rows, so
-  // the page showed nothing. With chips the cards are always on screen and the
-  // chip row doubles as the count-per-page overview.
-  const [filter, setFilter] = useState("all");
+  // Places opened with "Add a place" that hold no card yet, so there is
+  // somewhere to drop one. Page state only: an empty column is not worth storing.
+  const [opened, setOpened] = useState<string[]>([]);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{ col: string; index: number } | null>(null);
 
   const found = pins.filter((p) => pinMatches(p, q));
+  const columns = boardColumns(found, areas, opened);
+  const allColumns = boardColumns(pins, areas, opened);
+  const addable = missingPlaces(allColumns, areas);
+  const loose = pins.filter(isLoose).length;
 
-  // Loose pins (not on any page) get their own chip, first: they are the "just
-  // a list I keep" pile and their scope is meaningless, so bucketing them under
-  // Today (their default scope) was the old confusion. The rest bucket by the
-  // page they live on, in the picker's order so the chip row is stable.
-  const loose = found.filter(isLoose);
-  const placed = found.filter((p) => !isLoose(p));
-  const order = scopeOptions(areas).map((o) => o.value);
-  const placedGroups = [...new Set(placed.map((p) => p.scope || "today"))]
-    .sort((a, b) => {
-      const ia = order.indexOf(a);
-      const ib = order.indexOf(b);
-      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
-    })
-    .map((scope) => ({
-      key: scope,
-      label: scopeLabel(scope, areas),
-      pins: placed.filter((p) => (p.scope || "today") === scope),
-    }));
-  const chips = [
-    { key: "all", label: "All", count: found.length },
-    ...(loose.length ? [{ key: "loose", label: "Loose", count: loose.length }] : []),
-    ...placedGroups.map((g) => ({ key: g.key, label: g.label, count: g.pins.length })),
-  ];
-  // A chip can vanish under you (last pin moved off a page, or a search that
-  // empties it); fall back to All rather than showing an empty grid.
-  const active = chips.some((c) => c.key === filter) ? filter : "all";
-  const visible =
-    active === "all"
-      ? [...loose, ...placedGroups.flatMap((g) => g.pins)]
-      : active === "loose"
-        ? loose
-        : (placedGroups.find((g) => g.key === active)?.pins ?? []);
+  function newCard(kind: "list" | "note", col: string) {
+    sweepEmpties();
+    create.mutate(
+      col === LOOSE
+        ? { kind, placement: "unpinned" }
+        : { kind, placement: "top", scope: col }
+    );
+  }
+
+  function moveTo(pin: Pin, col: string, index?: number) {
+    const target = allColumns.find((c) => c.key === col)?.pins.filter((p) => p.id !== pin.id) ?? [];
+    update.mutate({ id: pin.id, body: dropPatch(pin, col, target, index ?? target.length) });
+  }
+
+  // Where in a column the pointer is: the number of cards whose middle is above
+  // it. Measured from the DOM so it matches what is on screen, whatever the
+  // cards' heights.
+  function indexAt(colEl: HTMLElement, y: number): number {
+    const cards = [...colEl.querySelectorAll<HTMLElement>("[data-card-id]")].filter(
+      (el) => el.dataset.cardId !== dragId
+    );
+    return cards.filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.top + r.height / 2 < y;
+    }).length;
+  }
+
+  const moveOptionsFor = (pin: Pin) =>
+    [...allColumns.map((c) => ({ key: c.key, label: c.label })), ...addable].filter(
+      (o) => o.key !== columnOf(pin)
+    );
 
   return (
-    <div className="max-w-6xl pt-4 md:pt-6">
-      <div className="mb-1 flex items-center gap-2">
+    <div className="pt-4 md:pt-6">
+      <div className="mb-1 flex flex-wrap items-center gap-2">
         <PinsIcon className="h-5 w-5 text-primary" />
         <h1 className="text-xl font-bold tracking-tight text-foreground">Cards</h1>
         {pins.length > 0 && (
-          <span className="text-xs text-subtle">
+          <span className="whitespace-nowrap text-xs text-subtle">
             {pins.length} card{pins.length === 1 ? "" : "s"}
-            {loose.length > 0 && ` · ${loose.length} loose`}
+            {loose > 0 && ` · ${loose} loose`}
           </span>
         )}
-      </div>
-      <PageIntro id="cards">
-        Lists, reminders and gauges you keep beside your tasks. The chip on each
-        card says where it shows; click it to pin the card to Today or an area,
-        or keep it Loose (here only). Colour them to tell them apart; drag a
-        pinned card&rsquo;s corner where it shows to resize it.
-      </PageIntro>
-
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {/* New pins start LOOSE (not on any page): the Pins page is where you
-            keep lists, and putting one on Today/an area is a deliberate later
-            step via "Show on". The area/view ... menus still create pins already
-            attached to that page - there the placement is the whole point. */}
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            sweepEmpties();
-            create.mutate({ kind: "list", placement: "unpinned" });
-          }}
-        >
-          <AddIcon className="h-4 w-4" /> New list
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            sweepEmpties();
-            create.mutate({ kind: "note", placement: "unpinned" });
-          }}
-        >
-          <AddIcon className="h-4 w-4" /> New text card
-        </Button>
-
         {pins.length > 0 && (
-          <div className="relative ml-auto">
+          <div className="relative ml-auto max-sm:ml-0 max-sm:w-full">
             <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search cards"
-              className="h-8 w-44 rounded-md border border-input bg-surface pl-7 pr-2 text-xs text-foreground outline-none placeholder:text-subtle focus:border-primary"
+              className="h-8 w-52 max-sm:w-full rounded-md border border-input bg-surface pl-7 pr-2 text-xs text-foreground outline-none placeholder:text-subtle focus:border-primary"
             />
           </div>
         )}
       </div>
+      <div className="max-w-3xl">
+        <PageIntro id="cards">
+          Lists and reminders you keep beside your tasks, grouped by the page they
+          show on. Drag a card by its icon to move it to another page or reorder it;
+          Loose cards show only here. Use + on a column to add a card straight to
+          that page.
+        </PageIntro>
+      </div>
 
-      {/* Page filter. Only pages that have pins get a chip, so the row is also
-          the "what lives where" overview at a glance. */}
-      {found.length > 0 && chips.length > 2 && (
-        <div className="mb-4 flex flex-wrap items-center gap-1.5">
-          {chips.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => setFilter(c.key)}
+      {/* The board. Columns scroll sideways once there are more places than fit,
+          so the page fills whatever width it has instead of a fixed column. */}
+      <div className="-mx-1 flex items-start gap-3 overflow-x-auto px-1 pb-6 pt-2 [scroll-snap-type:x_proximity]">
+        {columns.map((col) => {
+          const visible = col.pins;
+          const hint = dropAt?.col === col.key ? dropAt.index : null;
+          return (
+            <section
+              key={col.key}
+              aria-label={col.label}
               className={cn(
-                "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors",
-                active === c.key
-                  ? "border-primary bg-primary/10 font-medium text-foreground"
-                  : "border-border text-subtle hover:text-foreground"
+                "flex w-[19rem] shrink-0 flex-col rounded-xl bg-surface-2/40 p-2 [scroll-snap-align:start]",
+                hint !== null && "bg-primary/5 ring-1 ring-primary/30"
               )}
+              onDragOver={(e) => {
+                if (!dragId) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                const index = indexAt(e.currentTarget, e.clientY);
+                if (dropAt?.col !== col.key || dropAt.index !== index)
+                  setDropAt({ col: col.key, index });
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropAt(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const pin = pins.find((p) => p.id === dragId);
+                if (pin) moveTo(pin, col.key, indexAt(e.currentTarget, e.clientY));
+                setDragId(null);
+                setDropAt(null);
+              }}
             >
-              {c.label}
-              <span className="text-[11px] tabular-nums text-muted">{c.count}</span>
-            </button>
-          ))}
-        </div>
-      )}
+              <header className="mb-2 flex items-center gap-2 px-1">
+                <h2 className="truncate text-sm font-semibold text-foreground">{col.label}</h2>
+                <span className="text-xs tabular-nums text-subtle">{visible.length}</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      aria-label={`New card in ${col.label}`}
+                      className="ml-auto grid h-6 w-6 place-items-center rounded text-subtle transition-colors hover:bg-surface-2 hover:text-foreground"
+                    >
+                      <AddIcon className="h-4 w-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => newCard("list", col.key)}>
+                      New list
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => newCard("note", col.key)}>
+                      New text card
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </header>
 
-      {pins.length === 0 ? (
-        <div className="rounded-xl border border-border bg-surface/40 p-6 text-center">
-          <PinsIcon className="mx-auto mb-2 h-6 w-6 text-subtle" />
-          <p className="text-sm text-subtle">
-            No cards yet. A list is good for a running shopping list or conversation
-            topics; a reminder is good for a goal or a quote you go by.
-          </p>
-        </div>
-      ) : found.length === 0 ? (
-        <p className="rounded-lg border border-border bg-surface/40 p-4 text-center text-sm text-subtle">
-          Nothing matches &ldquo;{q}&rdquo;.
-        </p>
-      ) : (
-        // Masonry, loose cards first. A grid made every card in a row as tall as
-        // the longest one, so a one-line quote sat in a box sized for a ten-item
-        // list. Columns let each card be its own height. Each card carries its
-        // own location chip, so no section headers are needed.
-        <div className="gap-3 sm:columns-2 xl:columns-3">
-          {visible.map((p) => (
-            <PinCard key={p.id} pin={p} />
-          ))}
-        </div>
-      )}
+              <div className="flex flex-col gap-2">
+                {visible.map((p, i) => (
+                  <div key={p.id} data-card-id={p.id} className={cn(dragId === p.id && "opacity-40")}>
+                    {hint === i && <DropLine />}
+                    <PinCard
+                      pin={p}
+                      board={{
+                        moveOptions: moveOptionsFor(p),
+                        onMove: (key) => moveTo(p, key),
+                        onDragStart: setDragId,
+                        onDragEnd: () => {
+                          setDragId(null);
+                          setDropAt(null);
+                        },
+                      }}
+                    />
+                  </div>
+                ))}
+                {hint !== null && hint >= visible.length && <DropLine />}
+                {visible.length === 0 && (
+                  <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-subtle">
+                    {q
+                      ? "No matches here."
+                      : col.key === LOOSE
+                        ? "Cards you keep without showing them on a page."
+                        : "Drop a card here, or use + to add one."}
+                  </p>
+                )}
+              </div>
+            </section>
+          );
+        })}
+
+        {/* Put a page on the board that has no cards yet, so there is somewhere
+            to drag one to. */}
+        {addable.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex h-10 w-44 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-dashed border-border text-xs text-subtle transition-colors hover:border-primary/50 hover:text-foreground">
+                <AddIcon className="h-3.5 w-3.5" /> Add a place
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+              {addable.map((o) => (
+                <DropdownMenuItem key={o.key} onSelect={() => setOpened((s) => [...s, o.key])}>
+                  {o.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
     </div>
   );
+}
+
+function DropLine() {
+  return <div className="my-1 h-0.5 rounded-full bg-primary" aria-hidden="true" />;
 }
