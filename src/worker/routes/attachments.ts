@@ -1,5 +1,11 @@
 import { Hono } from "hono";
 import { type Bindings, getUserId, uuid } from "../db";
+import { safeHttpUrl } from "../../shared/url";
+
+// Types a browser may show inline from our own origin. Everything else (HTML,
+// SVG, anything unknown) is sent as a download: an uploaded HTML or SVG file
+// opened inline would run as a page INSIDE Checkbox, with the session.
+const INLINE_TYPES = /^(image\/(png|jpe?g|gif|webp|avif|bmp)|application\/pdf|text\/plain)(;|$)/i;
 
 export const attachments = new Hono<{ Bindings: Bindings }>();
 
@@ -52,12 +58,13 @@ attachments.post("/:taskId/link", async (c) => {
   if (!(await ownsTask(c.env.DB, userId, taskId)))
     return c.json({ error: "not found" }, 404);
   const b = await c.req.json<{ url: string; filename?: string }>();
-  if (!b.url?.trim()) return c.json({ error: "url required" }, 400);
+  const url = safeHttpUrl(b.url);
+  if (!url) return c.json({ error: "an http(s) url is required" }, 400);
   const id = uuid();
   await c.env.DB.prepare(
     "INSERT INTO attachments (id, task_id, kind, url, filename) VALUES (?, ?, 'link', ?, ?)"
   )
-    .bind(id, taskId, b.url.trim(), b.filename?.trim() || b.url.trim())
+    .bind(id, taskId, url, b.filename?.trim() || url)
     .run();
   const row = await c.env.DB.prepare("SELECT * FROM attachments WHERE id = ?")
     .bind(id)
@@ -129,11 +136,21 @@ attachments.get("/file/:id", async (c) => {
   const headers = new Headers();
   obj.writeHttpMetadata(headers);
   headers.set("etag", obj.httpEtag);
-  if (row.filename)
-    headers.set(
-      "content-disposition",
-      `inline; filename="${row.filename.replace(/"/g, "")}"`
-    );
+  // The stored type is whatever the uploader claimed, so it decides nothing on
+  // its own: only the safe list opens inline, the browser may not second-guess
+  // the type, and even an inline file gets no script, forms or same-origin.
+  const type = headers.get("content-type") ?? "";
+  const inline = INLINE_TYPES.test(type);
+  if (!inline) headers.set("content-type", "application/octet-stream");
+  headers.set("x-content-type-options", "nosniff");
+  // Not on PDFs: a sandbox CSP stops Chrome's built-in PDF viewer from loading.
+  if (!/^application\/pdf/i.test(type))
+    headers.set("content-security-policy", "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'");
+  const name = (row.filename ?? "file").replace(/["\r\n]/g, "");
+  headers.set(
+    "content-disposition",
+    `${inline ? "inline" : "attachment"}; filename="${name}"`
+  );
   return new Response(obj.body, { headers });
 });
 

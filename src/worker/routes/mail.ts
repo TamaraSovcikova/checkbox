@@ -7,6 +7,7 @@ import {
   type Verdict,
 } from "../../shared/mail";
 import { hydrateTasks } from "./_hydrate";
+import { safeHttpUrl } from "../../shared/url";
 
 export const mail = new Hono<{ Bindings: Bindings }>();
 
@@ -50,7 +51,8 @@ export async function upsertMailCandidate(
     message_id: input.message_id,
     from_addr: input.from_addr ?? null,
     subject: input.subject ?? null,
-    permalink: input.permalink ?? null,
+    // Written by agents over MCP, rendered as a link: http(s) only.
+    permalink: safeHttpUrl(input.permalink),
     snippet: input.snippet ?? null,
     received_at: input.received_at ?? null,
     verdict: normalizeVerdict(input.verdict),

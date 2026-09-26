@@ -3,6 +3,11 @@ import type { Bindings } from "../db";
 import { getUserId } from "../db";
 import { buildAuthUrl } from "../lib/gcal";
 import {
+  issueConnectState,
+  consumeConnectState,
+  connectFailedPage,
+} from "../lib/connect-state";
+import {
   connectCalendar,
   getCalendarAccount,
   syncCalendar,
@@ -58,7 +63,8 @@ calendar.get("/connect", async (c) => {
     return c.json({ error: "Google Calendar not configured" }, 503);
   }
   const userId = await getUserId(c);
-  const url = buildAuthUrl(c.env.GOOGLE_CLIENT_ID, redirectUri(c.env), userId);
+  const state = await issueConnectState(c.env, userId, "calendar");
+  const url = buildAuthUrl(c.env.GOOGLE_CLIENT_ID, redirectUri(c.env), state);
   return c.redirect(url);
 });
 
@@ -67,13 +73,18 @@ calendar.get("/connect", async (c) => {
 calendar.get("/callback", async (c) => {
   const code = c.req.query("code");
   const error = c.req.query("error");
+  const failed = () => c.html(connectFailedPage("Google Calendar", "/calendar"), 400);
   if (error || !code) {
-    return c.html(
-      `<p>Calendar connection failed: ${error ?? "no code"}. <a href="/calendar">Go back</a></p>`
-    );
+    if (error) console.error("calendar connect declined:", error);
+    return failed();
   }
   try {
     const userId = await getUserId(c);
+    // Only a flow this user started, in this browser, may attach a calendar.
+    if (!(await consumeConnectState(c.env, c.req.query("state"), userId, "calendar"))) {
+      console.error("calendar callback: state missing, expired or not this user's");
+      return failed();
+    }
     await connectCalendar(c.env, userId, code, redirectUri(c.env));
     // Kick off initial sync in the background.
     c.executionCtx?.waitUntil(
@@ -81,9 +92,7 @@ calendar.get("/callback", async (c) => {
     );
   } catch (e) {
     console.error("calendar callback error:", e);
-    return c.html(
-      `<p>Connection error: ${(e as Error).message}. <a href="/calendar">Go back</a></p>`
-    );
+    return failed();
   }
   return c.redirect("/calendar");
 });

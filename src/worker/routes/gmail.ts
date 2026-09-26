@@ -6,6 +6,11 @@ import {
   getGmailAccount,
   syncGmail,
 } from "../lib/gmail";
+import {
+  issueConnectState,
+  consumeConnectState,
+  connectFailedPage,
+} from "../lib/connect-state";
 
 export const gmail = new Hono<{ Bindings: Bindings }>();
 
@@ -40,29 +45,33 @@ gmail.get("/status", async (c) => {
 gmail.get("/connect", async (c) => {
   if (!c.env.GOOGLE_CLIENT_ID) return c.json({ error: "Google not configured" }, 503);
   const userId = await getUserId(c);
+  const state = await issueConnectState(c.env, userId, "gmail");
   return c.redirect(
-    buildGmailAuthUrl(c.env.GOOGLE_CLIENT_ID, redirectUri(c.env), userId)
+    buildGmailAuthUrl(c.env.GOOGLE_CLIENT_ID, redirectUri(c.env), state)
   );
 });
 
 gmail.get("/callback", async (c) => {
   const code = c.req.query("code");
   const error = c.req.query("error");
+  const failed = () => c.html(connectFailedPage("Gmail", "/settings"), 400);
   if (error || !code) {
-    return c.html(
-      `<p>Gmail connection failed: ${error ?? "no code"}. <a href="/settings">Go back</a></p>`
-    );
+    if (error) console.error("gmail connect declined:", error);
+    return failed();
   }
   try {
     const userId = await getUserId(c);
+    // Only a flow this user started, in this browser, may attach a mailbox.
+    if (!(await consumeConnectState(c.env, c.req.query("state"), userId, "gmail"))) {
+      console.error("gmail callback: state missing, expired or not this user's");
+      return failed();
+    }
     await connectGmail(c.env, userId, code, redirectUri(c.env));
     // Kick off the first pull in the background so coverage fills right away.
     c.executionCtx?.waitUntil(syncGmail(c.env, userId).catch(console.error));
   } catch (e) {
     console.error("gmail callback error:", e);
-    return c.html(
-      `<p>Connection error: ${(e as Error).message}. <a href="/settings">Go back</a></p>`
-    );
+    return failed();
   }
   return c.redirect("/mail");
 });

@@ -13,6 +13,8 @@
 // field means "a date, or nothing", the "nothing" has to be expressible in the
 // type, and the writer has to accept the ways a caller will try to say it.
 
+import { safeHttpUrl } from "./url";
+
 export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Strings that MEAN "clear this field". They are not valid dates and they are
@@ -169,6 +171,9 @@ export function normalizeFlags(
 ): Record<string, unknown> {
   const out = { ...body };
   for (const f of fields) if (f in out) out[f] = flagOn(out[f]) ? 1 : 0;
+  // Every task writer (REST and MCP) already passes through here, which makes it
+  // the one place a link from the wire can be vetted before it is stored.
+  if ("gmail_permalink" in out) out.gmail_permalink = safeHttpUrl(out.gmail_permalink);
   return out;
 }
 

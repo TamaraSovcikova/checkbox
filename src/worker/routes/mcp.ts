@@ -53,15 +53,17 @@ function authHeaderFor(header: string | undefined, queryToken: string | undefine
 
 // Resolve the MCP caller to a user_id via their bearer token (per-user tokens in
 // mcp_tokens, or the legacy MCP_AUTH_TOKEN -> owner). Returns null when the token
-// is missing/unknown. Dev-open fallback: if nothing is configured at all (no
-// MCP_AUTH_TOKEN and no per-user tokens), map to the owner for local development.
-async function mcpUser(
+// is missing/unknown. Dev-open fallback: LOCAL DEVELOPMENT ONLY (DEV_AUTH_BYPASS),
+// and only when nothing is configured at all (no MCP_AUTH_TOKEN and no per-user
+// tokens). It used to apply in production too, so revoking the last token while
+// the legacy secret was unset would have opened the connector to anyone.
+export async function mcpUser(
   env: Bindings,
   header: string | undefined
 ): Promise<string | null> {
   const uid = await resolveBearerUser(env, header);
   if (uid) return uid;
-  if (!env.MCP_AUTH_TOKEN) {
+  if (env.DEV_AUTH_BYPASS === "1" && !env.MCP_AUTH_TOKEN) {
     const anyToken = await env.DB.prepare(
       "SELECT 1 FROM mcp_tokens LIMIT 1"
     ).first();
@@ -2622,6 +2624,7 @@ mcp.get("/", (c) => {
     version: "3.1.0",
     description: "Checkbox task manager MCP server",
     tools_count: TOOLS.length,
-    auth: c.env.MCP_AUTH_TOKEN ? "bearer" : "none (dev mode)",
+    auth:
+      c.env.DEV_AUTH_BYPASS === "1" && !c.env.MCP_AUTH_TOKEN ? "none (dev mode)" : "bearer",
   });
 });
