@@ -1,5 +1,17 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { format } from "date-fns";
 import type { Task } from "../../shared/types";
+import { parseDatePhrase } from "../lib/nlp";
+import { cn } from "@/lib/utils";
+import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
 import { api } from "../lib/api";
 import { useTaskInvalidate, useAreas, useProjects } from "../lib/queries";
 import { useToast } from "../lib/toast";
@@ -10,9 +22,14 @@ import {
   TrashIcon,
   RescheduleIcon,
   CloseIcon,
-  SnoozeIcon,
   MoreIcon,
+  CalendarIcon,
 } from "../lib/icons";
+
+// Lazy: react-day-picker only loads when the date picker is actually opened.
+const Calendar = lazy(() =>
+  import("./ui/calendar").then((m) => ({ default: m.Calendar }))
+);
 import { Button } from "./ui";
 import {
   DropdownMenu,
@@ -378,7 +395,7 @@ export function BulkActionBar({ controls }: { controls: TaskControls }) {
   const today = todayStr();
   return (
     <div className="pointer-events-auto fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-surface-2 px-2 py-2 shadow-lg">
-      <span className="px-2 text-sm font-medium text-foreground">
+      <span className="whitespace-nowrap px-2 text-sm font-medium text-foreground">
         {controls.count} selected
       </span>
       <div className="mx-1 h-5 w-px bg-border" />
@@ -398,12 +415,7 @@ export function BulkActionBar({ controls }: { controls: TaskControls }) {
       >
         Tomorrow
       </BarBtn>
-      <BarBtn
-        onClick={() => controls.snoozeSelected(addDaysStr(today, 1))}
-        icon={<SnoozeIcon className="h-4 w-4" />}
-      >
-        Snooze
-      </BarBtn>
+      <BulkDateButton controls={controls} today={today} />
       {/* Everything else. A bar wide enough for every bulk action would not fit
           a phone, and the ones below are each worth having but none is worth a
           permanent slot. */}
@@ -424,6 +436,150 @@ export function BulkActionBar({ controls }: { controls: TaskControls }) {
         <CloseIcon className="h-4 w-4" />
       </button>
     </div>
+  );
+}
+
+// Any date, for the whole selection (issue #1).
+//
+// The bar could only say today or tomorrow, and a deadline only today: moving a
+// dozen tasks to "the 3rd" meant opening a dozen sheets. One button, three
+// modes, because the three dates mean different things and the bar has room for
+// one control, not three. It took the Snooze button's slot; snoozing to
+// tomorrow is still two clicks away, as a preset inside.
+type BulkDateMode = "plan" | "deadline" | "snooze";
+
+const MODE_LABEL: Record<BulkDateMode, string> = {
+  plan: "Plan",
+  deadline: "Deadline",
+  snooze: "Snooze",
+};
+
+const MODE_HINT: Record<BulkDateMode, string> = {
+  plan: "The day to work on them. Shows them in Today from then.",
+  deadline: "When they are owed.",
+  snooze: "Hide them until this day.",
+};
+
+export function BulkDateButton({
+  controls,
+  today,
+}: {
+  controls: TaskControls;
+  today: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<BulkDateMode>("plan");
+  const [phrase, setPhrase] = useState("");
+  const [unparsed, setUnparsed] = useState(false);
+
+  function apply(date: string | null) {
+    if (mode === "plan") {
+      if (date) controls.planSelected(date);
+      else controls.bulkUpdate({ planned_date: null }, (n) => `${n} unplanned`);
+    } else if (mode === "deadline") {
+      controls.scheduleSelected(date);
+    } else if (date) {
+      controls.snoozeSelected(date);
+    }
+    setOpen(false);
+    setPhrase("");
+    setUnparsed(false);
+  }
+
+  function applyPhrase() {
+    const p = phrase.trim();
+    if (!p) return;
+    const { due_date } = parseDatePhrase(p);
+    if (due_date) apply(due_date);
+    else setUnparsed(true);
+  }
+
+  const presets = [
+    ...(mode === "snooze" ? [] : [{ label: "Today", date: today }]),
+    { label: "Tomorrow", date: addDaysStr(today, 1) },
+    { label: "Next week", date: addDaysStr(today, 7) },
+  ];
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setUnparsed(false);
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button variant="ghost" title="Plan, set a deadline or snooze to any date">
+          <CalendarIcon className="h-4 w-4" />
+          Date…
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="center" className="w-[18.5rem] p-2">
+        <div role="radiogroup" aria-label="Which date" className="mb-1 flex gap-1 rounded-md bg-surface-2 p-0.5">
+          {(Object.keys(MODE_LABEL) as BulkDateMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={mode === m}
+              onClick={() => setMode(m)}
+              className={cn(
+                "flex-1 rounded px-2 py-1 text-xs transition-colors",
+                mode === m
+                  ? "bg-surface font-medium text-foreground shadow-sm"
+                  : "text-muted hover:text-foreground"
+              )}
+            >
+              {MODE_LABEL[m]}
+            </button>
+          ))}
+        </div>
+        <p className="mb-2 px-1 text-[11px] text-subtle">
+          {MODE_HINT[mode]} Applies to {controls.count}.
+        </p>
+        <input
+          value={phrase}
+          onChange={(e) => {
+            setPhrase(e.target.value);
+            setUnparsed(false);
+          }}
+          onKeyDown={(e) => e.key === "Enter" && applyPhrase()}
+          placeholder="Type a date… e.g. next fri, oct 3"
+          aria-label="Type a date"
+          className="mb-1 h-8 w-full rounded-md border border-dashed border-input bg-transparent px-2 text-sm text-foreground outline-none placeholder:text-subtle focus:border-primary"
+        />
+        {unparsed && (
+          <p className="mb-1 px-1 text-[11px] text-danger">Could not read that as a date.</p>
+        )}
+        <div className="my-2 flex flex-wrap gap-1">
+          {presets.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => apply(p.date)}
+              className="rounded-md bg-surface-2 px-2 py-1 text-xs text-foreground transition-colors hover:bg-surface-2/70"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <Suspense fallback={<div className="p-4 text-xs text-subtle">Loading…</div>}>
+          <Calendar
+            mode="single"
+            onSelect={(d) => d && apply(format(d, "yyyy-MM-dd"))}
+          />
+        </Suspense>
+        {mode !== "snooze" && (
+          <button
+            type="button"
+            onClick={() => apply(null)}
+            className="mt-1 w-full rounded px-2 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+          >
+            {mode === "plan" ? "Clear the plan" : "Clear the deadline"}
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
