@@ -19,7 +19,7 @@ import {
 } from "../lib/queries";
 import { useTaskUI } from "../lib/ui-context";
 import { useCompleteGuard } from "../lib/use-complete-guard";
-import { AREA_COLORS, areaColorVar } from "../lib/colors";
+import { AREA_COLORS, areaColorVar, areaTintBg } from "../lib/colors";
 import { Markdown } from "../lib/markdown";
 import {
   pinsForScope,
@@ -45,6 +45,8 @@ import {
 } from "./ui/dropdown-menu";
 import {
   PinsIcon,
+  CheckIcon,
+  ChevronRightIcon,
   TrashIcon,
   AddIcon,
   NotesIcon,
@@ -119,6 +121,47 @@ function ColorPicker({
   );
 }
 
+// The round tick used on card lines, matching the task rows rather than the
+// browser's native square checkbox, which read as a form rather than a list.
+function CheckDot({
+  checked,
+  onToggle,
+  label,
+  accent,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  label: string;
+  accent: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={onToggle}
+      className={cn(
+        "mt-[2px] grid h-4 w-4 shrink-0 place-items-center rounded-full border-[1.5px] transition-colors",
+        !checked && "border-subtle/70 hover:border-[var(--dot)]"
+      )}
+      style={
+        {
+          "--dot": accent,
+          ...(checked ? { background: accent, borderColor: accent } : null),
+        } as React.CSSProperties
+      }
+    >
+      {checked && <CheckIcon className="h-2.5 w-2.5 text-[var(--primary-foreground)]" strokeWidth={3} />}
+    </button>
+  );
+}
+
+// A long list shows this many open lines on the Cards page before folding the
+// rest behind "Show N more". Ten items stacked in a grid cell was most of the
+// "long clunky list" complaint (#4).
+const OPEN_LINES_SHOWN = 6;
+
 // Discreet per-pin menu: placement (top / side / off) + delete, behind one small
 // icon so it never crowds the card.
 function PinMenu({
@@ -136,7 +179,7 @@ function PinMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          aria-label="Pin options"
+          aria-label="Card options"
           className="grid h-6 w-6 shrink-0 place-items-center rounded text-subtle transition-colors hover:bg-surface-2 hover:text-foreground data-[state=open]:bg-surface-2"
         >
           <MoreIcon className="h-3.5 w-3.5" />
@@ -160,7 +203,7 @@ function PinMenu({
           </>
         )}
         <DropdownMenuItem className="text-danger" onSelect={onDelete}>
-          Delete pin
+          Delete card
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -393,10 +436,12 @@ function LinkedTaskLine({
   item,
   task,
   onUnlink,
+  accent,
 }: {
   item: PinItem;
   task: Task | undefined;
   onUnlink: () => void;
+  accent: string;
 }) {
   const complete = useCompleteTask();
   const { guard, dialog } = useCompleteGuard();
@@ -428,16 +473,15 @@ function LinkedTaskLine({
     // items-start, not items-center: a title that wraps to three lines should
     // keep its checkbox beside the FIRST line, not floating in the middle.
     <div className="group/line flex items-start gap-2">
-      <input
-        type="checkbox"
+      <CheckDot
         checked={isDone}
         // Ticking a pinned task off is completing it, so it asks about open
         // steps like everywhere else. Un-ticking never asks.
-        onChange={() =>
+        onToggle={() =>
           guard(task, () => complete.mutate({ id: task.id, done: !isDone }))
         }
-        className="mt-0.5 h-3.5 w-3.5 shrink-0 [accent-color:var(--primary)]"
-        aria-label={task.title}
+        label={task.title}
+        accent={accent}
       />
       <button
         onClick={() => open(task)}
@@ -460,6 +504,45 @@ function LinkedTaskLine({
         <TrashIcon className="h-3 w-3" />
       </button>
       {dialog}
+    </div>
+  );
+}
+
+// One line of a list card: a typed line, or a linked task (which owns its own
+// title and done state).
+function ListLine({
+  it,
+  task,
+  accent,
+  onToggle,
+  onEdit,
+  onCommit,
+  onRemove,
+}: {
+  it: PinItem;
+  task: Task | undefined;
+  accent: string;
+  onToggle: () => void;
+  onEdit: (v: string) => void;
+  onCommit: () => void;
+  onRemove: () => void;
+}) {
+  if (it.task_id) {
+    return <LinkedTaskLine item={it} task={task} onUnlink={onRemove} accent={accent} />;
+  }
+  return (
+    <div className="group/line flex items-start gap-2">
+      <CheckDot checked={it.done} onToggle={onToggle} label={it.text} accent={accent} />
+      <PinLineText value={it.text} done={it.done} onChange={onEdit} onCommit={onCommit} />
+      <button
+        onClick={onRemove}
+        aria-label="Remove line"
+        // Hover-revealed on desktop; always present on small screens,
+        // where hover never fires and a line could not be removed.
+        className="hidden shrink-0 text-subtle hover:text-danger group-hover/line:block max-md:block"
+      >
+        <TrashIcon className="h-3 w-3" />
+      </button>
     </div>
   );
 }
@@ -581,8 +664,22 @@ function PinCard({
   const isItemDone = (i: PinItem) =>
     i.task_id ? taskById.get(i.task_id)?.status === "done" : i.done;
   const done = items.filter(isItemDone).length;
-  const accent = pin.color ? areaColorVar(pin.color) : null;
+  // Uncoloured cards take the app accent for their ticks and progress, and no
+  // tint: colour is an opt-in way to tell cards apart, not a requirement.
+  const accent = areaColorVar(pin.color);
+  const tint = areaTintBg(pin.color, 7);
+  const badgeTint = areaTintBg(pin.color ?? "indigo", 18);
   const [editingTitle, setEditingTitle] = useState(false);
+  // Open lines first, then the ticked ones folded under "N done". A shopping
+  // list with half its lines struck through is mostly noise; the ticked lines
+  // are still one click away.
+  const [showAll, setShowAll] = useState(false);
+  const [showDone, setShowDone] = useState(false);
+  const openItems = items.filter((i) => !isItemDone(i));
+  const doneItems = items.filter(isItemDone);
+  const cap = compact || showAll ? Infinity : OPEN_LINES_SHOWN;
+  const visibleOpen = openItems.slice(0, cap);
+  const hiddenOpen = openItems.length - visibleOpen.length;
   // Titles are optional and take NO space when absent: show the input only when
   // there's a title or you're adding one; on the page an untitled pin offers a
   // subtle "+ title", on compact cards it shows nothing at all.
@@ -593,14 +690,16 @@ function PinCard({
     <div
       ref={cardRef}
       className={cn(
-        "group relative flex flex-col rounded-lg border bg-surface p-3",
-        compact && "bg-surface/60",
+        // A soft wash of the card's colour instead of a coloured frame: the old
+        // 3px border on every side of a tall card was what made the page read
+        // as a stack of boxes rather than a set of notes.
+        "group relative flex flex-col rounded-xl border border-border/70 bg-surface p-3 shadow-sm transition-shadow hover:shadow-md",
+        // Masonry on the Cards page: CSS columns, so a card must not split.
+        !compact && "mb-3 break-inside-avoid",
         drag && "select-none"
       )}
       style={{
-        ...(accent
-          ? { borderLeftColor: accent, borderLeftWidth: 3 }
-          : { borderColor: "var(--border)" }),
+        ...(tint ? { backgroundImage: `linear-gradient(${tint}, ${tint})` } : null),
         // A pin only spans columns where there IS a grid to span (the strip).
         ...(resize === "both" ? { gridColumn: `span ${span}` } : null),
         // minHeight, not height. A dragged size used to be a CEILING: anything
@@ -619,8 +718,11 @@ function PinCard({
     >
       {/* items-start so a title that wraps keeps its icon and menu beside the
           first line rather than centred against three. */}
-      <div className="mb-1.5 flex shrink-0 items-start gap-2">
-        <span className="mt-0.5 shrink-0 text-subtle">
+      <div className="mb-2 flex shrink-0 items-start gap-2">
+        <span
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-md"
+          style={{ background: badgeTint, color: accent }}
+        >
           {pin.kind === "tracker" ? (
             <CadenceIcon className="h-3.5 w-3.5" />
           ) : pin.kind === "list" ? (
@@ -657,7 +759,7 @@ function PinCard({
               if (title !== (pin.title ?? "")) update.mutate({ id: pin.id, body: { title } });
             }}
             placeholder="Title"
-            className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-sm font-medium leading-snug text-foreground outline-none placeholder:text-subtle"
+            className="mt-0.5 min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-sm font-semibold leading-snug text-foreground outline-none placeholder:text-subtle"
           />
         ) : compact ? (
           <span className="flex-1" />
@@ -672,32 +774,45 @@ function PinCard({
           </button>
         )}
         {pin.kind === "list" && items.length > 0 && (
-          <span className="shrink-0 text-[11px] text-subtle">
+          <span className="mt-1 shrink-0 text-[11px] tabular-nums text-subtle">
             {done}/{items.length}
           </span>
         )}
-        <TaskPicker tasks={allTasks} exclude={linkedIds} onPick={addTaskItem} />
-        <ColorPicker
-          color={pin.color}
-          onPick={(c) => update.mutate({ id: pin.id, body: { color: c } })}
-        />
-        <PinMenu
-          placement={pin.placement}
-          // The full Pins-page card has the "Show on" select for placement, so
-          // the menu there only needs Delete. In situ (compact) it is the only
-          // control, so it keeps the quick top/side/unpin toggles.
-          showPlacement={!!compact}
-          onSet={(p) => update.mutate({ id: pin.id, body: { placement: p } })}
-          onDelete={() => del.mutate(pin.id)}
-        />
+        {/* Tools appear on hover (always on touch screens, which have none), so
+            a card at rest is its title and its content, not a toolbar. */}
+        <div className="hidden shrink-0 items-center group-hover:flex max-md:flex has-[[data-state=open]]:flex">
+          <TaskPicker tasks={allTasks} exclude={linkedIds} onPick={addTaskItem} />
+          <ColorPicker
+            color={pin.color}
+            onPick={(c) => update.mutate({ id: pin.id, body: { color: c } })}
+          />
+          <PinMenu
+            placement={pin.placement}
+            // The full Cards-page card has the location chip for placement, so
+            // the menu there only needs Delete. In situ (compact) it is the only
+            // control, so it keeps the quick top/side/unpin toggles.
+            showPlacement={!!compact}
+            onSet={(p) => update.mutate({ id: pin.id, body: { placement: p } })}
+            onDelete={() => del.mutate(pin.id)}
+          />
+        </div>
       </div>
 
-      {/* Where this pin shows, as one chip (scope + placement together). Only on the Pins
-          page (full card), UNDER the title where it is seen, not buried at the
-          bottom of a long card. The chip reads the current home
-          ("Loose", "Today · top strip") and opens the move menu. */}
+      {/* Progress for a checklist: a thin bar reads faster than "3/10". */}
+      {pin.kind === "list" && items.length > 0 && (
+        <div className="mb-2 h-1 overflow-hidden rounded-full bg-surface-2">
+          <div
+            className="h-full rounded-full transition-[width]"
+            style={{ width: `${(done / items.length) * 100}%`, background: accent }}
+          />
+        </div>
+      )}
+
+      {/* Where this card shows, as one chip (scope + placement together). Only
+          on the Cards page. It sits in the FOOTER now: it is a setting, not
+          content, and at the top it pushed every card's content down a row. */}
       {!compact && (
-        <div className="mb-1.5">
+        <div className="order-last mt-2 flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -750,53 +865,70 @@ function PinCard({
           limit={compact ? 4 : 6}
         />
       ) : pin.kind === "list" ? (
-        <div className="space-y-0.5">
-          {items.map((it) =>
-            it.task_id ? (
-              <LinkedTaskLine
-                key={it.id}
-                item={it}
-                task={taskById.get(it.task_id)}
-                onUnlink={() => removeItem(it.id)}
-              />
-            ) : (
-            <div key={it.id} className="group flex items-start gap-2">
-              <input
-                type="checkbox"
-                checked={it.done}
-                onChange={() => toggle(it.id)}
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 [accent-color:var(--primary)]"
-                aria-label={it.text}
-              />
-              <PinLineText
-                value={it.text}
-                done={it.done}
-                onChange={(v) => editItem(it.id, v)}
-                onCommit={commitItem}
-              />
-              <button
-                onClick={() => removeItem(it.id)}
-                aria-label="Remove line"
-                // Hover-revealed on desktop; always present on small screens,
-                // where group-hover never fires and a line could not be removed.
-                className="hidden shrink-0 text-subtle hover:text-danger group-hover:block max-md:block"
-              >
-                <TrashIcon className="h-3 w-3" />
-              </button>
-            </div>
-            )
+        <div className="space-y-1">
+          {visibleOpen.map((it) => (
+            <ListLine
+              key={it.id}
+              it={it}
+              task={it.task_id ? taskById.get(it.task_id) : undefined}
+              accent={accent}
+              onToggle={() => toggle(it.id)}
+              onEdit={(v) => editItem(it.id, v)}
+              onCommit={commitItem}
+              onRemove={() => removeItem(it.id)}
+            />
+          ))}
+          {hiddenOpen > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAll(true)}
+              className="pl-6 text-[12px] text-subtle transition-colors hover:text-foreground"
+            >
+              Show {hiddenOpen} more
+            </button>
           )}
-          <div className="mt-1 flex items-center gap-2">
-            <AddIcon className="h-3.5 w-3.5 shrink-0 text-subtle" />
+          <div className="flex items-center gap-2 pt-0.5 opacity-70 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <AddIcon className="h-4 w-4 shrink-0 text-subtle" />
             <input
               value={newLine}
               onChange={(e) => setNewLine(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addLine()}
               onBlur={addLine}
-              placeholder="Add a line"
+              placeholder="Add an item"
               className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-subtle"
             />
           </div>
+          {doneItems.length > 0 && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowDone((s) => !s)}
+                aria-expanded={showDone}
+                className="flex items-center gap-1 text-[12px] text-subtle transition-colors hover:text-foreground"
+              >
+                <ChevronRightIcon
+                  className={cn("h-3.5 w-3.5 transition-transform", showDone && "rotate-90")}
+                />
+                {doneItems.length} done
+              </button>
+              {showDone && (
+                <div className="mt-1 space-y-1">
+                  {doneItems.map((it) => (
+                    <ListLine
+                      key={it.id}
+                      it={it}
+                      task={it.task_id ? taskById.get(it.task_id) : undefined}
+                      accent={accent}
+                      onToggle={() => toggle(it.id)}
+                      onEdit={(v) => editItem(it.id, v)}
+                      onCommit={commitItem}
+                      onRemove={() => removeItem(it.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <PinBody
@@ -818,6 +950,7 @@ function PinCard({
               item={it}
               task={taskById.get(it.task_id as string)}
               onUnlink={() => removeItem(it.id)}
+              accent={accent}
             />
           ))}
         </div>
@@ -830,7 +963,7 @@ function PinCard({
         <div
           onPointerDown={onResizeDown}
           role="separator"
-          aria-label="Resize pin"
+          aria-label="Resize card"
           title={resize === "both" ? "Drag to resize" : "Drag to set height"}
           className={cn(
             "absolute bottom-0 right-0 h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100",
@@ -988,7 +1121,7 @@ export function PinsPage() {
         : (placedGroups.find((g) => g.key === active)?.pins ?? []);
 
   return (
-    <div className="max-w-4xl pt-4 md:pt-6">
+    <div className="max-w-6xl pt-4 md:pt-6">
       <div className="mb-1 flex items-center gap-2">
         <PinsIcon className="h-5 w-5 text-primary" />
         <h1 className="text-xl font-bold tracking-tight text-foreground">Cards</h1>
@@ -1038,7 +1171,7 @@ export function PinsPage() {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search pins"
+              placeholder="Search cards"
               className="h-8 w-44 rounded-md border border-input bg-surface pl-7 pr-2 text-xs text-foreground outline-none placeholder:text-subtle focus:border-primary"
             />
           </div>
@@ -1081,9 +1214,11 @@ export function PinsPage() {
           Nothing matches &ldquo;{q}&rdquo;.
         </p>
       ) : (
-        // One flat grid, loose pins first. Each card carries its own location
-        // chip, so no section headers are needed to say what lives where.
-        <div className="grid gap-2 sm:grid-cols-2">
+        // Masonry, loose cards first. A grid made every card in a row as tall as
+        // the longest one, so a one-line quote sat in a box sized for a ten-item
+        // list. Columns let each card be its own height. Each card carries its
+        // own location chip, so no section headers are needed.
+        <div className="gap-3 sm:columns-2 xl:columns-3">
           {visible.map((p) => (
             <PinCard key={p.id} pin={p} />
           ))}
