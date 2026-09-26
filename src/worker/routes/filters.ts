@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { type Bindings, getUserId, uuid } from "../db";
 import { hydrateTasks } from "./_hydrate";
+import { todayFor } from "../lib/tz";
 
 export const filters = new Hono<{ Bindings: Bindings }>();
 
@@ -50,14 +51,6 @@ type FilterQuery = {
   parked?: TriState;
 };
 
-function todayStr(tz = "Europe/Brussels") {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 
 function addDaysStr(date: string, n: number): string {
   const [y, m, d] = date.split("-").map(Number);
@@ -195,7 +188,7 @@ export async function runFilterQuery(
     where.push("t.project_id = ?");
     binds.push(query.project_id);
   }
-  const today = todayStr();
+  const today = (await todayFor(db, userId));
 
   // One clause builder for BOTH date columns, so "due this week" and "planned
   // this week" can never drift into meaning different spans of days.

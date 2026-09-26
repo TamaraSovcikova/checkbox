@@ -17,6 +17,7 @@ import {
   getOfflineQueueLength,
   replayOfflineQueue,
 } from "./offline";
+import { setClientTimeZone, clientTimeZone } from "./utils";
 
 export const useAreas = () =>
   useQuery({ queryKey: ["areas"], queryFn: api.listAreas });
@@ -873,4 +874,29 @@ export const PRIORITY_LABEL: Record<number, string> = {
 
 export function sortTasks(a: Task, b: Task) {
   return a.priority - b.priority;
+}
+
+
+// The user's timezone (#5). Loading it also re-points the client's todayStr(),
+// and every query is refetched after a change, since "today" moves with it.
+export function useTimezone() {
+  const qc = useQueryClient();
+  const query = useQuery({
+    queryKey: ["timezone"],
+    queryFn: async () => {
+      const r = await api.getTimezone();
+      setClientTimeZone(r.timezone);
+      return r.timezone;
+    },
+    staleTime: 5 * 60_000,
+  });
+  const set = useMutation({
+    mutationFn: (tz: string) => api.setTimezone(tz),
+    onSuccess: (r) => {
+      setClientTimeZone(r.timezone);
+      qc.setQueryData(["timezone"], r.timezone);
+      qc.invalidateQueries();
+    },
+  });
+  return { timezone: query.data ?? clientTimeZone(), setTimezone: set.mutate, saving: set.isPending };
 }

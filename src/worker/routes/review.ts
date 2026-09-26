@@ -1,16 +1,9 @@
 import { Hono } from "hono";
 import { type Bindings, getUserId } from "../db";
+import { todayFor } from "../lib/tz";
 
 export const review = new Hono<{ Bindings: Bindings }>();
 
-function todayStr(tz = "Europe/Brussels") {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 
 function addDaysStr(date: string, n: number): string {
   const [y, m, d] = date.split("-").map(Number);
@@ -22,7 +15,7 @@ function addDaysStr(date: string, n: number): string {
 // aggregation: the UI screen renders it; no writes here.
 review.get("/", async (c) => {
   const userId = await getUserId(c);
-  const today = todayStr();
+  const today = (await todayFor(c.env.DB, userId));
   const weekAgo = addDaysStr(today, -7);
   const weekAhead = addDaysStr(today, 7);
 

@@ -29,7 +29,7 @@ export async function planNewlyUnblocked(
   userId: string,
   completedTaskId: string,
   // Passed in rather than computed: every route file already has its own
-  // Brussels todayStr, and a seventh copy here would be one more place for the
+  // per-user today (lib/tz), and a seventh copy here would be one more place for the
   // timezone to drift.
   today: string
 ): Promise<{ id: string; title: string }[]> {

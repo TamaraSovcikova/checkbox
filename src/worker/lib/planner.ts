@@ -5,6 +5,7 @@
 
 import { type Bindings, uuid } from "../db";
 import { scheduleBlocks, DEFAULT_ESTIMATE_MIN } from "../../shared/schedule";
+import { DEFAULT_TZ } from "../../shared/tz";
 
 const WORK_START_HOUR = 9;
 const WORK_END_HOUR = 18;
@@ -75,7 +76,7 @@ export async function computeDayPlan(
   )
     .bind(userId)
     .first<{ timezone: string | null }>();
-  const tz = tzRow?.timezone || "Europe/Brussels";
+  const tz = tzRow?.timezone || DEFAULT_TZ;
   const date = todayIn(tz);
   const [y, m, d] = date.split("-").map(Number);
 

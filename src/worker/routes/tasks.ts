@@ -16,18 +16,10 @@ import {
 } from "../../shared/dates";
 import { planNewlyUnblocked } from "../lib/unblock";
 import { parseTaskCode, looksLikeIdPrefix } from "../../shared/taskCode";
+import { todayFor } from "../lib/tz";
 
 export const tasks = new Hono<{ Bindings: Bindings }>();
 
-// Today (Europe/Brussels) as YYYY-MM-DD: the anchor for after-completion recurrence.
-function todayStr(tz = "Europe/Brussels") {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 
 const WRITABLE = [
   "title",
@@ -456,7 +448,7 @@ tasks.post("/:id/complete", async (c) => {
   // she may have acted on the plan, and taking a date back off a task she has
   // started is a worse surprise than leaving one that is briefly optimistic.
   const unblocked = done
-    ? await planNewlyUnblocked(c.env.DB, userId, id, todayStr())
+    ? await planNewlyUnblocked(c.env.DB, userId, id, (await todayFor(c.env.DB, userId)))
     : [];
 
   return c.json({ ok: true, recurred: false, unblocked });
@@ -485,7 +477,7 @@ tasks.post("/:id/skip-occurrence", async (c) => {
 
   // Skip advances from the occurrence being skipped (its due date), falling
   // back to today for a recurring task that has no date yet.
-  const next = nextDueDate(t.recurrence, t.due_date ?? todayStr());
+  const next = nextDueDate(t.recurrence, t.due_date ?? (await todayFor(c.env.DB, userId)));
   const decision = rollDecision(next, t.recurrence_until, t.recurrence_count);
 
   if (decision.kind === "roll") {

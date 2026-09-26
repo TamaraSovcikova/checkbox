@@ -14,15 +14,8 @@ import { useToast } from "../lib/toast";
 import { PRIORITY_VAR } from "../lib/colors";
 import { PlanIcon, CalendarIcon, ClockIcon } from "../lib/icons";
 import { Button } from "./ui";
+import { todayStr } from "@/lib/utils";
 
-function todayStr() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Brussels",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 
 // Small row shared by the ambient + manual proposals.
 function BlockRow({

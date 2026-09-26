@@ -1,28 +1,21 @@
 import { Hono } from "hono";
 import { type Bindings, getUserId } from "../db";
+import { todayFor } from "../lib/tz";
 
 export const stats = new Hono<{ Bindings: Bindings }>();
 
-function todayStr(tz = "Europe/Brussels") {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 
 function addDaysStr(date: string, n: number): string {
   const [y, m, d] = date.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 }
 
-// Progress + streaks. Completions are bucketed by the Brussels calendar day of
+// Progress + streaks. Completions are bucketed by the user's calendar day of
 // completed_at (substr of the stored UTC ISO, good enough for a personal app in
 // a positive-offset tz; midnight-edge completions may land a day off).
 stats.get("/", async (c) => {
   const userId = await getUserId(c);
-  const today = todayStr();
+  const today = (await todayFor(c.env.DB, userId));
   const HEATMAP_DAYS = 84; // ~12 weeks
   const since = addDaysStr(today, -(HEATMAP_DAYS - 1));
 

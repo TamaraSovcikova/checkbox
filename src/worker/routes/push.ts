@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { type Bindings, getUserId, uuid } from "../db";
+import { userTz } from "../lib/tz";
+import { todayIn } from "../../shared/tz";
 
 export const push = new Hono<{ Bindings: Bindings }>();
 
@@ -95,9 +97,8 @@ push.get("/notify-data", async (c) => {
 // GET /brief-data: lightweight summary fetched by the service worker when a push arrives
 push.get("/brief-data", async (c) => {
   const userId = await getUserId(c);
-  const today = new Date()
-    .toLocaleDateString("en-CA", { timeZone: "Europe/Brussels" })
-    .slice(0, 10);
+  const tz = await userTz(c.env.DB, userId);
+  const today = todayIn(tz);
 
   const { results } = await c.env.DB.prepare(
     `SELECT priority, due_date FROM tasks
@@ -115,7 +116,7 @@ push.get("/brief-data", async (c) => {
     weekday: "short",
     day: "numeric",
     month: "short",
-    timeZone: "Europe/Brussels",
+    timeZone: tz,
   });
 
   return c.json({ total, urgent, overdue, date });

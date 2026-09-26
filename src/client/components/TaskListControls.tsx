@@ -10,7 +10,7 @@ import {
 import { format } from "date-fns";
 import type { Task } from "../../shared/types";
 import { parseDatePhrase } from "../lib/nlp";
-import { cn } from "@/lib/utils";
+import { cn, todayStr } from "@/lib/utils";
 import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
 import { api } from "../lib/api";
 import { useTaskInvalidate, useAreas, useProjects } from "../lib/queries";
@@ -40,15 +40,6 @@ import {
   DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
 
-// Today (Europe/Brussels) as YYYY-MM-DD, matching the server's day boundary.
-function todayStr() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Brussels",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 function addDaysStr(date: string, n: number) {
   const [y, m, d] = date.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d + n));

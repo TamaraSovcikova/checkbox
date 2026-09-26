@@ -6,27 +6,16 @@
 import type { Bindings } from "../db";
 import { sendPush, type PushSub } from "./push";
 import { reminderDue, type RemindableTask } from "../../shared/reminder";
+import { todayFor, nowHHMMFor } from "./tz";
 
-const TZ = "Europe/Brussels";
 
-function brusselsToday(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: TZ }).slice(0, 10);
-}
 
-function brusselsHHMM(): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: TZ,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date());
-}
 
 export async function sendDueReminders(env: Bindings, userId: string): Promise<number> {
   if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY_JWK) return 0;
 
-  const today = brusselsToday();
-  const nowHHMM = brusselsHHMM();
+  const today = (await todayFor(env.DB, userId));
+  const nowHHMM = (await nowHHMMFor(env.DB, userId));
 
   // Narrow in SQL, decide in the shared pure function, so the cron and the
   // tests apply the exact same rule.

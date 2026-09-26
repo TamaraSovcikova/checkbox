@@ -1,5 +1,6 @@
 import { uuid, now } from "../db";
 import { emittedTaskTitle } from "../../shared/tracker";
+import { todayFor } from "./tz";
 
 export { emittedTaskTitle };
 
@@ -49,14 +50,6 @@ export function shouldEmitTask(t: EmitCandidate, today: string): boolean {
 }
 
 // Today in the user's zone.
-function todayStr(tz = "Europe/Brussels") {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 
 // Emit tasks for every opted-in tracker that is past its cadence. Returns the
 // ids created, so the caller (and the tests) can see what happened.
@@ -67,7 +60,7 @@ export async function emitTrackerTasks(
   db: D1Database,
   userId: string
 ): Promise<string[]> {
-  const today = todayStr();
+  const today = (await todayFor(db, userId));
 
   const { results } = await db
     .prepare(

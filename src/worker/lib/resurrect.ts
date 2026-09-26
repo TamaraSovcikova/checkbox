@@ -11,20 +11,23 @@ import type { Bindings } from "../db";
 import { now } from "../db";
 import { resurrectionDecision } from "../../shared/recurrence";
 import { pushTaskToGcal } from "./sync";
+import { todayIn } from "../../shared/tz";
 
-function todayBrussels(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Brussels",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
+// `today` is for tests: one day for everyone. Left out, each task is judged
+// against its OWN user's today (#5), since a sweep at a fixed UTC hour is a
+// different local day for users in different zones.
 export async function resurrectRecurring(
   env: Bindings,
-  today = todayBrussels()
+  today?: string
 ): Promise<number> {
+  const { results: users } = await env.DB.prepare("SELECT id, timezone FROM users").all<{
+    id: string;
+    timezone: string | null;
+  }>();
+  const todayOf = new Map((users ?? []).map((u) => [u.id, today ?? todayIn(u.timezone)]));
+  // SQL narrows with the LATEST of those days; each row is then checked against
+  // its own user's day below.
+  const latest = [...todayOf.values()].sort().at(-1) ?? today ?? todayIn(null);
   const { results } = await env.DB.prepare(
     `SELECT id, user_id, recurrence, recurrence_mode, due_date, completed_at,
             recurrence_until, recurrence_count
@@ -32,7 +35,7 @@ export async function resurrectRecurring(
       WHERE status = 'done' AND recurrence IS NOT NULL
         AND completed_at IS NOT NULL AND substr(completed_at, 1, 10) < ?`
   )
-    .bind(today)
+    .bind(latest)
     .all<{
       id: string;
       user_id: string;
@@ -46,6 +49,8 @@ export async function resurrectRecurring(
 
   let woken = 0;
   for (const t of results ?? []) {
+    const userToday = todayOf.get(t.user_id) ?? latest;
+    if (t.completed_at.slice(0, 10) >= userToday) continue; // done today, locally
     const decision = resurrectionDecision(
       t.recurrence,
       t.recurrence_mode,
@@ -53,7 +58,7 @@ export async function resurrectRecurring(
       t.completed_at.slice(0, 10),
       t.recurrence_until,
       t.recurrence_count,
-      today
+      userToday
     );
     if (decision.kind === "roll") {
       // Wake as the next occurrence: open again, fresh checklist, no leftover

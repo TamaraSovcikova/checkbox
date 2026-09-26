@@ -265,6 +265,12 @@ export const api = {
   getPrefs: () => http<UserPrefs>("/api/prefs"),
   savePrefs: (p: UserPrefs) =>
     http<UserPrefs>("/api/prefs", { method: "PUT", body: JSON.stringify(p) }),
+  getTimezone: () => http<{ timezone: string }>("/api/prefs/timezone"),
+  setTimezone: (timezone: string) =>
+    http<{ timezone: string }>("/api/prefs/timezone", {
+      method: "PUT",
+      body: JSON.stringify({ timezone }),
+    }),
   mcpToken: () => http<{ token: string }>("/api/prefs/mcp-token"),
   mcpTokenRotate: () =>
     http<{ token: string }>("/api/prefs/mcp-token", { method: "POST" }),

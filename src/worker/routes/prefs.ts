@@ -3,6 +3,8 @@
 import { Hono } from "hono";
 import { type Bindings, getUserId, uuid } from "../db";
 import type { UserPrefs } from "../../shared/types";
+import { userTz } from "../lib/tz";
+import { isValidTimeZone } from "../../shared/tz";
 
 export const prefs = new Hono<{ Bindings: Bindings }>();
 
@@ -129,6 +131,24 @@ prefs.put("/", async (c) => {
     .bind(JSON.stringify(clean), userId)
     .run();
   return c.json(clean);
+});
+
+// ── Timezone: the zone "today" is computed in (#5) ──────────────────────────
+// Its own column (users.timezone), not part of the prefs blob, because the
+// server reads it on nearly every request; see lib/tz.
+prefs.get("/timezone", async (c) => {
+  const userId = await getUserId(c);
+  return c.json({ timezone: await userTz(c.env.DB, userId) });
+});
+
+prefs.put("/timezone", async (c) => {
+  const userId = await getUserId(c);
+  const { timezone } = await c.req.json<{ timezone?: unknown }>();
+  if (!isValidTimeZone(timezone)) return c.json({ error: "unknown timezone" }, 400);
+  await c.env.DB.prepare("UPDATE users SET timezone = ? WHERE id = ?")
+    .bind(timezone, userId)
+    .run();
+  return c.json({ timezone });
 });
 
 // ── MCP token: per-user bearer token for the Claude Desktop integration ──────

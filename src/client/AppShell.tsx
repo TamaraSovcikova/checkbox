@@ -27,6 +27,7 @@ import { SearchIconButton } from "./components/SearchBox";
 import { TaskUIContext } from "./lib/ui-context";
 import { MenuIcon, AddIcon, LogoIcon } from "./lib/icons";
 import { todayStr } from "./lib/utils";
+import { useTimezone } from "./lib/queries";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { useCompleteGuard } from "./lib/use-complete-guard";
 
@@ -64,6 +65,8 @@ export function AppShell() {
   // Keys the error boundary: a new route is a new attempt.
   const { pathname } = useLocation();
   useQuickAddParam();
+  // Load the user's timezone early: every "today" in the app is computed in it.
+  useTimezone();
   const [task, setTask] = useState<Task | null>(null);
   const [drawer, setDrawer] = useState(false);
   const client = useQueryClient();

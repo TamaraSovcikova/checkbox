@@ -11,6 +11,8 @@ import {
   useAreas,
 } from "./lib/queries";
 import { useMe } from "./lib/ui-context";
+import { useTimezone } from "./lib/queries";
+import { deviceTimeZone } from "./lib/utils";
 import {
   useTheme,
   PALETTES,
@@ -294,6 +296,54 @@ function AppearanceSection() {
   );
 }
 
+// The zone every "today" is computed in (#5): which tasks are in Today, when a
+// due-time reminder fires, what the morning brief calls today. When this device
+// is somewhere else, say so and offer the switch, since moving country is the
+// usual reason the two differ.
+function TimezoneSection() {
+  const { timezone, setTimezone, saving } = useTimezone();
+  const device = deviceTimeZone();
+  const zones = (() => {
+    try {
+      return Intl.supportedValuesOf("timeZone");
+    } catch {
+      return [timezone, device];
+    }
+  })();
+  const options = [...new Set([timezone, device, ...zones])];
+  return (
+    <Section title="Time zone">
+      <select
+        value={timezone}
+        disabled={saving}
+        onChange={(e) => setTimezone(e.target.value)}
+        aria-label="Time zone"
+        className="h-9 w-full rounded-md border border-input bg-surface px-2 text-sm text-foreground outline-none focus:border-primary"
+      >
+        {options.map((z) => (
+          <option key={z} value={z}>
+            {z.replace(/_/g, " ")}
+          </option>
+        ))}
+      </select>
+      <p className="mt-1.5 text-xs text-subtle">
+        Decides when a new day starts, when reminders fire and what the morning
+        brief counts as today.
+      </p>
+      {device !== timezone && (
+        <div className="mt-2 flex items-center gap-2 rounded-md bg-surface-2 px-3 py-2 text-xs text-foreground">
+          <span className="min-w-0 flex-1">
+            This device is set to <strong>{device.replace(/_/g, " ")}</strong>.
+          </span>
+          <Button variant="subtle" onClick={() => setTimezone(device)} disabled={saving}>
+            Use it
+          </Button>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 export function SettingsPage() {
   const me = useMe();
   const { data: pushStatus, refetch: refetchPush } = usePushStatus();
@@ -438,6 +488,8 @@ export function SettingsPage() {
         </div>
       </Section>
 
+      <TimezoneSection />
+
       <AppearanceSection />
 
       <TriageSection />
@@ -472,7 +524,7 @@ export function SettingsPage() {
                   {isSubscribed ? "enabled" : "disabled"}
                 </span>
               </p>
-              <p className="text-xs text-subtle">Delivered at 06:00 Brussels time</p>
+              <p className="text-xs text-subtle">Sent at 06:00 UTC each morning</p>
               {pushError && <p className="mt-1 text-xs text-danger">{pushError}</p>}
             </div>
             <Button

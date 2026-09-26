@@ -1,18 +1,10 @@
 import { Hono, type Context } from "hono";
 import { type Bindings, getUserId } from "../db";
 import { hydrateTasks } from "./_hydrate";
+import { todayFor } from "../lib/tz";
 
 export const views = new Hono<{ Bindings: Bindings }>();
 
-// Today (in user tz) as YYYY-MM-DD. Single-user default Europe/Brussels.
-function todayStr(tz = "Europe/Brussels") {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 
 async function run(
   c: Context<{ Bindings: Bindings }>,
@@ -65,7 +57,7 @@ const NOT_SNOOZED = "AND (snoozed_until IS NULL OR snoozed_until <= ?)";
 // Keep in sync with the client mirror in lib/today.ts.
 views.get("/today", async (c) => {
   const userId = await getUserId(c);
-  const today = todayStr();
+  const today = (await todayFor(c.env.DB, userId));
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
@@ -97,7 +89,7 @@ views.get("/today", async (c) => {
 // coalesces for the same reason: a plan-only task sorts by the only date it has.
 views.get("/upcoming", async (c) => {
   const userId = await getUserId(c);
-  const today = todayStr();
+  const today = (await todayFor(c.env.DB, userId));
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
@@ -114,7 +106,7 @@ views.get("/upcoming", async (c) => {
 // strictly same-day). The task row's "N subtasks overdue" chip says why.
 views.get("/overdue", async (c) => {
   const userId = await getUserId(c);
-  const today = todayStr();
+  const today = (await todayFor(c.env.DB, userId));
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
@@ -135,7 +127,7 @@ views.get("/overdue", async (c) => {
 // if it is still unfiled.
 views.get("/backlog", async (c) => {
   const userId = await getUserId(c);
-  const today = todayStr();
+  const today = (await todayFor(c.env.DB, userId));
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
@@ -161,7 +153,7 @@ views.get("/backlog", async (c) => {
 // wrote down last week is the thing you are still curious about.
 views.get("/whenever", async (c) => {
   const userId = await getUserId(c);
-  const today = todayStr();
+  const today = (await todayFor(c.env.DB, userId));
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
@@ -196,7 +188,7 @@ views.get("/parked", async (c) => {
 // the user see and un-snooze what they hid.
 views.get("/snoozed", async (c) => {
   const userId = await getUserId(c);
-  const today = todayStr();
+  const today = (await todayFor(c.env.DB, userId));
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
@@ -221,7 +213,7 @@ views.get("/logbook", async (c) => {
 // restore. Naturally empties at midnight since it keys off today's date.
 views.get("/completed-today", async (c) => {
   const userId = await getUserId(c);
-  const today = todayStr();
+  const today = (await todayFor(c.env.DB, userId));
   return run(
     c,
     `SELECT * FROM tasks WHERE user_id = ? AND status = 'done' AND parent_task_id IS NULL

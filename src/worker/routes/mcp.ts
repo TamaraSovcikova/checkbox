@@ -37,6 +37,7 @@ import {
 import { parseVaultLine, renderVaultLine, pullDecision } from "../../shared/vault";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { enforceProjectArea } from "../lib/section";
+import { todayFor } from "../lib/tz";
 
 export const mcp = new Hono<{ Bindings: Bindings }>();
 
@@ -86,15 +87,6 @@ function err(id: unknown, code: number, message: string) {
   return { jsonrpc: "2.0", id, error: { code, message } };
 }
 
-// Brussels today as YYYY-MM-DD
-function todayBrussels(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Brussels",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 
 function text(s: string) {
   return { content: [{ type: "text", text: s }] };
@@ -533,7 +525,7 @@ const TOOLS = [
       properties: {
         date: {
           type: "string",
-          description: "YYYY-MM-DD (defaults to today in Brussels time)",
+          description: "YYYY-MM-DD (defaults to today in the user's time zone)",
         },
       },
     },
@@ -1122,14 +1114,6 @@ const TOOLS = [
 // ── Tool handlers ──────────────────────────────────────────────────────────────
 
 // Today in the user's zone. Same shape as the copies in views/filters/stats.
-function todayStr(tz = "Europe/Brussels") {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 
 // Whole calendar days between two YYYY-MM-DD days. UTC construction so a DST
 // boundary cannot make a day 23 or 25 hours long and round the wrong way.
@@ -1328,7 +1312,7 @@ async function handleTool(
   switch (name) {
     // ── list_tasks ──────────────────────────────────────────────────────────
     case "list_tasks": {
-      const today = todayBrussels();
+      const today = (await todayFor(db, userId));
       let sql: string;
       const binds: unknown[] = [userId];
 
@@ -1514,8 +1498,8 @@ async function handleTool(
         if (t?.recurrence) {
           const anchor =
             t.recurrence_mode === "after_completion"
-              ? todayBrussels()
-              : t.due_date ?? todayBrussels();
+              ? (await todayFor(db, userId))
+              : t.due_date ?? (await todayFor(db, userId));
           const next = nextDueDate(t.recurrence, anchor);
           if (next) {
             await db.prepare(
@@ -1540,7 +1524,7 @@ async function handleTool(
       // lib/unblock for why this derives from the completion rather than from
       // the blocker's due date.
       const freed = done
-        ? await planNewlyUnblocked(db, userId, id, todayBrussels())
+        ? await planNewlyUnblocked(db, userId, id, (await todayFor(db, userId)))
         : [];
       return text(
         `Task ${id} marked ${done ? "done" : "todo"}.` +
@@ -1595,7 +1579,7 @@ async function handleTool(
       if (!t) return text(`Task ${id} not found.`);
 
       const days = typeof args.days === "number" ? args.days : 0;
-      const body = startCheckpointBody(todayStr(), days, t.due_date);
+      const body = startCheckpointBody((await todayFor(db, userId)), days, t.due_date);
       await db
         .prepare(
           "UPDATE tasks SET checkpoint_days = ?, checkpoint_next = ?, updated_at = ? WHERE id = ? AND user_id = ?"
@@ -1713,7 +1697,7 @@ async function handleTool(
 
     // ── plan_my_day ──────────────────────────────────────────────────────────
     case "plan_my_day": {
-      const date = (args.date as string | undefined) ?? todayBrussels();
+      const date = (args.date as string | undefined) ?? (await todayFor(db, userId));
       const nextDay = new Date(date + "T00:00:00Z");
       nextDay.setDate(nextDay.getDate() + 1);
       const nextDayStr = nextDay.toISOString().slice(0, 10);
@@ -1774,7 +1758,7 @@ async function handleTool(
     case "sync_vault_tasks": {
       const items =
         (args.items as { path: string; line: number; text: string }[] | undefined) ?? [];
-      const today = todayBrussels();
+      const today = (await todayFor(db, userId));
       const applied: string[] = [];
       const conflicts: string[] = [];
       const unmatched: string[] = [];
@@ -2005,7 +1989,7 @@ async function handleTool(
 
     // ── daily_brief ──────────────────────────────────────────────────────────
     case "daily_brief": {
-      const date = (args.date as string | undefined) ?? todayBrussels();
+      const date = (args.date as string | undefined) ?? (await todayFor(db, userId));
       const nextDay = new Date(date + "T00:00:00Z");
       nextDay.setDate(nextDay.getDate() + 1);
       const nextDayStr = nextDay.toISOString().slice(0, 10);
@@ -2048,7 +2032,7 @@ async function handleTool(
 
     // ── weekly_review ────────────────────────────────────────────────────────
     case "weekly_review": {
-      const today = todayBrussels();
+      const today = (await todayFor(db, userId));
       const weekAgo = new Date(today + "T00:00:00Z");
       weekAgo.setDate(weekAgo.getDate() - 7);
       const weekAgoStr = weekAgo.toISOString().slice(0, 10);
@@ -2089,7 +2073,7 @@ async function handleTool(
 
     // ── get_calendar ─────────────────────────────────────────────────────────
     case "get_calendar": {
-      const date = (args.date as string | undefined) ?? todayBrussels();
+      const date = (args.date as string | undefined) ?? (await todayFor(db, userId));
       const next = new Date(date + "T00:00:00Z");
       next.setDate(next.getDate() + 1);
       const nextStr = next.toISOString().slice(0, 10);
@@ -2449,7 +2433,7 @@ async function handleTool(
       // days_since is computed here rather than in SQL so it is CALENDAR days in
       // the user's zone, matching what the app shows. julianday() on a UTC
       // timestamp would disagree with the UI by a day around midnight.
-      const today = todayStr();
+      const today = (await todayFor(db, userId));
       const rows = (results ?? []).map((r) => {
         const days = r.last_at ? daysBetweenDays(r.last_at.slice(0, 10), today) : null;
         return {

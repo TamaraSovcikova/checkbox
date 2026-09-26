@@ -3,16 +3,13 @@
 
 import type { Bindings } from "../db";
 import { sendPush, type PushSub } from "./push";
+import { userTz } from "./tz";
+import { todayIn } from "../../shared/tz";
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function todayBrussels(): string {
-  return new Date()
-    .toLocaleDateString("en-CA", { timeZone: "Europe/Brussels" }) // YYYY-MM-DD
-    .slice(0, 10);
-}
 
 export async function sendMorningBrief(env: Bindings): Promise<void> {
   const { results: users } = await env.DB.prepare(
@@ -20,7 +17,8 @@ export async function sendMorningBrief(env: Bindings): Promise<void> {
   ).all<{ id: string; email: string }>();
 
   for (const user of users) {
-    const today = todayBrussels();
+    const tz = await userTz(env.DB, user.id);
+    const today = todayIn(tz);
 
     // The brief's on/off switch is the subscription table: Settings' Disable
     // deletes every one of the user's rows, Enable adds one. Zero rows means
@@ -75,7 +73,7 @@ export async function sendMorningBrief(env: Bindings): Promise<void> {
       weekday: "long",
       day: "numeric",
       month: "short",
-      timeZone: "Europe/Brussels",
+      timeZone: tz,
     });
 
     const taskItems = tasks

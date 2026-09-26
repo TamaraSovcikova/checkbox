@@ -3,12 +3,10 @@ import { type Bindings, getUserId, now } from "../db";
 import { computeDayPlan, generateDayPlan } from "../lib/planner";
 import { pushTaskToGcal } from "../lib/sync";
 import type { DayPlanBlock } from "../../shared/types";
+import { todayFor } from "../lib/tz";
 
 export const plans = new Hono<{ Bindings: Bindings }>();
 
-function todayBrussels(tz = "Europe/Brussels") {
-  return new Date().toLocaleDateString("en-CA", { timeZone: tz }).slice(0, 10);
-}
 
 function rowToPlan(r: Record<string, unknown>) {
   return {
@@ -26,7 +24,7 @@ plans.get("/today", async (c) => {
   const row = await c.env.DB.prepare(
     "SELECT * FROM day_plans WHERE user_id = ? AND date = ?"
   )
-    .bind(userId, todayBrussels())
+    .bind(userId, (await todayFor(c.env.DB, userId)))
     .first<Record<string, unknown>>();
   return c.json(row ? rowToPlan(row) : null);
 });
