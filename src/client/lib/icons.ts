@@ -78,6 +78,7 @@ export {
   // "Take me to where this task actually lives": the sheet's jump-to-its-page
   // button. A crosshair reads as locate, which is what it does.
   Crosshair as NavigateIcon,
+  Target as FocusIcon,
 } from "lucide-react";
 
 // Home is also an AREA icon below; re-exported under its nav name for the

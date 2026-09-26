@@ -13,7 +13,7 @@ import { parseDatePhrase } from "../lib/nlp";
 import { cn, todayStr } from "@/lib/utils";
 import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
 import { api } from "../lib/api";
-import { useTaskInvalidate, useAreas, useProjects } from "../lib/queries";
+import { useTaskInvalidate, useAreas, useProjects, useFocus } from "../lib/queries";
 import { useToast } from "../lib/toast";
 import { useCompleteGuard } from "../lib/use-complete-guard";
 import { completedMessage } from "../lib/completion";
@@ -79,6 +79,9 @@ export interface TaskControls {
   ) => void;
   moveSelectedToBacklog: () => void;
   snoozeSelected: (until: string) => void;
+  // Today's Focus (#3): add the selection, in list order; if all of it is
+  // already in focus, take it out instead.
+  focusSelected: () => void;
 }
 
 // Selection + keyboard navigation over an ordered task list. j/k move a cursor,
@@ -236,6 +239,24 @@ export function useTaskSelection(
     [bulkUpdate]
   );
 
+  const focus = useFocus();
+  const toggleFocusFor = useCallback(
+    (items: Task[]) => {
+      if (!items.length) return;
+      const allIn = items.every((t) => focus.isFocused(t.id));
+      const next = allIn
+        ? focus.ids.filter((id) => !items.some((t) => t.id === id))
+        : [...focus.ids, ...items.map((t) => t.id).filter((id) => !focus.ids.includes(id))];
+      focus.setFocus(next, items);
+      toast(allIn ? `${items.length} out of focus` : `${items.length} in focus`);
+    },
+    [focus, toast]
+  );
+  const focusSelected = useCallback(() => {
+    toggleFocusFor(selectedTasks());
+    clear();
+  }, [toggleFocusFor, selectedTasks, clear]);
+
   const moveSelectedToBacklog = useCallback(() => {
     const items = selectedTasks();
     if (!items.length) return;
@@ -281,6 +302,15 @@ export function useTaskSelection(
           e.preventDefault();
           setCursor((c) => Math.max(c - 1, 0));
           break;
+        case "f": {
+          // Focus: the selection if there is one, else the task under the cursor.
+          e.preventDefault();
+          const sel = tasks.filter((t) => selectedIds.has(t.id));
+          const target = sel.length ? sel : tasks[cursor] ? [tasks[cursor]] : [];
+          toggleFocusFor(target);
+          if (sel.length) clear();
+          break;
+        }
         case "x":
           e.preventDefault();
           if (cur) toggle(cur.id);
@@ -325,6 +355,7 @@ export function useTaskSelection(
     invalidate,
     toast,
     guard,
+    toggleFocusFor,
   ]);
 
   const rowFor = useCallback(
@@ -377,6 +408,7 @@ export function useTaskSelection(
     scheduleSelected,
     moveSelectedToBacklog,
     snoozeSelected,
+    focusSelected,
   };
 }
 
@@ -609,6 +641,10 @@ function BulkMore({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-h-96 w-56 overflow-y-auto">
+        <DropdownMenuItem onSelect={controls.focusSelected}>
+          Add to Focus (or take out)
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuLabel>Priority</DropdownMenuLabel>
         <div className="flex gap-1 px-2 pb-1.5">
           {[1, 2, 3, 4].map((p) => (

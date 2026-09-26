@@ -38,6 +38,7 @@ import { parseVaultLine, renderVaultLine, pullDecision } from "../../shared/vaul
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { enforceProjectArea } from "../lib/section";
 import { todayFor } from "../lib/tz";
+import { setFocus } from "../lib/focus";
 
 export const mcp = new Hono<{ Bindings: Bindings }>();
 
@@ -212,6 +213,7 @@ const TOOLS = [
             "whenever",
             "parked",
             "snoozed",
+            "focus",
           ],
           description:
             "Smart view filter. `whenever` is the no-deadline-ever pool (hobby goals, things to read): browse it when there is spare time, never schedule from it.",
@@ -1014,6 +1016,22 @@ const TOOLS = [
     },
   },
   {
+    name: "set_focus",
+    description:
+      "Set today's Focus: an ordered shortlist of what to work on now, separate from priority. Pass task ids or codes in the order to do them; the first is 'Now'. Replaces today's focus entirely; an empty list clears it. Focused tasks are put in Today if they are not already. Focus expires at the end of the user's day. Read it back with list_tasks view 'focus'. Keep it short (about 5).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Task ids or codes (CB-142), in order. First = Now.",
+        },
+      },
+      required: ["ids"],
+    },
+  },
+  {
     name: "list_trackers",
     description:
       "List cadence trackers with how long it has been since each was last done. Use for questions like 'who have I not spoken to in a while' or 'when did I last call X'. `days_since` is null when it has never been logged; `target_days` is null when the tracker is only counting and has no cadence to be late against.",
@@ -1349,6 +1367,13 @@ async function handleTool(
         sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
                AND parent_task_id IS NULL AND snoozed_until > ?
                ORDER BY snoozed_until`;
+        binds.push(today);
+      } else if (args.view === "focus") {
+        // Today's Focus (#3), in the order the user set: the first one is what
+        // they are doing now.
+        sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
+               AND parked_at IS NULL AND focus_date = ?
+               ORDER BY focus_rank`;
         binds.push(today);
       } else if (args.view === "parked") {
         sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
@@ -2408,6 +2433,21 @@ async function handleTool(
         .run();
       if (!res.meta.changes) return text(`Tracker ${id} not found.`);
       return text(`Updated tracker ${id}.`);
+    }
+
+    case "set_focus": {
+      const raw = Array.isArray(args.ids) ? (args.ids as unknown[]) : null;
+      if (!raw || !raw.every((x) => typeof x === "string"))
+        return text("ids must be an array of task ids or codes.");
+      const ids: string[] = [];
+      for (const ref of raw as string[]) {
+        const resolved = await resolveTaskId(db, userId, ref);
+        if (!resolved) return text(`No task ${ref}.`);
+        ids.push(resolved);
+      }
+      const r = await setFocus(db, userId, ids, await todayFor(db, userId));
+      if (!r.ok) return text(r.error);
+      return text(ids.length ? `Focus set: ${ids.length} task(s), first is Now.` : "Focus cleared.");
     }
 
     case "list_trackers": {

@@ -66,6 +66,7 @@ import { useViewPrefs } from "./lib/queries";
 import { Button, cx } from "./components/ui";
 import { todayStr } from "./lib/utils";
 import type { ComponentType, ReactNode } from "react";
+import { FocusBlock } from "./components/FocusBlock";
 
 
 function TaskList({
@@ -638,6 +639,9 @@ export function ViewPage({ name }: { name: string }) {
           pins (scoped to it), not just Today. */}
       <div className="lg:flex lg:gap-5">
         <div className="min-w-0 lg:flex-1">
+          {/* Focus first: it answers "what am I doing now", which is the
+              reason to open Today at all (#3). */}
+          {isToday && <FocusBlock />}
           {isToday && <InstallHint />}
           <PinsStrip scope={pinScope} />
           {isToday && <CheatSheet />}

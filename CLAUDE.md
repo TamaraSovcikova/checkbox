@@ -24,7 +24,7 @@ Personal task manager. This is the operational file that lives with the code. Na
   fallback. Checkbox-owned events tagged via `extendedProperties.private.checkbox_task_id`.
 - Push: VAPID (RFC 8292) data-less push. Service worker wakes, fetches `/api/push/brief-data`.
   Morning brief cron at 06:00 Brussels (0 6 * * *). Resend email digest gated on RESEND_API_KEY.
-- MCP: JSON-RPC 2.0 over HTTP at `/mcp`. Bearer token auth. 46 tools (read + full
+- MCP: JSON-RPC 2.0 over HTTP at `/mcp`. Bearer token auth. 47 tools (read + full
   write: task/area/project/subtask CRUD, dependencies, links, recurrence, batch
   create, saved filters, cadence trackers).
 
@@ -37,8 +37,8 @@ installable/auto-updating PWA. Deployed at https://checkbox.tamara-sovcik.worker
 ```
 Health: GET /api/health → { ok: true, phase: 8 }
 Version: GET /api/version → the deployed client bundle (deploy-freshness gate)
-MCP:    /mcp → 46 tools, bearer auth (field AND feature parity are tested) (per-user tokens in mcp_tokens)
-D1:     migrations 0001-0038 applied local + remote
+MCP:    /mcp → 47 tools, bearer auth (field AND feature parity are tested) (per-user tokens in mcp_tokens)
+D1:     migrations 0001-0039 (0039 not yet applied remote until the next deploy)
 ```
 
 Surfaces beyond the task views: `/home` (composable widget dashboard, layout in
@@ -63,6 +63,18 @@ hex) are accepted by search, the `/task/:ref` route and every connector tool tha
 takes a task id; an ambiguous fragment resolves to nothing, never to a guess.
 The connector tells clients at connect time to name tasks by title-as-link plus
 code and never quote a uuid.
+
+Today's Focus (#3, migration 0039): an ordered shortlist for the day,
+separate from priority. A task is in focus only while `focus_date` is the
+user's today, so it expires with no cron; `focus_rank` is the order and rank 1
+is "Now". Written only as a whole list (PUT /api/focus, MCP `set_focus`,
+lib/focus `setFocus`), which also puts a focused task in Today. Read back with
+GET /api/focus (plus the last focus day's leftovers for carry-over) or
+list_tasks view "focus".
+
+"Today" is the USER's today (#5): `users.timezone`, read through worker/lib/tz
+(`todayFor`) on the server and `todayStr()` in client/lib/utils. Never add a
+new copy of a "today in <zone>" helper; the Brussels copies were fifteen.
 
 Parked tasks (`parked_at` not null) leave EVERY list: the five views in
 routes/views, the list endpoint, saved-filter defaults, and the connector's own

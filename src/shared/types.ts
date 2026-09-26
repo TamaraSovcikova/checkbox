@@ -134,6 +134,9 @@ export interface Task {
   // insert; see shared/taskCode and migration 0038.
   seq: number | null;
   parked_at: string | null;
+  // Today's Focus (#3): in focus only while focus_date is today. See migration 0039.
+  focus_date?: string | null;
+  focus_rank?: number | null;
   // What would restart it ("reopens only if the author path is ruled an income
   // path"). See migration 0037: the reason is the feature.
   park_reason: string | null;

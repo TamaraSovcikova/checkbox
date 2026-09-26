@@ -35,6 +35,7 @@ import { useTaskHover } from "./TaskHoverCard";
 import { completedMessage } from "../lib/completion";
 import { useFocusTask, FOCUS_RING } from "../lib/use-focus-task";
 import type { RowSelection } from "./TaskListControls";
+import { FocusToggle } from "./FocusBlock";
 
 export function TaskRow({
   task,
@@ -274,6 +275,7 @@ export function TaskRow({
           </button>
         )}
 
+        {!done && <FocusToggle task={task} className="order-last mt-0.5" />}
         {!done && <TodayToggle task={task} className="order-last mt-0.5" />}
 
         {subtaskLed ? (

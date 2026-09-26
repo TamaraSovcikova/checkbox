@@ -23,6 +23,7 @@ import { pins } from "./routes/pins";
 import { trackers } from "./routes/trackers";
 import { mcp } from "./routes/mcp";
 import { exportRoute } from "./routes/export";
+import { focus } from "./routes/focus";
 import { syncCalendar, renewWatchChannel } from "./lib/sync";
 import { sendMorningBrief } from "./lib/brief";
 import { resurrectRecurring } from "./lib/resurrect";
@@ -73,6 +74,7 @@ app.route("/api/gmail", gmail);
 app.route("/api/pins", pins);
 app.route("/api/trackers", trackers);
 app.route("/api/export", exportRoute);
+app.route("/api/focus", focus);
 app.route("/mcp", mcp);
 
 // --- Static SPA fallback --------------------------------------------------

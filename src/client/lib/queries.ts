@@ -83,6 +83,8 @@ const TASK_BEARING_KEYS = [
   ["stats"],
   ["pins"],
   ["triage"],
+  // Completing, parking or deleting a task changes today's Focus too.
+  ["focus"],
 ] as const;
 
 export function useTaskInvalidate() {
@@ -899,4 +901,44 @@ export function useTimezone() {
     },
   });
   return { timezone: query.data ?? clientTimeZone(), setTimezone: set.mutate, saving: set.isPending };
+}
+
+
+// Today's Focus (#3). `ids` is the current order; setFocus replaces it whole.
+export function useFocus() {
+  const invalidate = useTaskInvalidate();
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["focus"], queryFn: api.getFocus, staleTime: 30_000 });
+  const tasks = query.data?.tasks ?? [];
+  const ids = tasks.map((t) => t.id);
+  const set = useMutation({
+    mutationFn: ({ ids: next }: { ids: string[]; known?: Task[] }) => api.setFocus(next),
+    // Optimistic reorder, so a drag lands immediately.
+    onMutate: async ({ ids: next, known = [] }) => {
+      await qc.cancelQueries({ queryKey: ["focus"] });
+      const prev = qc.getQueryData<{ today: string; tasks: Task[]; carryover: Task[] }>(["focus"]);
+      if (prev) {
+        // `known` carries tasks new to the focus, so they appear at once rather
+        // than after the refetch.
+        const byId = new Map([...prev.tasks, ...prev.carryover, ...known].map((t) => [t.id, t]));
+        qc.setQueryData(["focus"], {
+          ...prev,
+          tasks: next.map((id) => byId.get(id)).filter((t): t is Task => !!t),
+        });
+      }
+      return { prev };
+    },
+    onError: (_e, _n, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["focus"], ctx.prev);
+    },
+    onSettled: invalidate,
+  });
+  return {
+    tasks,
+    ids,
+    carryover: query.data?.carryover ?? [],
+    isFocused: (id: string) => ids.includes(id),
+    rank: (id: string) => ids.indexOf(id) + 1,
+    setFocus: (next: string[], known?: Task[]) => set.mutate({ ids: next, known }),
+  };
 }

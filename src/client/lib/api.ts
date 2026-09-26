@@ -265,6 +265,11 @@ export const api = {
   getPrefs: () => http<UserPrefs>("/api/prefs"),
   savePrefs: (p: UserPrefs) =>
     http<UserPrefs>("/api/prefs", { method: "PUT", body: JSON.stringify(p) }),
+  // Today's Focus (#3)
+  getFocus: () =>
+    http<{ today: string; tasks: Task[]; carryover: Task[] }>("/api/focus"),
+  setFocus: (ids: string[]) =>
+    http<{ ids: string[] }>("/api/focus", { method: "PUT", body: JSON.stringify({ ids }) }),
   getTimezone: () => http<{ timezone: string }>("/api/prefs/timezone"),
   setTimezone: (timezone: string) =>
     http<{ timezone: string }>("/api/prefs/timezone", {

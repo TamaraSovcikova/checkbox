@@ -139,6 +139,7 @@ describe("MCP feature coverage", () => {
     notes: "scan_notes_for_tasks",
     mail: "add_mail_candidates",
     trackers: "list_trackers",
+    focus: "set_focus",
   };
 
   // Deliberately absent, each for a reason that would not change on a new
