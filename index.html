@@ -5,27 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0b1120" />
     <title>Checkbox</title>
-    <!-- Set the theme before first paint so there is no dark->light flash. Mirrors
-         lib/theme.ts: reads the stored pref, falls back to the OS setting, and
-         writes data-theme + color-scheme + theme-color. ThemeProvider reconciles. -->
-    <script>
-      (function () {
-        try {
-          var p = localStorage.getItem("checkbox-theme");
-          var sysDark = matchMedia("(prefers-color-scheme: dark)").matches;
-          var mode = p === "light" || p === "dark" ? p : sysDark ? "dark" : "light";
-          var root = document.documentElement;
-          root.dataset.theme = mode;
-          root.style.colorScheme = mode;
-          var m = document.querySelector('meta[name="theme-color"]');
-          if (m) m.setAttribute("content", mode === "light" ? "#faf9f6" : "#0b1120");
-          // Colour scheme + font, same pre-paint trick (no flash). Absent values
-          // fall back to the base indigo / sans via the CSS defaults.
-          root.dataset.palette = localStorage.getItem("checkbox-palette") || "indigo";
-          root.dataset.font = localStorage.getItem("checkbox-font") || "sans";
-        } catch (e) {}
-      })();
-    </script>
+    <!-- Theme before first paint (see public/theme-init.js). -->
+    <script src="/theme-init.js"></script>
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <!-- iOS home-screen app: apple-touch-icon + standalone chrome. iOS never shows
          an install popup; it's added via Share -> Add to Home Screen. -->

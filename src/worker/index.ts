@@ -22,6 +22,7 @@ import { gmail } from "./routes/gmail";
 import { pins } from "./routes/pins";
 import { trackers } from "./routes/trackers";
 import { mcp } from "./routes/mcp";
+import { withSecurityHeaders } from "./lib/headers";
 import { exportRoute } from "./routes/export";
 import { focus } from "./routes/focus";
 import { syncCalendar, renewWatchChannel } from "./lib/sync";
@@ -32,6 +33,16 @@ import { emitTrackerTasks } from "./lib/trackers";
 import { sendDueReminders } from "./lib/reminders";
 
 const app = new Hono<{ Bindings: Bindings }>();
+
+// Security headers on everything the Worker answers itself (#10); the static
+// app gets the same from public/_headers.
+const secure = async (c: { res: Response }, next: () => Promise<void>) => {
+  await next();
+  c.res = withSecurityHeaders(c.res);
+};
+app.use("/api/*", secure);
+app.use("/mcp", secure);
+app.use("/mcp/*", secure);
 
 // --- API routes -----------------------------------------------------------
 app.get("/api/health", (c) =>

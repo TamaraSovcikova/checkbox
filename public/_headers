@@ -1,0 +1,13 @@
+# Security headers for the static app (#10). Cloudflare Workers static assets
+# read this file; /api/* and /mcp get theirs from the Worker (lib/headers).
+#
+# script-src 'self' only: there is no inline script (the theme pre-paint lives
+# in /theme-init.js for exactly this reason). img-src allows any https source
+# because profile pictures and area banners come from other hosts. Styles allow
+# inline because React and the date picker set style attributes.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
