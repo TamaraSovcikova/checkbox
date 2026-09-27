@@ -12,21 +12,12 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { freshDb, type TestD1, type Db } from "./d1-adapter";
 import { mcp } from "../src/worker/routes/mcp";
+import { brussels } from "./dates";
 
 const MIGRATIONS = join(__dirname, "..", "migrations");
 const USER = "user-a";
 const TOKEN = "tok-a";
 
-const brussels = (offsetDays = 0) => {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + offsetDays);
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Brussels",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-};
 const TODAY = brussels(0);
 const PARKED = "2026-05-01T09:00:00.000Z";
 

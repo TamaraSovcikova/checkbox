@@ -8,7 +8,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { freshDb, type TestD1, type Db } from "./d1-adapter";
-import { todayIn, hhmmIn, isValidTimeZone, addDaysIso, DEFAULT_TZ } from "../src/shared/tz";
+import { todayIn, hhmmIn, isValidTimeZone, addDaysIso, DEFAULT_TZ, localDayOf } from "../src/shared/tz";
+import { shouldEmitTask } from "../src/worker/lib/trackers";
 import { todayFor, userTz } from "../src/worker/lib/tz";
 import { views } from "../src/worker/routes/views";
 import { prefs } from "../src/worker/routes/prefs";
@@ -105,5 +106,22 @@ describe("server: per-user today", () => {
       (raw.prepare("SELECT status FROM tasks WHERE id = ?").get(id) as { status: string }).status;
     expect(status("be-daily")).toBe("todo");
     expect(status("uk-daily")).toBe("done");
+  });
+});
+
+describe("a stored moment is read as the user's own day", () => {
+  // 00:30 on 1 Oct in UK summer time is stored as 23:30 UTC on 30 Sep.
+  const halfPastMidnightUK = "2026-09-30T23:30:00.000Z";
+
+  it("localDayOf uses the zone, not the UTC date prefix", () => {
+    expect(localDayOf(halfPastMidnightUK, "Europe/London")).toBe("2026-10-01");
+    expect(localDayOf(halfPastMidnightUK, "UTC")).toBe("2026-09-30");
+    expect(localDayOf("2026-10-01", "Europe/London")).toBe("2026-10-01"); // a bare day stays put
+  });
+
+  it("a cadence logged just after local midnight is not a day old", () => {
+    const t = { id: "t", name: "Call", area_id: null, target_days: 1, last_at: halfPastMidnightUK, open_tasks: 0, task_title: null };
+    expect(shouldEmitTask(t, "2026-10-01", "Europe/London")).toBe(false); // 0 days in the UK
+    expect(shouldEmitTask(t, "2026-10-01", "UTC")).toBe(true); // 1 day by the UTC date
   });
 });

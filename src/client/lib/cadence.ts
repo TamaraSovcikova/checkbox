@@ -1,5 +1,7 @@
 import type { Tracker } from "../../shared/types";
 import { daysBetweenIso } from "../../shared/tz";
+import { localDayOf } from "../../shared/tz";
+import { clientTimeZone } from "./utils";
 
 // How a cadence tracker reads: how long since, and whether that is fine.
 //
@@ -15,7 +17,7 @@ export const daysBetween = daysBetweenIso;
 // Days since the last occurrence, or null if it has never happened.
 export function daysSince(tracker: Tracker, today: string): number | null {
   if (!tracker.last_at) return null;
-  return daysBetween(tracker.last_at.slice(0, 10), today);
+  return daysBetween(localDayOf(tracker.last_at, clientTimeZone()), today);
 }
 
 // fresh   - comfortably inside the cadence, or untargeted (nothing to judge)

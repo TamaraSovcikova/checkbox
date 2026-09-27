@@ -15,22 +15,13 @@ import {
 } from "../src/worker/lib/trackers";
 import { emittedTaskTitle } from "../src/shared/tracker";
 import { tasks as tasksRoute } from "../src/worker/routes/tasks";
+import { brussels } from "./dates";
 
 const MIGRATIONS = join(__dirname, "..", "migrations");
 const USER = "user-a";
 const TOKEN = "tok-a";
 const OTHER = "user-b";
 
-const brussels = (offsetDays = 0) => {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + offsetDays);
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Brussels",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-};
 const TODAY = brussels(0);
 
 let raw: Db;

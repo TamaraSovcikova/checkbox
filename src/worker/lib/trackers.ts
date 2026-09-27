@@ -1,7 +1,8 @@
 import { uuid, now } from "../db";
 import { emittedTaskTitle } from "../../shared/tracker";
-import { todayFor } from "./tz";
+import { userTz } from "./tz";
 import { daysBetweenIso } from "../../shared/tz";
+import { DEFAULT_TZ, localDayOf, todayIn } from "../../shared/tz";
 
 export { emittedTaskTitle };
 
@@ -40,14 +41,12 @@ export type EmitCandidate = {
 //
 // A tracker that has NEVER been logged and has a target does emit: never having
 // started is exactly the case worth a nudge.
-export function shouldEmitTask(t: EmitCandidate, today: string): boolean {
+export function shouldEmitTask(t: EmitCandidate, today: string, tz: string = DEFAULT_TZ): boolean {
   if (t.target_days == null) return false;
   if (t.open_tasks > 0) return false;
   if (t.last_at == null) return true;
-  return daysBetweenDays(t.last_at.slice(0, 10), today) >= t.target_days;
+  return daysBetweenDays(localDayOf(t.last_at, tz), today) >= t.target_days;
 }
-
-// Today in the user's zone.
 
 // Emit tasks for every opted-in tracker that is past its cadence. Returns the
 // ids created, so the caller (and the tests) can see what happened.
@@ -58,7 +57,8 @@ export async function emitTrackerTasks(
   db: D1Database,
   userId: string
 ): Promise<string[]> {
-  const today = (await todayFor(db, userId));
+  const tz = await userTz(db, userId);
+  const today = todayIn(tz);
 
   const { results } = await db
     .prepare(
@@ -72,7 +72,7 @@ export async function emitTrackerTasks(
     .bind(userId)
     .all<EmitCandidate>();
 
-  const due = (results ?? []).filter((t) => shouldEmitTask(t, today));
+  const due = (results ?? []).filter((t) => shouldEmitTask(t, today, tz));
   const created: string[] = [];
 
   for (const t of due) {

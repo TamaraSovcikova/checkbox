@@ -60,3 +60,14 @@ export function daysBetweenIso(from: string, to: string): number {
   const [ty, tm, td] = to.split("-").map(Number);
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
 }
+
+// The user's calendar day for a stored moment. Timestamps are stored in UTC, so
+// their first ten characters are the UTC date, which is the wrong day for
+// anyone whose evening crosses UTC midnight (a log at 00:30 in UK summer time
+// is stored as 23:30 the day before). A bare YYYY-MM-DD is already a day and is
+// returned as is.
+export function localDayOf(stamp: string, tz: string | null | undefined): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(stamp)) return stamp;
+  const d = new Date(stamp);
+  return Number.isNaN(d.getTime()) ? stamp.slice(0, 10) : todayIn(tz, d);
+}

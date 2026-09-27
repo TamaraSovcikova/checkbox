@@ -12,6 +12,7 @@ import {
   sinceLabel,
 } from "../src/client/lib/cadence";
 import type { Tracker } from "../src/shared/types";
+import { setClientTimeZone } from "../src/client/lib/utils";
 
 const TODAY = "2026-07-17";
 
@@ -53,10 +54,14 @@ describe("daysSince", () => {
     expect(daysSince(tracker(), TODAY)).toBeNull();
   });
 
-  it("reads the date part, ignoring the time of day", () => {
-    // Called late last night; at any hour today that is still 1 day ago.
-    expect(daysSince(tracker({ last_at: "2026-07-16T23:30:00.000Z" }), TODAY)).toBe(1);
-    expect(daysSince(tracker({ last_at: "2026-07-17T00:05:00.000Z" }), TODAY)).toBe(0);
+  it("counts calendar days in the user's zone, ignoring the time of day", () => {
+    // Times are UK summer time (UTC+1). Called at 22:30 last night: at any hour
+    // today that is still 1 day ago.
+    setClientTimeZone("Europe/London");
+    expect(daysSince(tracker({ last_at: "2026-07-16T21:30:00.000Z" }), TODAY)).toBe(1);
+    // 00:05 today, which is stored as 23:05 UTC YESTERDAY. It used to read the
+    // UTC date and say 1 day; it is today.
+    expect(daysSince(tracker({ last_at: "2026-07-16T23:05:00.000Z" }), TODAY)).toBe(0);
   });
 });
 

@@ -37,8 +37,8 @@ import {
 import { parseVaultLine, renderVaultLine, pullDecision } from "../../shared/vault";
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { enforceProjectArea } from "../lib/section";
-import { todayFor } from "../lib/tz";
-import { daysBetweenIso } from "../../shared/tz";
+import { todayFor, userTz } from "../lib/tz";
+import { daysBetweenIso, localDayOf, todayIn } from "../../shared/tz";
 import { setFocus } from "../lib/focus";
 import { viewQuery, isTaskView } from "../lib/viewSql";
 
@@ -2427,10 +2427,13 @@ async function handleTool(
 
       // days_since is computed here rather than in SQL so it is CALENDAR days in
       // the user's zone, matching what the app shows. julianday() on a UTC
-      // timestamp would disagree with the UI by a day around midnight.
-      const today = (await todayFor(db, userId));
+      // timestamp would disagree with the UI by a day around midnight. The last
+      // log is converted to the user's own day too (localDayOf), not read off the
+      // UTC date.
+      const tz = await userTz(db, userId);
+      const today = todayIn(tz);
       const rows = (results ?? []).map((r) => {
-        const days = r.last_at ? daysBetweenIso(r.last_at.slice(0, 10), today) : null;
+        const days = r.last_at ? daysBetweenIso(localDayOf(r.last_at, tz), today) : null;
         return {
           ...r,
           days_since: days,

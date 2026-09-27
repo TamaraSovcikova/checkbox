@@ -35,6 +35,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuCheckboxItem,
 } from "./ui/dropdown-menu";
+import { localDayOf } from "../../shared/tz";
+import { clientTimeZone } from "@/lib/utils";
 
 // Cadence trackers: things measured by "how long since", not "when is it due".
 // See migration 0026 for why these are not tasks.
@@ -129,7 +131,7 @@ function CadenceRow({
         <span
           className="shrink-0 text-xs tabular-nums"
           style={{ color: STATUS_COLOR[status] }}
-          title={tracker.last_at ? `Last: ${tracker.last_at.slice(0, 10)}` : "Never logged"}
+          title={tracker.last_at ? `Last: ${localDayOf(tracker.last_at, clientTimeZone())}` : "Never logged"}
         >
           {sinceLabel(tracker, today)}
         </span>

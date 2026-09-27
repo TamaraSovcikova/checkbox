@@ -9,21 +9,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { join } from "node:path";
 import { freshDb, type TestD1, type Db } from "./d1-adapter";
 import worker from "../src/worker/index";
+import { brussels } from "./dates";
 
 const MIGRATIONS = join(__dirname, "..", "migrations");
 const USER_A = "user-a";
 const USER_B = "user-b";
 
-const brussels = (offsetDays = 0) => {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + offsetDays);
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Brussels",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-};
 
 let raw: Db;
 let d1: TestD1;
