@@ -4,8 +4,15 @@ import type { Project, Task } from "../../shared/types";
 import { useTasks, useToggleSubtask } from "../lib/queries";
 import { TaskRow } from "./TaskRow";
 import { areaTintBg } from "../lib/colors";
-import { SubtaskIcon, ChevronDownIcon, ChevronRightIcon, CheckIcon } from "../lib/icons";
-import { type RowSelection, type TaskControls, BulkActionBar, useTaskSelection } from "./TaskListControls";
+import { SubtaskIcon, ChevronDownIcon, ChevronRightIcon } from "../lib/icons";
+import {
+  type RowSelection,
+  type TaskControls,
+  BulkActionBar,
+  useTaskSelection,
+  SelectMark,
+  SELECTED_STYLE,
+} from "./TaskListControls";
 import {
   TaskMeta,
   TodayToggle,
@@ -83,7 +90,7 @@ export function BoardCard({
       aria-selected={selection ? selection.selected : undefined}
       className={cn(
         "group touch-none rounded-md border border-border bg-surface p-2 transition-colors hover:border-primary/40",
-        selection?.selected && "border-primary ring-2 ring-primary/60",
+        selection?.selected && SELECTED_STYLE,
         isDragging ? "cursor-grabbing opacity-50" : "cursor-grab",
         !isDragging && distant,
         !isDragging && dormantTone(task, todayStr()),
@@ -96,32 +103,8 @@ export function BoardCard({
     >
       {card}
       <div className="flex items-start gap-1.5">
-        {selection && (
-          // The way into selection without a keyboard: shown on hover, always
-          // once something is selected, always on touch screens.
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={selection.selected}
-            aria-label={`Select ${task.title}`}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              selection.onToggle();
-            }}
-            className={cn(
-              "mt-0.5 h-4 w-4 shrink-0 place-items-center rounded border transition-colors",
-              selection.selected
-                ? "grid border-primary bg-primary text-[var(--primary-foreground)]"
-                : cn(
-                    "border-subtle/70 hover:border-primary",
-                    selection.active ? "grid" : "hidden group-hover:grid max-md:grid"
-                  )
-            )}
-          >
-            {selection.selected && <CheckIcon className="h-3 w-3" strokeWidth={3} />}
-          </button>
-        )}
+        {/* The shared select box, same as on list rows (see SelectMark). */}
+        {selection && <SelectMark selection={selection} label={task.title} />}
         {stepLed ? (
           <div className="min-w-0 flex-1">
             <div

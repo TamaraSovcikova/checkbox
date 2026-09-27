@@ -39,13 +39,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
-
-function addDaysStr(date: string, n: number) {
-  const [y, m, d] = date.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d + n));
-  const p = (x: number) => String(x).padStart(2, "0");
-  return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}`;
-}
+import { addDaysIso } from "../../shared/tz";
 
 export interface RowSelection {
   selected: boolean;
@@ -428,6 +422,53 @@ export function useTaskSelection(
   };
 }
 
+// ── One selection look for every list and board ─────────────────────────────
+//
+// Lists and boards share useTaskSelection, so the RULES were always the same,
+// but each drew its own select box and its own "selected" look, and they had
+// drifted (a box fading in on every row, a different box on cards, a tint on one
+// and a ring on the other). Both now use these two pieces.
+//
+// Selecting is Ctrl/Cmd-click (Shift-click for a range), the way it works in
+// Finder and Gmail. On desktop the box is not offered on hover: it appears once
+// something is selected, so a selection can be seen and unticked. Touch screens
+// have no Ctrl key, so there the box is always shown and is the way in.
+
+export const SELECTED_STYLE = "bg-primary/10 ring-2 ring-inset ring-primary/60";
+
+export function SelectMark({
+  selection,
+  label,
+}: {
+  selection: RowSelection;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={selection.selected}
+      aria-label={`Select ${label}`}
+      title="Select (Ctrl/Cmd-click a task, Shift-click for a range)"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        selection.onToggle();
+      }}
+      className={cn(
+        "relative z-10 mt-0.5 h-4 w-4 shrink-0 place-items-center rounded border transition-colors before:absolute before:-inset-2 before:content-['']",
+        selection.selected
+          ? "grid border-primary bg-primary text-[var(--primary-foreground)]"
+          : selection.active
+            ? "grid border-subtle/70 hover:border-primary"
+            : "hidden border-subtle/70 max-md:grid"
+      )}
+    >
+      {selection.selected && <CheckIcon className="h-2.5 w-2.5" strokeWidth={3} />}
+    </button>
+  );
+}
+
 // Floating action bar shown while a selection is active.
 export function BulkActionBar({ controls }: { controls: TaskControls }) {
   if (controls.count === 0) return null;
@@ -449,7 +490,7 @@ export function BulkActionBar({ controls }: { controls: TaskControls }) {
         Today
       </BarBtn>
       <BarBtn
-        onClick={() => controls.planSelected(addDaysStr(today, 1))}
+        onClick={() => controls.planSelected(addDaysIso(today, 1))}
         title="Plan these for tomorrow. Does not set a deadline."
       >
         Tomorrow
@@ -535,8 +576,8 @@ export function BulkDateButton({
 
   const presets = [
     ...(mode === "snooze" ? [] : [{ label: "Today", date: today }]),
-    { label: "Tomorrow", date: addDaysStr(today, 1) },
-    { label: "Next week", date: addDaysStr(today, 7) },
+    { label: "Tomorrow", date: addDaysIso(today, 1) },
+    { label: "Next week", date: addDaysIso(today, 7) },
   ];
 
   return (

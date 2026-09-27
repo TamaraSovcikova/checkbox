@@ -34,7 +34,7 @@ import {
 import { useTaskHover } from "./TaskHoverCard";
 import { completedMessage } from "../lib/completion";
 import { useFocusTask, FOCUS_RING } from "../lib/use-focus-task";
-import type { RowSelection } from "./TaskListControls";
+import { type RowSelection, SelectMark, SELECTED_STYLE } from "./TaskListControls";
 import { FocusToggle } from "./FocusBlock";
 
 export function TaskRow({
@@ -190,10 +190,10 @@ export function TaskRow({
         className={cn(
           "group flex touch-none items-start gap-2 rounded-md px-2.5 py-2.5 transition-colors",
           isDragging ? "cursor-grabbing" : "cursor-grab",
-          selection?.cursor
+          selection?.selected
+            ? SELECTED_STYLE
+            : selection?.cursor
             ? "bg-surface-2/70 ring-1 ring-primary/50"
-            : selection?.selected
-            ? "bg-primary/10"
             : "hover:bg-surface-2/50"
         )}
       >
@@ -229,30 +229,9 @@ export function TaskRow({
         </button>
         )}
 
-        {/* Multi-select: a square checkbox in a RESERVED slot just right of the
-            complete circle. It fades in on hover (or stays while a selection is
-            active) using visibility, not display, so it never nudges the complete
-            circle. Only rendered where selection is supported (list views). */}
-        {selection && (
-          <button
-            aria-label={selection.selected ? "Deselect" : "Select"}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              selection.onToggle();
-            }}
-            className={cn(
-              "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border transition-[color,background-color]",
-              selection.selected
-                ? "border-primary bg-primary text-primary-foreground"
-                : selection.active
-                ? "border-input hover:border-primary"
-                : "invisible group-hover:visible border-input hover:border-primary"
-            )}
-          >
-            {selection.selected && <CheckIcon className="h-2.5 w-2.5" />}
-          </button>
-        )}
+        {/* Multi-select: the shared select box (see SelectMark), same as on
+            board cards. */}
+        {selection && <SelectMark selection={selection} label={task.title} />}
 
         {/* One-tap "on track" when a checkpoint pulse is due: advances to the
             next pulse and drops the task out of Today until then. The whole point
