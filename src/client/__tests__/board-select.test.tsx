@@ -14,6 +14,7 @@ import type { Task } from "../../shared/types";
 vi.mock("../components/TaskHoverCard", () => ({
   useTaskHover: () => ({ hoverProps: {}, card: null }),
 }));
+vi.mock("../components/FocusBlock", () => ({ FocusToggle: () => null }));
 vi.mock("../components/TaskMeta", () => ({
   TaskMeta: () => null,
   TodayToggle: () => null,

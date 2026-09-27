@@ -62,8 +62,9 @@ export function FocusBlock() {
     return (
       <p className="mb-3 flex items-center gap-1.5 text-xs text-subtle">
         <FocusIcon className="h-3.5 w-3.5" />
-        No focus set. Press <kbd className="rounded border border-border px-1">f</kbd> on a task,
-        or use the target icon on a row, to line up what to do first.
+        No focus set. Point at a task and press{" "}
+        <kbd className="rounded border border-border px-1">f</kbd>, or click the target icon
+        that appears on hover, to line up what to do first.
       </p>
     );
   }

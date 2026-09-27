@@ -19,6 +19,7 @@ import { cn, todayStr } from "@/lib/utils";
 import { useTaskHover } from "./TaskHoverCard";
 import { useFocusTask, FOCUS_RING } from "../lib/use-focus-task";
 import { isSubtaskLed, leadingSubtasks } from "../lib/today";
+import { FocusToggle } from "./FocusBlock";
 
 // Draggable board card. Drops resolve in the app-level DndContext (AppShell),
 // so a card can go to another column OR onto a sidebar area/project.
@@ -164,6 +165,7 @@ export function BoardCard({
             {task.title}
           </div>
         )}
+        {!done && <FocusToggle task={task} />}
         {!done && <TodayToggle task={task} alwaysVisible />}
       </div>
       {/* The column heading already says Doing, so the chip would only repeat it. */}
@@ -219,9 +221,10 @@ export function BoardCard({
 
 // Selection for a board: the list's selection hook over the cards in on-screen
 // order (column by column), so Shift-click ranges run the way the eye reads.
-// Keyboard navigation stays off: j/k have no obvious meaning across columns.
+// Only f (focus) and Escape on the keyboard: j/k have no obvious meaning
+// across columns.
 export function useBoardSelection(ordered: Task[], onOpen: (t: Task) => void) {
-  const controls = useTaskSelection(ordered, onOpen, false);
+  const controls = useTaskSelection(ordered, onOpen, "focus");
   const index = new Map(ordered.map((t, i) => [t.id, i]));
   const selectionFor = (t: Task) => controls.rowFor(t, index.get(t.id) ?? 0);
   return { controls, selectionFor };

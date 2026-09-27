@@ -90,7 +90,9 @@ export interface TaskControls {
 export function useTaskSelection(
   tasks: Task[],
   onOpen: (t: Task) => void,
-  enabled = true
+  // true: full keyboard (lists). "focus": only f and Escape, for boards, where
+  // j/k have no obvious meaning across columns. false: none.
+  enabled: boolean | "focus" = true
 ): TaskControls {
   const invalidate = useTaskInvalidate();
   const { toast } = useToast();
@@ -289,6 +291,7 @@ export function useTaskSelection(
       // Don't fight an open dialog/sheet (Radix sets aria-hidden on the app root).
       if (document.querySelector("[role=dialog]")) return;
       if (!tasks.length) return;
+      if (enabled === "focus" && e.key !== "f" && e.key !== "Escape") return;
 
       const cur = tasks[Math.min(cursor, tasks.length - 1)];
       switch (e.key) {
@@ -303,10 +306,23 @@ export function useTaskSelection(
           setCursor((c) => Math.max(c - 1, 0));
           break;
         case "f": {
-          // Focus: the selection if there is one, else the task under the cursor.
-          e.preventDefault();
+          // Focus (#3): the selection if there is one, else the task under the
+          // MOUSE, else the keyboard cursor. It used to need the cursor, which
+          // nothing on screen showed until j/k was pressed, so f on the task you
+          // were looking at silently did nothing.
           const sel = tasks.filter((t) => selectedIds.has(t.id));
-          const target = sel.length ? sel : tasks[cursor] ? [tasks[cursor]] : [];
+          const hoveredId = [...document.querySelectorAll<HTMLElement>("[data-task-id]:hover")]
+            .pop()?.dataset.taskId;
+          const hovered = hoveredId ? tasks.find((t) => t.id === hoveredId) : undefined;
+          const target = sel.length ? sel : hovered ? [hovered] : cursor >= 0 && tasks[cursor] ? [tasks[cursor]] : [];
+          // Another list on the page (a board column set, say) may own the
+          // hovered task; stay quiet unless this list has something to act on.
+          if (!target.length) {
+            if (!document.querySelector("[data-task-id]:hover"))
+              toast("Point at a task (or select some), then press f");
+            break;
+          }
+          e.preventDefault();
           toggleFocusFor(target);
           if (sel.length) clear();
           break;
