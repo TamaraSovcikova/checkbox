@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { type Bindings, getUserId, uuid } from "../db";
+import { addDaysIso } from "../../shared/tz";
 
 export const templates = new Hono<{ Bindings: Bindings }>();
 
@@ -9,11 +10,6 @@ type ItemInput = {
   priority?: number;
   offset_days?: number | null;
 };
-
-function addDaysStr(date: string, n: number): string {
-  const [y, m, d] = date.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-}
 
 // Attach a template's items (ordered) to a template row shape.
 async function withItems(db: D1Database, row: Record<string, unknown>) {
@@ -139,7 +135,7 @@ templates.post("/:id/apply", async (c) => {
     const taskId = uuid();
     created.push(taskId);
     const offset = it.offset_days == null ? null : Number(it.offset_days);
-    const due = offset == null ? null : addDaysStr(anchor, offset);
+    const due = offset == null ? null : addDaysIso(anchor, offset);
     return c.env.DB.prepare(
       `INSERT INTO tasks (id, user_id, area_id, project_id, title, notes, priority, due_date, position)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`

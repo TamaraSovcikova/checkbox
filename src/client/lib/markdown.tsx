@@ -1,15 +1,9 @@
+import { escapeHtml } from "../../shared/html";
+
 // A deliberately tiny, dependency-free markdown renderer for task notes. It
 // escapes HTML first, then applies a small, safe subset: headings, bold/italic,
 // inline code, links (explicit + bare URLs), and - / * bullet lists. Anything
 // fancier falls through as plain text with preserved line breaks.
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 function inline(s: string): string {
   return s

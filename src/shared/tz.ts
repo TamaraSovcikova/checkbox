@@ -46,8 +46,17 @@ export function hhmmIn(tz: string | null | undefined, now: Date = new Date()): s
 }
 
 // A date `days` after `day` (YYYY-MM-DD), through UTC so no DST boundary can
-// shift it.
+// shift it. The one copy: there were eight, identical, across routes and shared.
 export function addDaysIso(day: string, days: number): string {
   const [y, m, d] = day.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+// Whole calendar days from `from` to `to` (both YYYY-MM-DD), through UTC so a
+// DST boundary cannot make a day 23 or 25 hours long and round the wrong way.
+// The one copy: routes, the connector, suggestions and cadences all use it.
+export function daysBetweenIso(from: string, to: string): number {
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
 }

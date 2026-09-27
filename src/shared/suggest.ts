@@ -1,4 +1,5 @@
 import type { Task } from "./types";
+import { daysBetweenIso } from "./tz";
 
 // "Suggest for today": the zero-cost, no-AI half of plan-my-day. You click it
 // when Today feels too empty, so it is deliberately NOT picky: it ranks EVERY
@@ -19,12 +20,6 @@ import type { Task } from "./types";
 export type Suggestion = { task: Task; score: number; reason: string };
 
 const HORIZON_DAYS = 3;
-
-function daysBetween(fromYmd: string, toYmd: string): number {
-  const [fy, fm, fd] = fromYmd.split("-").map(Number);
-  const [ty, tm, td] = toYmd.split("-").map(Number);
-  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
-}
 
 function isBlocked(t: Task): boolean {
   return (t.depends_on ?? []).some((d) => d.status !== "done");
@@ -49,7 +44,7 @@ export function suggestForToday(
     // browsed on purpose, in their own view, when there is room.
     if (t.whenever) continue;
 
-    const dueIn = t.due_date ? daysBetween(todayStr, t.due_date) : null;
+    const dueIn = t.due_date ? daysBetweenIso(todayStr, t.due_date) : null;
     if (dueIn !== null && dueIn <= 0) continue; // due today / overdue: already in Today
 
     // Priority floor (P1=40 … P4=10). Everything eligible scores; no hard gate,

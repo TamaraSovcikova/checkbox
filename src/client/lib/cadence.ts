@@ -1,4 +1,5 @@
 import type { Tracker } from "../../shared/types";
+import { daysBetweenIso } from "../../shared/tz";
 
 // How a cadence tracker reads: how long since, and whether that is fine.
 //
@@ -8,13 +9,8 @@ import type { Tracker } from "../../shared/types";
 
 // Whole days between two YYYY-MM-DD days. UTC so a DST boundary cannot make a
 // day 23 or 25 hours long and round the wrong way (the trap lib/due.ts hit).
-export function daysBetween(from: string, to: string): number {
-  const [fy, fm, fd] = from.split("-").map(Number);
-  const [ty, tm, td] = to.split("-").map(Number);
-  const a = Date.UTC(fy, fm - 1, fd);
-  const b = Date.UTC(ty, tm - 1, td);
-  return Math.round((b - a) / 86_400_000);
-}
+// Same function as shared/tz daysBetweenIso, kept under this name for its callers.
+export const daysBetween = daysBetweenIso;
 
 // Days since the last occurrence, or null if it has never happened.
 export function daysSince(tracker: Tracker, today: string): number | null {

@@ -1,3 +1,4 @@
+import { addDaysIso } from "./tz";
 // Pure recurrence maths shared by the Worker (roll a task forward on completion)
 // and the client (build + preview a recurrence spec). Operates on plain
 // YYYY-MM-DD strings so it is timezone-independent: a due date is a calendar
@@ -24,11 +25,8 @@ function daysInMonth(y: number, m: number): number {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
-export function addDays(date: string, n: number): string {
-  const [y, m, d] = parse(date);
-  const dt = new Date(Date.UTC(y, m - 1, d + n));
-  return fmt(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
-}
+// Same function as shared/tz addDaysIso, kept under this name for its callers.
+export const addDays = addDaysIso;
 
 function addMonths(date: string, n: number): string {
   const [y, m, d] = parse(date);

@@ -16,6 +16,7 @@ import {
   uuid,
 } from "../db";
 import { exchangeCode } from "../lib/gcal";
+import { escapeHtml } from "../../shared/html";
 
 export const auth = new Hono<{ Bindings: Bindings }>();
 
@@ -42,15 +43,12 @@ async function fetchUserInfo(accessToken: string): Promise<GoogleUserInfo> {
   return res.json<GoogleUserInfo>();
 }
 
-const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
 function notInvitedPage(email: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Not invited</title>
 <style>body{font:16px system-ui;max-width:32rem;margin:20vh auto;padding:0 1rem;color:#0f172a}
 a{color:#4f46e5}</style></head><body>
 <h1>Checkbox is invite-only</h1>
-<p><strong>${esc(email)}</strong> isn't on the invite list, so there's no account for it.</p>
+<p><strong>${escapeHtml(email)}</strong> isn't on the invite list, so there's no account for it.</p>
 <p>If this is your address, ask the owner to add you. <a href="/api/auth/google">Try a different account</a>.</p>
 </body></html>`;
 }

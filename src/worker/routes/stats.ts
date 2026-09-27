@@ -1,14 +1,10 @@
 import { Hono } from "hono";
 import { type Bindings, getUserId } from "../db";
 import { todayFor } from "../lib/tz";
+import { addDaysIso } from "../../shared/tz";
 
 export const stats = new Hono<{ Bindings: Bindings }>();
 
-
-function addDaysStr(date: string, n: number): string {
-  const [y, m, d] = date.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-}
 
 // Progress + streaks. Completions are bucketed by the user's calendar day of
 // completed_at (substr of the stored UTC ISO, good enough for a personal app in
@@ -17,7 +13,7 @@ stats.get("/", async (c) => {
   const userId = await getUserId(c);
   const today = (await todayFor(c.env.DB, userId));
   const HEATMAP_DAYS = 84; // ~12 weeks
-  const since = addDaysStr(today, -(HEATMAP_DAYS - 1));
+  const since = addDaysIso(today, -(HEATMAP_DAYS - 1));
 
   const { results } = await c.env.DB.prepare(
     `SELECT substr(completed_at, 1, 10) AS day, COUNT(*) AS cnt
@@ -35,21 +31,21 @@ stats.get("/", async (c) => {
   // Dense heatmap: one cell per day, oldest first.
   const heatmap: { date: string; count: number }[] = [];
   for (let i = HEATMAP_DAYS - 1; i >= 0; i--) {
-    const day = addDaysStr(today, -i);
+    const day = addDaysIso(today, -i);
     heatmap.push({ date: day, count: counts.get(day) ?? 0 });
   }
 
-  const weekAgo = addDaysStr(today, -6);
+  const weekAgo = addDaysIso(today, -6);
   let doneThisWeek = 0;
   for (const [day, cnt] of counts) if (day >= weekAgo) doneThisWeek += cnt;
 
   // Current streak: consecutive days with >=1 completion, ending today or (if
   // nothing done yet today) yesterday, so an in-progress day doesn't break it.
   let streak = 0;
-  let cursor = counts.has(today) ? today : addDaysStr(today, -1);
+  let cursor = counts.has(today) ? today : addDaysIso(today, -1);
   while (counts.has(cursor)) {
     streak++;
-    cursor = addDaysStr(cursor, -1);
+    cursor = addDaysIso(cursor, -1);
   }
 
   // Best streak over the heatmap window.

@@ -1,6 +1,7 @@
 import { uuid, now } from "../db";
 import { emittedTaskTitle } from "../../shared/tracker";
 import { todayFor } from "./tz";
+import { daysBetweenIso } from "../../shared/tz";
 
 export { emittedTaskTitle };
 
@@ -14,11 +15,8 @@ export { emittedTaskTitle };
 
 // Whole calendar days between two YYYY-MM-DD days, UTC so a DST boundary cannot
 // round the wrong way. Mirrors client/lib/cadence.ts and mcp.ts; keep in step.
-export function daysBetweenDays(from: string, to: string): number {
-  const [fy, fm, fd] = from.split("-").map(Number);
-  const [ty, tm, td] = to.split("-").map(Number);
-  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
-}
+// Same function as shared/tz daysBetweenIso, kept under this name for its callers.
+export const daysBetweenDays = daysBetweenIso;
 
 export type EmitCandidate = {
   id: string;

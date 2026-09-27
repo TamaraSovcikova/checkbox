@@ -31,6 +31,7 @@ import {
 } from "../lib/pinScope";
 import { CadenceStrip } from "./Cadences";
 import { boardColumns, columnOf, dropPatch, missingPlaces, LOOSE } from "../lib/pinBoard";
+import { indexAtPointer } from "../lib/dropIndex";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -1209,10 +1210,7 @@ export function PinsPage() {
     const cards = [...colEl.querySelectorAll<HTMLElement>("[data-card-id]")].filter(
       (el) => el.dataset.cardId !== dragId
     );
-    return cards.filter((el) => {
-      const r = el.getBoundingClientRect();
-      return r.top + r.height / 2 < y;
-    }).length;
+    return indexAtPointer(cards, y);
   }
 
   const moveOptionsFor = (pin: Pin) =>

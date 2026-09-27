@@ -102,13 +102,22 @@ agent will ever pass), and FEATURE by feature (every `/api/*` route group needs 
 tool or a stated reason not to). The second check exists because saved filters
 went months with a rich query language and no way for the connector to see it.
 
-The connector writes its OWN SQL for the list views, so a rule about what a view
-shows has to be applied in routes/views AND in mcp.ts. That has leaked once
-already (parked tasks stayed visible to agents after leaving every page), which
-is why test/mcp-parked.test.ts pins the connector's behaviour separately. The
-filter query language is the exception: routes/filters exports `runFilterQuery`
-and the connector calls it, because two copies of THAT would be the worst place
-in the codebase for a divergence.
+Every task view's query lives in ONE place, worker/lib/viewSql (`viewQuery`),
+used by routes/views AND the connector's list_tasks. They used to be two copies
+and drifted (the connector's Today missed carried-over plans, checkpoints and
+step-led parents). test/view-parity.test.ts asserts both list the same tasks for
+every view; a rule about what a view shows is changed there and nowhere else.
+The filter query language works the same way: routes/filters exports
+`runFilterQuery` and the connector calls it.
+
+Shared helpers, one copy each (do not add a local version): dates in
+shared/tz (`todayIn`, `addDaysIso`, `daysBetweenIso`; `todayFor` server-side),
+HTML escaping in shared/html, drop position for native drag in
+client/lib/dropIndex. Multi-select on every list and board is one hook
+(`useTaskSelection`) and one look (`SelectMark`, `SELECTED_STYLE` in
+TaskListControls): Ctrl/Cmd-click to select, Shift-click for a range, the select
+box appears once something is selected (always on touch screens).
+test/selection-consistency.test.ts keeps rows and cards on those pieces.
 
 Saved filters can ask about planned date, whenever, optional, recurring and
 blocked as well as the older fields (routes/filters.ts, one shared clause builder

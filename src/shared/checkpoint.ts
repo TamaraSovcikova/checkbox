@@ -1,3 +1,4 @@
+import { addDaysIso } from "./tz";
 // Checkpoint scheduling: when a long-horizon task should next pulse into Today.
 //
 // Shared so the client (setting/advancing) and any server logic compute the same
@@ -5,10 +6,8 @@
 
 // Shift a bare YYYY-MM-DD by whole days via UTC, so a DST boundary cannot move
 // the result a day (the trap lib/due and lib/cadence also avoid).
-export function shiftDays(day: string, days: number): string {
-  const [y, m, d] = day.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
-}
+// Same function as shared/tz addDaysIso, kept under this name for its callers.
+export const shiftDays = addDaysIso;
 
 // The next checkpoint date after `from`, or null when checkpoints should stop.
 //

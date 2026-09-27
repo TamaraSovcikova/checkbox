@@ -5,10 +5,7 @@ import type { Bindings } from "../db";
 import { sendPush, type PushSub } from "./push";
 import { userTz } from "./tz";
 import { todayIn } from "../../shared/tz";
-
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+import { escapeHtml } from "../../shared/html";
 
 
 export async function sendMorningBrief(env: Bindings): Promise<void> {
@@ -86,7 +83,7 @@ export async function sendMorningBrief(env: Bindings): Promise<void> {
             : t.priority === 2
             ? ` <span style="color:#fb923c">P2</span>`
             : "";
-        return `<li style="margin:4px 0">${esc(t.title)}${time}${badge}</li>`;
+        return `<li style="margin:4px 0">${escapeHtml(t.title)}${time}${badge}</li>`;
       })
       .join("");
 

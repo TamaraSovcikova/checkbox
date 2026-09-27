@@ -1,14 +1,10 @@
 import { Hono } from "hono";
 import { type Bindings, getUserId } from "../db";
 import { todayFor } from "../lib/tz";
+import { addDaysIso } from "../../shared/tz";
 
 export const review = new Hono<{ Bindings: Bindings }>();
 
-
-function addDaysStr(date: string, n: number): string {
-  const [y, m, d] = date.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-}
 
 // Weekly review: what got done, what slipped (past-due still open), what's
 // coming up in the next 7 days, and a per-area completion breakdown. Read-only
@@ -16,8 +12,8 @@ function addDaysStr(date: string, n: number): string {
 review.get("/", async (c) => {
   const userId = await getUserId(c);
   const today = (await todayFor(c.env.DB, userId));
-  const weekAgo = addDaysStr(today, -7);
-  const weekAhead = addDaysStr(today, 7);
+  const weekAgo = addDaysIso(today, -7);
+  const weekAhead = addDaysIso(today, 7);
 
   const [completedRes, slippedRes, upcomingRes, createdRes, byAreaRes, parkedRes] =
     await Promise.all([

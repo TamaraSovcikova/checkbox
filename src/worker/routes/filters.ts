@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { type Bindings, getUserId, uuid } from "../db";
 import { hydrateTasks } from "./_hydrate";
 import { todayFor } from "../lib/tz";
+import { addDaysIso } from "../../shared/tz";
 
 export const filters = new Hono<{ Bindings: Bindings }>();
 
@@ -51,13 +52,6 @@ type FilterQuery = {
   parked?: TriState;
 };
 
-
-function addDaysStr(date: string, n: number): string {
-  const [y, m, d] = date.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d + n));
-  const p = (x: number) => String(x).padStart(2, "0");
-  return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}`;
-}
 
 function rowToFilter(r: Record<string, unknown>) {
   let query: FilterQuery = {};
@@ -216,7 +210,7 @@ export async function runFilterQuery(
       // the question the moment September ends.
       return {
         sql: `(t.${col} >= ? AND t.${col} <= ?)`,
-        binds: [today, addDaysStr(today, mode === "week" ? 7 : 30)],
+        binds: [today, addDaysIso(today, mode === "week" ? 7 : 30)],
       };
     // range: inclusive, each end independently optional. Neither given means
     // "has a date at all", the literal reading of an unbounded range.

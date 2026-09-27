@@ -13,6 +13,7 @@ import { useCompleteGuard } from "../lib/use-complete-guard";
 import { useToast } from "../lib/toast";
 import { FocusIcon, CloseIcon, CheckIcon } from "../lib/icons";
 import { cn } from "@/lib/utils";
+import { indexAtPointer } from "../lib/dropIndex";
 
 export function FocusBlock() {
   const { tasks, ids, carryover, setFocus } = useFocus();
@@ -94,8 +95,8 @@ export function FocusBlock() {
             onDragOver={(e) => {
               if (!dragId) return;
               e.preventDefault();
-              const r = e.currentTarget.getBoundingClientRect();
-              setOverIndex(e.clientY < r.top + r.height / 2 ? i : i + 1);
+              const rows = [...(e.currentTarget.parentElement?.children ?? [])];
+              setOverIndex(indexAtPointer(rows, e.clientY));
             }}
             onDrop={(e) => {
               e.preventDefault();
