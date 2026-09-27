@@ -38,7 +38,9 @@ import { parseVaultLine, renderVaultLine, pullDecision } from "../../shared/vaul
 import { pushTaskToGcal, deleteTaskGcalEvent } from "../lib/sync";
 import { enforceProjectArea } from "../lib/section";
 import { todayFor } from "../lib/tz";
+import { daysBetweenIso } from "../../shared/tz";
 import { setFocus } from "../lib/focus";
+import { viewQuery, isTaskView } from "../lib/viewSql";
 
 export const mcp = new Hono<{ Bindings: Bindings }>();
 
@@ -1136,12 +1138,6 @@ const TOOLS = [
 // Whole calendar days between two YYYY-MM-DD days. UTC construction so a DST
 // boundary cannot make a day 23 or 25 hours long and round the wrong way.
 // Mirrors client/lib/cadence.ts daysBetween; keep the two in step.
-function daysBetweenDays(from: string, to: string): number {
-  const [fy, fm, fd] = from.split("-").map(Number);
-  const [ty, tm, td] = to.split("-").map(Number);
-  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
-}
-
 // Fields whose change means the Google Calendar event must be reconciled.
 const GCAL_FIELDS = ["scheduled_start", "scheduled_end", "due_date", "due_time", "title"];
 
@@ -1334,54 +1330,13 @@ async function handleTool(
       let sql: string;
       const binds: unknown[] = [userId];
 
-      if (args.view === "today") {
-        // Must match the app's Today view (routes/views.ts): due today or
-        // overdue, scheduled today, OR planned for today, excluding subtasks and
-        // snoozed tasks. planned_date is how "add to Today" works, so a plan set
-        // via update_task(planned_date) must be visible here.
-        sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done' AND parent_task_id IS NULL
-               AND parked_at IS NULL
-               AND (due_date = ? OR due_date < ? OR substr(scheduled_start,1,10) = ? OR planned_date = ?)
-               AND (snoozed_until IS NULL OR snoozed_until <= ?)
-               ORDER BY priority, position`;
-        binds.push(today, today, today, today, today);
-      } else if (args.view === "upcoming") {
-        sql = `SELECT * FROM tasks WHERE user_id = ? AND due_date > ? AND status != 'done'
-               AND parked_at IS NULL ORDER BY due_date, priority`;
-        binds.push(today);
-      } else if (args.view === "overdue") {
-        sql = `SELECT * FROM tasks WHERE user_id = ? AND due_date < ? AND status != 'done'
-               AND parked_at IS NULL ORDER BY due_date, priority`;
-        binds.push(today);
-      } else if (args.view === "backlog") {
-        // Mirrors routes/views: a "whenever" task is not waiting to be filed,
-        // it already lives where it belongs.
-        sql = `SELECT * FROM tasks WHERE user_id = ? AND area_id IS NULL AND project_id IS NULL
-               AND status != 'done' AND whenever = 0 AND parked_at IS NULL
-               ORDER BY priority, position`;
-      } else if (args.view === "whenever") {
-        sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
-               AND parent_task_id IS NULL AND whenever = 1 AND parked_at IS NULL
-               ORDER BY created_at DESC`;
-      } else if (args.view === "snoozed") {
-        sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
-               AND parent_task_id IS NULL AND snoozed_until > ?
-               ORDER BY snoozed_until`;
-        binds.push(today);
-      } else if (args.view === "focus") {
-        // Today's Focus (#3), in the order the user set: the first one is what
-        // they are doing now.
-        sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
-               AND parked_at IS NULL AND focus_date = ?
-               ORDER BY focus_rank`;
-        binds.push(today);
-      } else if (args.view === "parked") {
-        sql = `SELECT * FROM tasks WHERE user_id = ? AND status != 'done'
-               AND parent_task_id IS NULL AND parked_at IS NOT NULL
-               ORDER BY parked_at DESC`;
-      } else if (args.view === "logbook") {
-        sql = `SELECT * FROM tasks WHERE user_id = ? AND status = 'done'
-               ORDER BY completed_at DESC LIMIT 100`;
+      // Named views run the SAME query as the app (lib/viewSql). The connector
+      // used to keep its own copies, and they drifted from what was on screen.
+      const named = args.view !== "completed-today" && isTaskView(args.view) ? args.view : null;
+      if (named) {
+        const q = viewQuery(named, userId, today);
+        sql = q.sql;
+        binds.splice(0, binds.length, ...q.binds);
       } else {
         // Parked tasks are out of every list here as well. Asking for a
         // specific task by id still finds one (get_task), and view "parked" is
@@ -2475,7 +2430,7 @@ async function handleTool(
       // timestamp would disagree with the UI by a day around midnight.
       const today = (await todayFor(db, userId));
       const rows = (results ?? []).map((r) => {
-        const days = r.last_at ? daysBetweenDays(r.last_at.slice(0, 10), today) : null;
+        const days = r.last_at ? daysBetweenIso(r.last_at.slice(0, 10), today) : null;
         return {
           ...r,
           days_since: days,
