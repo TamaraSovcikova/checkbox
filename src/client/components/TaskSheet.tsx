@@ -1150,7 +1150,7 @@ export function TaskSheet({
                     key={p.label}
                     type="button"
                     onClick={() => setTab("more")}
-                    title={`${p.label} — open More to change it`}
+                    title={`${p.label}: open More to change it`}
                     className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-primary/50 hover:text-foreground"
                   >
                     <p.Icon className="h-3 w-3" />
@@ -1286,7 +1286,7 @@ export function TaskSheet({
                   onChange={(e) => setNewSub(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addSub()}
                   autoFocus={addingSub && subtasks.length === 0}
-                  placeholder="Add subtask — try 'post the form fri p1'"
+                  placeholder="Add subtask, e.g. 'post the form fri p1'"
                   className="h-9 flex-1 rounded-md border border-input bg-surface px-3 text-sm text-foreground outline-none focus:border-primary"
                 />
                 <Button variant="secondary" size="sm" onClick={addSub}>

@@ -241,7 +241,7 @@ export function TaskRow({
           <button
             type="button"
             aria-label="Mark on track"
-            title="On track — next check-in later"
+            title="On track: next check-in later"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
