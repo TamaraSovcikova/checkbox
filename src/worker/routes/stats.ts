@@ -19,7 +19,7 @@ stats.get("/", async (c) => {
     `SELECT substr(completed_at, 1, 10) AS day, COUNT(*) AS cnt
        FROM tasks
       WHERE user_id = ? AND status = 'done' AND completed_at IS NOT NULL
-        AND substr(completed_at, 1, 10) >= ?
+        AND completed_at >= ?
       GROUP BY day`
   )
     .bind(userId, since)

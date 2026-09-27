@@ -281,6 +281,13 @@ logs; rotate via Settings > Integrations. The proper long-term hardening is OAut
 - Single-user app, but every owned row carries `user_id` (isolation pattern).
 - Default timezone `Europe/Brussels`.
 - Free-tier only. Cloudflare Workers + D1, no paid services.
+- D1's free tier allows 5,000,000 rows READ per day, and D1 counts every row a
+  query scans, not the rows it returns. The limit was hit on 2026-09-27 by
+  full-table scans (migration 0041 added the missing indexes). Any new query
+  that runs often (views, sidebar, cron) needs an index it can SEARCH with:
+  check `EXPLAIN QUERY PLAN` for SCAN, and see the real top offenders with
+  `npx wrangler d1 insights checkbox --timePeriod 1d --sort-type sum --sort-by reads --json`.
+  Prefer ranges over functions on a column (`completed_at >= ?`, not `substr(...) = ?`).
 - No em-dashes (this file, code comments, git messages). Commit without AI attribution.
 - The repo is public. Tests, comments and commit messages use made-up examples, never
   real task titles, people's names or email addresses from the owner's data. Use

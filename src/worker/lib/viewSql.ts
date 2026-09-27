@@ -8,6 +8,8 @@
 // Claude was reading a different Today from the one on screen. A rule about what
 // a view shows now has exactly one place to change.
 
+import { addDaysIso } from "../../shared/tz";
+
 export const TASK_VIEWS = [
   "today",
   "upcoming",
@@ -201,9 +203,11 @@ export function viewQuery(
     case "completed-today":
       return {
         sql: `SELECT * FROM tasks WHERE user_id = ? AND status = 'done' AND parent_task_id IS NULL
-                AND substr(completed_at, 1, 10) = ?
+                AND completed_at >= ? AND completed_at < ?
               ORDER BY completed_at DESC`,
-        binds: [userId, today],
+        // A range rather than substr(completed_at, 1, 10) = today: same rows,
+        // but it can use idx_tasks_done instead of reading every task.
+        binds: [userId, today, addDaysIso(today, 1)],
       };
 
     // Today's Focus (#3), in the order the user set: the first one is Now.

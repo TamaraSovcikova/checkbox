@@ -33,7 +33,7 @@ export async function resurrectRecurring(
             recurrence_until, recurrence_count
        FROM tasks
       WHERE status = 'done' AND recurrence IS NOT NULL
-        AND completed_at IS NOT NULL AND substr(completed_at, 1, 10) < ?`
+        AND completed_at IS NOT NULL AND completed_at < ?`
   )
     .bind(latest)
     .all<{

@@ -13,12 +13,12 @@ export const labels = new Hono<{ Bindings: Bindings }>();
 labels.get("/", async (c) => {
   const userId = await getUserId(c);
   const { results } = await c.env.DB.prepare(
-    `SELECT l.id, l.name, l.color,
-            (SELECT COUNT(*) FROM task_labels tl
-               JOIN tasks t ON t.id = tl.task_id
-              WHERE tl.label_id = l.id AND t.status != 'done') AS open_count
+    `SELECT l.id, l.name, l.color, COUNT(t.id) AS open_count
        FROM labels l
+       LEFT JOIN task_labels tl ON tl.label_id = l.id
+       LEFT JOIN tasks t ON t.id = tl.task_id AND t.status != 'done'
       WHERE l.user_id = ?
+      GROUP BY l.id
       ORDER BY l.name`
   )
     .bind(userId)
