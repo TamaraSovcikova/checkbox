@@ -268,7 +268,11 @@ async function syncCalendarInner(
            VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(user_id, calendar_id) DO UPDATE SET
              summary = excluded.summary, color = excluded.color,
-             primary_cal = excluded.primary_cal`
+             primary_cal = excluded.primary_cal
+           -- Every sync re-reads the calendar list; write only what changed.
+           WHERE calendar_feeds.summary IS NOT excluded.summary
+              OR calendar_feeds.color IS NOT excluded.color
+              OR calendar_feeds.primary_cal IS NOT excluded.primary_cal`
         ).bind(
           userId,
           c.id,
@@ -330,11 +334,14 @@ async function syncCalendarInner(
     }
   }
 
-  await env.DB.prepare(
-    "UPDATE calendar_accounts SET sync_tokens = ? WHERE id = ?"
-  )
-    .bind(JSON.stringify(nextTokens), account.id)
-    .run();
+  // Skip the write when the tokens are unchanged (a sync that failed for every
+  // calendar keeps the old ones).
+  const nextJson = JSON.stringify(nextTokens);
+  if (nextJson !== (account.sync_tokens ?? "{}")) {
+    await env.DB.prepare("UPDATE calendar_accounts SET sync_tokens = ? WHERE id = ?")
+      .bind(nextJson, account.id)
+      .run();
+  }
 }
 
 // Pull one calendar into the cache. Incremental when a sync token is supplied,

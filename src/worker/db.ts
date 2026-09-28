@@ -113,9 +113,13 @@ export async function resolveBearerUser(
     .bind(token)
     .first<{ user_id: string }>();
   if (row?.user_id) {
-    // best-effort last_used bump (don't block the request on it)
-    await env.DB.prepare("UPDATE mcp_tokens SET last_used = ? WHERE token = ?")
-      .bind(now(), token)
+    // Best-effort last_used stamp, at most once an hour: an agent can make
+    // dozens of calls a minute, and each one was a database write.
+    const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+    await env.DB.prepare(
+      "UPDATE mcp_tokens SET last_used = ? WHERE token = ? AND (last_used IS NULL OR last_used < ?)"
+    )
+      .bind(now(), token, hourAgo)
       .run()
       .catch(() => {});
     return row.user_id;
