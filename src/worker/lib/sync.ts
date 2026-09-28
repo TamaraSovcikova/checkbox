@@ -290,6 +290,16 @@ async function syncCalendarInner(
         .all<{ calendar_id: string }>()
     : { results: [] as { calendar_id: string }[] };
   const disabled = new Set(feedRows.map((r) => r.calendar_id));
+  // A calendar switched off is not synced, so its cached events only go stale
+  // and cost a read on every consistency check. Clear them; switching it back on
+  // does a fresh full sync for that calendar (it has no token).
+  if (disabled.size > 0) {
+    await env.DB.prepare(
+      `DELETE FROM calendar_events_cache WHERE user_id = ? AND calendar_id IN (${[...disabled].map(() => "?").join(",")})`
+    )
+      .bind(userId, ...disabled)
+      .run();
+  }
 
   const calendars: CalToSync[] =
     readable && readable.length > 0
@@ -405,7 +415,13 @@ async function syncOneCalendar(
            title = excluded.title, start = excluded.start, end = excluded.end,
            all_day = excluded.all_day, updated = excluded.updated,
            is_checkbox_owned = excluded.is_checkbox_owned, task_id = excluded.task_id,
-           color = excluded.color`
+           color = excluded.color
+         -- Only when something changed. Google bumps the updated stamp on any edit, and
+         -- a full resync re-sends every event; rewriting identical rows was most
+         -- of the database's daily writes.
+         WHERE calendar_events_cache.updated IS NOT excluded.updated
+            OR calendar_events_cache.color IS NOT excluded.color
+            OR calendar_events_cache.task_id IS NOT excluded.task_id`
       ).bind(
         uuid(),
         userId,

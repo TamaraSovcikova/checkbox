@@ -288,6 +288,13 @@ logs; rotate via Settings > Integrations. The proper long-term hardening is OAut
   check `EXPLAIN QUERY PLAN` for SCAN, and see the real top offenders with
   `npx wrangler d1 insights checkbox --timePeriod 1d --sort-type sum --sort-by reads --json`.
   Prefer ranges over functions on a column (`completed_at >= ?`, not `substr(...) = ?`).
+- D1 also allows only 100,000 rows WRITTEN per day, and every index on a table
+  counts as another row written per insert or update. Hit on 2026-09-28: the
+  calendar sync had never kept a sync token (listEvents sent orderBy, and Google
+  omits nextSyncToken for ordered listings), so every sync rewrote four months
+  of every calendar. Never write a row that has not changed (upserts carry a
+  WHERE on the DO UPDATE), and check `wrangler d1 info checkbox` for
+  rows_written_24h after touching anything that runs on the cron.
 - No em-dashes (this file, code comments, git messages). Commit without AI attribution.
 - The repo is public. Tests, comments and commit messages use made-up examples, never
   real task titles, people's names or email addresses from the owner's data. Use

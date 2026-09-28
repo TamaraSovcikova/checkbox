@@ -52,6 +52,14 @@ describe("listEvents query", () => {
     expect(p.get("singleEvents")).toBe("true");
   });
 
+  it("never asks for an ordered listing, so Google returns a sync token", async () => {
+    // With orderBy set, Google omits nextSyncToken; no token was ever saved and
+    // every sync reloaded four months of every calendar (2026-09-28).
+    await listEvents("tok", "primary", { timeMin: "2026-06-17T00:00:00.000Z", timeMax: "2026-10-15T00:00:00.000Z" });
+    await listEvents("tok", "primary", { syncToken: "st-1" });
+    for (const c of calls) expect(paramsOf(c).get("orderBy")).toBeNull();
+  });
+
   it("surfaces an expired sync token as SYNC_TOKEN_INVALID", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("gone", { status: 410 })));
     await expect(

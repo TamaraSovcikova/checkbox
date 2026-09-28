@@ -211,10 +211,14 @@ export async function listEvents(
     showDeleted?: boolean;
   }
 ): Promise<GCalEventList> {
+  // No orderBy. Google returns no nextSyncToken for an ordered listing, so with
+  // orderBy=startTime no sync token was ever saved and every sync, every 15
+  // minutes, reloaded four months of every calendar: tens of thousands of
+  // database writes a day, enough to hit D1's free write limit. The cache is
+  // ordered by the queries that read it, never by this listing.
   const params = new URLSearchParams({
     maxResults: "2500",
     singleEvents: "true",
-    orderBy: "startTime",
   });
   if (opts.timeMin) params.set("timeMin", opts.timeMin);
   if (opts.timeMax) params.set("timeMax", opts.timeMax);
